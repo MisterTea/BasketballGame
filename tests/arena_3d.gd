@@ -28,7 +28,7 @@ func run() -> void:
  check(arena.wood_material.texture_repeat and arena.wood_material.uv1_scale == Vector3(6,3,1),"wood texture tiles across the court")
  check(arena.wood_material.albedo_texture.get_width() == 512,"hardwood texture is generated without external assets")
  check(arena.athletes.size() == 4 and arena.athletes[0].arms.size() == 2 and arena.athletes[0].legs.size() == 2,"four humanoids have articulated arms and legs")
- check(arena.athletes[0].body.position.y > 1 and arena.athletes[0].arms[0].rotation.x < -2,"jump and shooting states produce airborne raised-arm poses")
+ check(arena.athletes[0].body.position.y > 1 and arena.athletes[0].body.action == "block","jump state produces an airborne HY-Motion block pose")
  check(arena.athletes[0].marker.visible and not arena.athletes[1].marker.visible,"controlled athlete receives a floor marker")
  check(arena.athletes[0].fire[0].visible and not arena.athletes[2].fire[0].visible,"on-fire visuals follow the correct team")
  var left = arena.world.get_node("LeftBasket/OrangeRim")

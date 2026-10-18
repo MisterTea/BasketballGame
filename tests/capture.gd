@@ -55,6 +55,7 @@ func run() -> void:
  scene.game.flight.time = 0.36
  scene.game.ball = scene.game.flight.start.lerp(scene.game.flight.end,0.48)
  scene.game.players[0].jump = 0.43
+ scene.arena.athletes[0].body.first_pose = true
  scene.game.streak[0] = 3
  scene.game.banner = "BOOMSHAKA!"
  scene.game.banner_time = 2.0

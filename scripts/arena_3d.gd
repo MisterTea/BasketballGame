@@ -1,5 +1,7 @@
 extends SubViewport
 
+const HYMotionRig = preload("res://scripts/hy_motion_rig.gd")
+
 # Presentation only: simulation coordinates, inputs, and network state stay unchanged.
 const COURT_SCALE = Vector2(28.0 / 1050.0, 15.0 / 410.0)
 const GOLD = Color("ffcb68")
@@ -382,77 +384,14 @@ void fragment() {
  crowd.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
  world.add_child(crowd)
 
-func limb(parent: Node3D, at: Vector3, length: float, radius: float, mat: Material) -> Node3D:
- var pivot = Node3D.new()
- pivot.position = at
- parent.add_child(pivot)
- rod(pivot,Vector3.ZERO,Vector3(0,-length,0),radius,mat,6)
- return pivot
-
 func build_athlete(index: int) -> Dictionary:
  var root = Node3D.new()
  root.name = "Athlete%d" % index
  world.add_child(root)
- var body = Node3D.new()
+ var body = HYMotionRig.new()
+ body.name = "HYMotionPlayer"
  root.add_child(body)
- var skin = material([Color("b37550"),Color("e6b485"),Color("8f593d"),Color("cf9368")][index])
- var jersey = StandardMaterial3D.new()
- jersey.roughness = 0.85
- var shorts = StandardMaterial3D.new()
- shorts.roughness = 0.85
- var torso = CylinderMesh.new()
- torso.top_radius = 0.38
- torso.bottom_radius = 0.27
- torso.height = 0.63
- torso.radial_segments = 6
- torso.rings = 1
- var chest = mesh(body,torso,Vector3(0,1.35,0),jersey,"Jersey")
- chest.scale.z = 0.73
- box(body,Vector3(0.53,0.30,0.43),Vector3(0,0.94,0),shorts,"Shorts")
- rod(body,Vector3(0,1.60,0),Vector3(0,1.78,0),0.115,skin)
- var head = Node3D.new()
- head.position.y = 1.88
- body.add_child(head)
- var skull = SphereMesh.new()
- skull.radius = 0.22
- skull.height = 0.45
- skull.radial_segments = 8
- skull.rings = 4
- mesh(head,skull,Vector3.ZERO,skin,"LowPolyHead")
- var hair = SphereMesh.new()
- hair.radius = 0.225
- hair.height = 0.26
- hair.radial_segments = 8
- hair.rings = 3
- mesh(head,hair,Vector3(0,0.13,-0.015),material(Color("24232a")))
- box(head,Vector3(0.09,0.10,0.09),Vector3(0,-0.015,0.205),skin)
- for side in [-1,1]:
-  box(head,Vector3(0.035,0.033,0.018),Vector3(side*0.085,0.05,0.203),material(Color("181e29")))
- var arms: Array = []
- var elbows: Array = []
- var legs: Array = []
- var knees: Array = []
- for side in [-1,1]:
-  var arm = limb(body,Vector3(side*0.38,1.55,0),0.37,0.105,skin)
-  var elbow = limb(arm,Vector3(0,-0.37,0),0.35,0.088,skin)
-  var hand_shape = SphereMesh.new()
-  hand_shape.radius = 0.105
-  hand_shape.height = 0.20
-  hand_shape.radial_segments = 6
-  hand_shape.rings = 3
-  mesh(elbow,hand_shape,Vector3(0,-0.37,0),skin)
-  arms.append(arm)
-  elbows.append(elbow)
-  var leg = limb(body,Vector3(side*0.16,0.84,0),0.37,0.12,skin)
-  var knee = limb(leg,Vector3(0,-0.37,0),0.33,0.10,skin)
-  box(knee,Vector3(0.22,0.15,0.39),Vector3(0,-0.34,0.065),material(Color("e9ebdf")),"Sneaker")
-  box(knee,Vector3(0.225,0.045,0.395),Vector3(0,-0.405,0.065),material(Color("26364a")))
-  legs.append(leg)
-  knees.append(knee)
- for front in [-1,1]:
-  var number = label_3d(body,str(index%2+1),Vector3(0,1.35,front*0.285),0.008,Color("fff2db"),false)
-  number.rotation.y = PI if front == -1 else 0
-  number.outline_size = 5
+ body.initialize(self,index)
  var marker = ring(root,0.57,0.035,Vector3(0,0.035,0),material(GOLD,0.7,true),32)
  var name_label = label_3d(root,"",Vector3(0,2.38,0),0.007,Color("f8eed9"))
  var control_label = label_3d(root,"",Vector3(0,2.72,0),0.0065,GOLD)
@@ -464,7 +403,7 @@ func build_athlete(index: int) -> Dictionary:
   object.visible = false
   object.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
   fire.append(object)
- return {"root":root,"body":body,"head":head,"arms":arms,"elbows":elbows,"legs":legs,"knees":knees,"jersey":jersey,"shorts":shorts,"marker":marker,"label":name_label,"control":control_label,"fire":fire}
+ return {"root":root,"body":body,"head":body.head,"skeleton":body.skeleton,"arms":[body.attach(16),body.attach(17)],"legs":[body.attach(1),body.attach(2)],"jersey":body.jersey,"shorts":body.shorts,"marker":marker,"label":name_label,"control":control_label,"fire":fire}
 
 func build_ball() -> void:
  basketball = Node3D.new()
@@ -503,22 +442,34 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   var jump = sin(clampf(p.jump/0.85,0,1)*PI)*2.65
   actor.body.position.y = maxf(0,jump)
   var running = clampf(p.vel.length()/230.0,0,1)
-  var stride = sin(time*18.0+i)*0.74*running
   var target_angle = atan2(p.vel.x,p.vel.y) if p.vel.length() > 8 else (PI/2 if p.face > 0 else -PI/2)
   actor.body.rotation.y = lerp_angle(actor.body.rotation.y,target_angle,1.0-exp(-delta*15))
-  actor.body.rotation.z = 0.48*sin(time*23) if p.stun > 0 else 0.0
   actor.head.scale = Vector3.ONE*(1.65 if state.big_heads else 1.0)
-  for side in range(2):
-   var sign_side = -1 if side == 0 else 1
-   actor.legs[side].rotation.x = stride*sign_side
-   actor.knees[side].rotation.x = maxf(0,-stride*sign_side)*0.9
-   actor.arms[side].rotation.x = -stride*sign_side*0.8
-   actor.arms[side].rotation.z = sign_side*0.12
-   actor.elbows[side].rotation.x = -0.35
-   if p.jump > 0.04 or p.charge > 0:
-    actor.arms[side].rotation.x = -2.65
-    actor.elbows[side].rotation.x = -0.45
-    actor.legs[side].rotation.x = sign_side*0.32
+  var next_action = "idle"
+  var phase = -1.0
+  if p.stun > 0:
+   next_action = "stun"
+   phase = 1.0-clampf(p.stun/0.85,0,1)
+  elif not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.shooter == i:
+   next_action = "dunk" if state.flight.dunk else "shoot"
+   phase = clampf(state.flight.time/state.flight.duration,0,1) if state.flight.dunk else 0.45+0.55*clampf(state.flight.time/state.flight.duration,0,1)
+  elif p.charge > 0:
+   next_action = "shoot"
+   phase = 0.45*clampf(p.charge/0.58,0,1)
+  elif p.jump > 0:
+   next_action = "block"
+   phase = 1.0-clampf(p.jump/0.62,0,1)
+  elif not state.flight.is_empty() and state.flight.kind == "pass" and (int(state.flight.target)/2)*2+(1-int(state.flight.target)%2) == i:
+   next_action = "pass"
+   phase = clampf(state.flight.time/state.flight.duration,0,1)
+  elif p.cooldown > 0.2 and state.owner >= 0 and state.owner/2 != i/2:
+   next_action = "steal"
+   phase = 1.0-clampf(p.cooldown/0.65,0,1)
+  elif running > 0.035:
+   next_action = "dribble" if state.owner == i else "run"
+  elif state.owner >= 0 and state.owner/2 != i/2:
+   next_action = "defense"
+  actor.body.animate(next_action,delta,phase,lerpf(0.75,1.5,running),paused)
   actor.marker.visible = controlled_slots.has(i)
   actor.control.text = ("P1" if i < 2 else "P2") if controlled_slots.has(i) else ""
   actor.control.position.y = 2.72+jump

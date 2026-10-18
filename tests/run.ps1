@@ -6,6 +6,8 @@ $projectRoot = Split-Path $PSScriptRoot -Parent
 if ($LASTEXITCODE -ne 0) { throw "Simulation tests failed" }
 & $Godot --headless --path $projectRoot --script res://tests/arena_3d.gd
 if ($LASTEXITCODE -ne 0) { throw "3D arena tests failed" }
+& $Godot --headless --path $projectRoot --script res://tests/hy_motion.gd
+if ($LASTEXITCODE -ne 0) { throw "HY-Motion rig and playback tests failed" }
 $processes = @()
 try {
  for ($i = 0; $i -lt 4; $i++) {

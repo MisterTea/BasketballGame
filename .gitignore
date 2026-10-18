@@ -5,3 +5,8 @@ exports/
 
 tests/*.png
 tests/*.png.import
+
+.runtime/
+
+__pycache__/
+*.pyc

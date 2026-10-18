@@ -1,0 +1,5 @@
+Tencent HY-MOTION 1.0 is licensed under the Tencent HY-MOTION 1.0 Community License Agreement, Copyright © 2025 Tencent. All Rights Reserved. The trademark rights of “Tencent HY” are owned by Tencent or its affiliate.
+
+The player animation clips in animations/hy_motion are machine-generated outputs of a local run of the standard Tencent HY-Motion-1.0 model. The skeleton definition is derived from the official skeleton asset dump. See licenses/HY-Motion-1.0.txt for the agreement and acceptable use policy, and animations/hy_motion/provenance.json for model revisions, prompts, seeds, and postprocessing.
+
+This project does not redistribute model checkpoints or the inference runtime. The independent Godot code constructs original low-poly player meshes and plays the generated rotations on the matching SMPL-H skeleton.
