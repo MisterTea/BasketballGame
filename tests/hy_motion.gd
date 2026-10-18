@@ -42,7 +42,7 @@ func run() -> void:
   for i in range(22):
    movement += clip.rotations[0][i].angle_to(clip.rotations[clip.frames/2][i])
   animated = animated and movement > 0.01
- check(valid,"all ten clips contain finite normalized generated 22-joint rotations")
+ check(valid,"all eleven clips contain finite normalized generated 22-joint rotations")
  check(animated,"every clip contains actual time-varying joint motion")
  # Compare Skeleton3D's FK against the same local transforms used by HY-Motion.
  rig.sample("run",0.5,1.0,false)
@@ -104,7 +104,7 @@ func run() -> void:
  unchanged = unchanged and state.snapshot() == before
  check(unchanged,"animation does not alter movement, scoring or simulation data")
  var record: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://animations/hy_motion/provenance.json"))
- check(record.executed_locally and record.clips.size() == 10 and record.generator.contains("1B"),"provenance records a completed local standard-model run")
+ check(record.executed_locally and record.clips.size() == 11 and record.generator.contains("1B"),"provenance records a completed local standard-model run")
  print("HY-MOTION TESTS: ","PASS" if failures == 0 else "FAIL")
  arena.queue_free()
  await process_frame

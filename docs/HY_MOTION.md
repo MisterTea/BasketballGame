@@ -2,11 +2,11 @@
 
 ## What was actually run
 
-Ten motions were generated locally with Tencent's **standard HY-Motion-1.0 model (1B)**, not Lite and not placeholder motion. The runtime loaded every motion-transformer checkpoint key successfully. Inference used 50 Euler flow-matching steps, guidance scale 5.0, one fixed seed per action, full float32 motion weights, and 30 FPS output.
+Eleven motions were generated locally with Tencent's **standard HY-Motion-1.0 model (1B)**, not Lite and not placeholder motion. The runtime loaded every motion-transformer checkpoint key successfully. Inference used 50 Euler flow-matching steps, guidance scale 5.0, one fixed seed per action, full float32 motion weights, and 30 FPS output.
 
 Tested hardware: Windows, RTX 4060 Ti 16 GB, 64 GB system RAM, PyTorch 2.6.0+cu124. The two text encoders ran first: official CLIP and Qwen3-8B, with Qwen loaded in bitsandbytes int8. Their prompt embeddings were cached on CPU; the encoders were unloaded before motion inference. Observed peak allocated VRAM during motion inference was 4.94–5.33 GiB. Sampling uses only the valid motion frames instead of generating the official CLI's masked 360-frame padding.
 
-Raw outputs total 855 frames (28.5 seconds). Runtime loops are selected from the generated clips by pose similarity, so the shipped animation set is shorter. No motion was substituted with hand-authored rotations.
+Raw outputs total 945 frames (31.5 seconds). Runtime loops are selected from the generated clips by pose similarity, so the shipped animation set is shorter. No motion was substituted with hand-authored rotations.
 
 Source versions:
 
@@ -16,6 +16,8 @@ Source versions:
 - CLIP: `openai/clip-vit-large-patch14` at `32bd64288804d66eefd0ccbe215aa642df71cc41`.
 
 Each clip stores its prompt and seed. `animations/hy_motion/provenance.json` stores revisions and SHA-256 hashes of the final clip files. `tools/hy_motion_prompts.json` contains the reproducible prompt set.
+
+The added layup uses seed 3111 and a three-second running one-handed layup prompt. Actual local standard-model sampling took 6.13 seconds and peaked at 5.14 GiB VRAM, after CLIP/Qwen text encoding completed. Its 90 native frames join the original ten clips, whose committed JSON files remain byte-identical. The exact prompt and checksum are in the manifest.
 
 ## Matching the skeleton
 
@@ -61,10 +63,12 @@ Delete/rename the corresponding `.runtime/raw_motion/<action>.npz` before regene
 
 Raw rotations/translations, text embeddings, upstream source, the Python environment and weights are ignored by Git and Godot. Export filters explicitly include the runtime clip/skeleton JSON and license notices while excluding the inference tools and `.runtime`.
 
+To regenerate only the added motion, remove or rename `.runtime/raw_motion/layup.npz`, refresh text embeddings if the prompt changes, then run `generate_hy_motion.py --phase generate --only layup --steps 50`. Selective generation retains the other existing clips in the provenance manifest.
+
 ## Validation
 
-`tests/hy_motion.gd` verifies all 52 bone names, parents and rest transforms; all ten generated clips; normalized finite quaternions and motion variation; forward-kinematics parity; finger rest poses; gameplay action selection; simulation immutability; and local-generation provenance. `tests/run.ps1 -Capture` also runs existing simulation, arena, four-process network, crowd and rendering tests.
+`tests/hy_motion.gd` verifies all 52 bone names, parents and rest transforms; all eleven generated clips; normalized finite quaternions and motion variation; forward-kinematics parity; finger rest poses; gameplay action selection; simulation immutability; and local-generation provenance. `tests/run.ps1 -Capture` also runs existing simulation, arena, four-process network, crowd and rendering tests.
 
-`tests/capture_hy_motion.gd` renders all ten actual generated clips into 180 preview frames. The GIF in this directory shows these clips on the game's native HY-Motion rigs.
+`tests/capture_hy_motion.gd` renders all eleven actual generated clips into 198 preview frames. The GIF in this directory shows these clips on the game's native HY-Motion rigs.
 
 Official sources: [HY-Motion repository](https://github.com/Tencent-Hunyuan/HY-Motion-1.0), [standard model weights](https://huggingface.co/tencent/HY-Motion-1.0), [model download instructions](https://github.com/Tencent-Hunyuan/HY-Motion-1.0/blob/master/ckpts/README.md). The community license and required notice are included in `licenses/HY-Motion-1.0.txt` and `THIRD_PARTY_NOTICES.txt`.

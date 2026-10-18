@@ -542,6 +542,8 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   var point: Vector2 = positions[i] if positions.size() == 4 else p.pos
   actor.root.position = court_point(point)
   var jump = sin(clampf(p.jump/0.85,0,1)*PI)*2.65
+  if not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.shooter == i and state.flight.has("player_start"):
+   jump = sin(clampf(state.flight.time/state.flight.duration,0,1)*PI)*(2.65 if state.flight.get("super_dunk",false) else 1.8 if state.flight.dunk else 1.15)
   var tip_jump = -1.0
   if not state.tipoff.is_empty() and i%2 == 0 and state.tipoff.jumps[i/2] >= 0:
    var age: float = state.elapsed-state.tipoff.started_at-state.tipoff.jumps[i/2]
@@ -565,7 +567,7 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
    next_action = "dunk"
    phase = 1.0
   elif not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.shooter == i:
-   next_action = "dunk" if state.flight.dunk else "shoot"
+   next_action = "dunk" if state.flight.dunk else "layup" if state.flight.get("layup",false) else "shoot"
    phase = clampf(state.flight.time/state.flight.duration,0,1) if state.flight.dunk else 0.45+0.55*clampf(state.flight.time/state.flight.duration,0,1)
   elif p.charge > 0:
    next_action = "shoot"
@@ -573,6 +575,9 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   elif p.get("fake",0.0) > 0:
    next_action = "shoot"
    phase = 0.42*sin((1.0-clampf(p.fake/0.38,0,1))*PI)
+  elif p.get("swipe",0.0) > 0:
+   next_action = "steal"
+   phase = 1.0-clampf(p.swipe/0.25,0,1)
   elif not state.flight.is_empty() and state.flight.kind == "pass" and not state.flight.get("tip",false) and (int(state.flight.target)/2)*2+(1-int(state.flight.target)%2) == i:
    next_action = "pass"
    phase = clampf(state.flight.time/state.flight.duration,0,1)
@@ -615,7 +620,7 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
    var t = clampf(state.flight.time/state.flight.duration-0.018*(i+1),0,1)
    var point: Vector2 = state.flight.start.lerp(state.flight.end,t)
    point += ball-state.flight_position()
-   var height = lerpf(1.3,3.05,t)+sin(t*PI)*(1.7 if state.flight.dunk else 4.6)
+   var height = lerpf(1.3,3.05,t)+sin(t*PI)*state.flight.get("arc_height",1.7 if state.flight.dunk else 4.6)
    ember.position = court_point(point,height+0.10+0.08*sin(time*17+i))
    ember.scale = Vector3.ONE*(1.0-float(i)/10.0)
 

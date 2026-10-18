@@ -26,6 +26,7 @@ func dunk(s: MatchState, shooter: int, made: bool = true, blocked: bool = false)
  var hoop = s.hoop_for(shooter/2)
  s.players[shooter].pos = hoop+Vector2(110 if hoop.x < 640 else -110,0)
  s.players[shooter].charge = 0.58
+ s.players[shooter].vel = (hoop-s.players[shooter].pos).normalized()*200
  s.ball = s.players[shooter].pos
  s.shoot_ball(shooter,true)
  s.flight.made = made

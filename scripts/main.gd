@@ -340,7 +340,7 @@ func show_help() -> void:
  label_at("GAMEPAD",675,176,22,GOLD)
  label_at("Left stick to move • A to shoot / block\nX to pass / steal • RB or RT for turbo\nLB to switch your active athlete",675,222,19,INK,510)
  label_at("MAKE THE HIGHLIGHT REEL",675,330,22,GOLD)
- label_at("Tap SHOOT to head-fake. Hold for a real shot.\nRelease near the gold timing mark.\nTurbo + shoot near the rim for a huge dunk.\nPress PASS during a dunk to dish to your teammate.\nTurbo + pass to a teammate near the rim for an alley-oop.\nOn defense: shoot to block, pass to steal, turbo + pass to shove.\nCPU teammate has the ball? Pass calls for it; Shoot orders a shot.\nThree unanswered baskets by one athlete ignite FIRE.\nFire survives misses and permits goaltending.\nMade dunks shatter each board once in Q4 / overtime.\nTip-off: tap SHOOT as the tossed ball rises.\nESC: pause offline / leave menu online. M: mute.",675,378,16,INK,510)
+ label_at("Tap SHOOT to fake; release jump shots at the gold mark.\nRun + short SHOOT hold: layup. Hold longer close for a dunk.\nAdd TURBO for a super dunk; PASS mid-dunk to dish.\nTURBO + PASS: faster pass / lob to a teammate near the rim.\nDefense: SHOOT blocks; PASS steals or intercepts.\nTURBO + PASS shoves. CPU teammate has the ball?\nPASS calls for it; hold/release SHOOT orders their shot.\nThree unanswered baskets by one athlete ignite FIRE.\nFire survives misses; an opponent basket ends it.\nQ4 / overtime: specialty dunks can shatter a backboard.\nTip-off: tap SHOOT as the tossed ball rises.\nESC: pause offline / leave menu online. M: mute.",675,378,16,INK,510)
  label_at("Network players use player-one controls. Missing teammates are controlled by the CPU.",60,723,16,MUTED)
 
 func show_results() -> void:

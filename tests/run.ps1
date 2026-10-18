@@ -9,6 +9,8 @@ if ($LASTEXITCODE -ne 0) { throw "Simulation tests failed" }
 if ($LASTEXITCODE -ne 0) { throw "Tip-off tests failed" }
 & $Godot --headless --path $projectRoot --script res://tests/arcade_rules.gd
 if ($LASTEXITCODE -ne 0) { throw "Arcade rules tests failed" }
+& $Godot --headless --path $projectRoot --script res://tests/finishing.gd
+if ($LASTEXITCODE -ne 0) { throw "Finishing and passing tests failed" }
 & $Godot --headless --path $projectRoot --script res://tests/backboards.gd
 if ($LASTEXITCODE -ne 0) { throw "Backboard tests failed" }
 & $Godot --headless --path $projectRoot --script res://tests/arena_3d.gd

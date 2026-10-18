@@ -29,11 +29,16 @@ PROMPTS = [
     {'name':'block','text':'A basketball defender jumps straight up with both arms fully extended overhead to block a shot, then lands on both feet.','duration':2.5,'seed':3108,'loop':False},
     {'name':'steal','text':'A basketball defender crouches, lunges slightly forward and reaches the right hand low to swipe a ball, then returns to a balanced stance.','duration':2.5,'seed':3109,'loop':False},
     {'name':'stun','text':'A person staggers backward after being bumped, flings both arms outward for balance, bends the knees, and recovers without falling.','duration':2.5,'seed':3110,'loop':False},
+    {'name':'layup','text':'A basketball player takes two running steps, jumps off the left foot, lifts the right knee, extends the right arm upward to gently lay the ball into the basket with one hand, then lands and recovers.','duration':3.0,'seed':3111,'loop':False},
 ]
 
 def save_json(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, separators=(',',':')), encoding='utf-8')
+
+def clip_record(path):
+    clip=json.loads(path.read_text())
+    return {'name':clip['name'],'frames':clip['frames'],'seed':clip['seed'],'prompt':clip['prompt'],'sha256':hashlib.sha256(path.read_bytes()).hexdigest()}
 
 def prepare():
     import numpy as np
@@ -126,7 +131,7 @@ def export_clip(prompt, output, source_revision):
     grounded_root_y=-positions[:,[7,8,10,11],1].min(axis=1)+0.0425
     clip={'grounded_root_y':grounded_root_y.round(6).tolist(),'event_phase':event_phase,'format':1,'name':prompt['name'],'source':'Tencent HY-Motion-1.0 standard','machine_generated':True,'prompt':prompt['text'],'seed':prompt['seed'],'fps':30,'loop':prompt['loop'],'frames':len(quaternions),'joint_count':22,'quaternions_xyzw':quaternions.round(7).tolist(),'root_y':root_y.round(6).tolist(),'neutral_root_y':float(np.percentile(translation[:,1],15)),'source_frame_range':[first,last],'heading_removed_radians':yaw,'horizontal_root_motion':'discarded; game simulation owns court movement','source_revision':source_revision}
     save_json(OUTPUT/(prompt['name']+'.json'),clip)
-    return {'name':prompt['name'],'frames':len(quaternions),'seed':prompt['seed'],'prompt':prompt['text'],'sha256':hashlib.sha256((OUTPUT/(prompt['name']+'.json')).read_bytes()).hexdigest()}
+    return clip_record(OUTPUT/(prompt['name']+'.json'))
 
 def generate(steps, source_revision, only):
     import numpy as np
@@ -151,7 +156,10 @@ def generate(steps, source_revision, only):
     raw_dir=RUNTIME/'raw_motion'; raw_dir.mkdir(exist_ok=True)
     clips=[]
     for prompt in PROMPTS:
-        if only and prompt['name'] not in only: continue
+        if only and prompt['name'] not in only:
+            existing=OUTPUT/(prompt['name']+'.json')
+            if existing.exists(): clips.append(clip_record(existing))
+            continue
         raw=raw_dir/(prompt['name']+'.npz')
         started=time.time()
         if raw.exists():

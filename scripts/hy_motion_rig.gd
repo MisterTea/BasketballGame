@@ -3,7 +3,7 @@ extends Node3D
 # HY-Motion's native SMPL-H hierarchy: 52 bones, 22 generated body rotations.
 # Bone names, parents and rest positions come directly from Tencent's asset dump.
 const DIRECTORY = "res://animations/hy_motion/"
-const CLIP_NAMES = ["idle","run","dribble","defense","shoot","pass","dunk","block","steal","stun"]
+const CLIP_NAMES = ["idle","run","dribble","defense","shoot","pass","dunk","block","steal","stun","layup"]
 static var definition: Dictionary = {}
 static var library: Dictionary = {}
 var skeleton: Skeleton3D
@@ -165,11 +165,11 @@ func animate(next_action: String, delta: float, phase: float = -1.0, speed: floa
  if phase >= 0:
   var cursor = clampf(phase,0,1)
   # Align the model's actual peak hand pose to the arcade's event timing.
-  if action in ["shoot","pass","dunk","block"]:
+  if action in ["shoot","pass","dunk","block","layup"]:
    var canonical_event = 0.55 if action == "dunk" else (0.32 if action == "block" else 0.45)
    var source_event = clampf(float(clip.get("event_phase",canonical_event)),0.05,0.95)
    cursor = cursor/canonical_event*source_event if cursor <= canonical_event else source_event+(cursor-canonical_event)/(1.0-canonical_event)*(1.0-source_event)
   seconds = cursor*float(clip.frames-1)/float(clip.fps)
  var blend = 1.0 if first_pose else (0.0 if paused else 1.0-exp(-delta*22.0))
- sample(action,seconds,blend,action in ["shoot","dunk","block"])
+ sample(action,seconds,blend,action in ["shoot","dunk","block","layup"])
  first_pose = false

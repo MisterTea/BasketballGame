@@ -89,8 +89,10 @@ func run() -> void:
  scene.game.players[0].charge = 0.58
  scene.game.ball = scene.game.players[0].pos
  scene.game.owner = 0
+ scene.game.players[0].vel = (scene.game.hoop_for(0)-scene.game.players[0].pos).normalized()*200
  scene.game.shoot_ball(0,true)
  scene.game.flight.time = 0.36
+ scene.game.players[0].pos = scene.game.finisher_position(scene.game.flight.time)
  scene.game.ball = scene.game.flight.start.lerp(scene.game.flight.end,0.48)
  scene.game.players[0].jump = 0.43
  scene.arena.athletes[0].body.first_pose = true
@@ -132,6 +134,7 @@ func run() -> void:
  scene.game.players[1].pos = Vector2(850,580)
  scene.game.players[0].charge = 0.58
  scene.game.ball = scene.game.players[0].pos
+ scene.game.players[0].vel = (scene.game.hoop_for(0)-scene.game.players[0].pos).normalized()*200
  scene.game.shoot_ball(0,true)
  scene.game.flight.time = 0.25
  scene.game.ball = scene.game.flight_position()
@@ -160,6 +163,7 @@ func run() -> void:
  scene.game.players[2].pos = Vector2(1020,465)
  scene.game.players[2].charge = 0.58
  scene.game.ball = scene.game.players[2].pos
+ scene.game.players[2].vel = (scene.game.hoop_for(1)-scene.game.players[2].pos).normalized()*200
  scene.game.shoot_ball(2,true)
  scene.game.flight.made = true
  for frame in range(120):
@@ -184,6 +188,55 @@ func run() -> void:
   await process_frame
  await RenderingServer.frame_post_draw
  root.get_texture().get_image().save_png("res://tests/backboard_settled.png")
+ scene.game.start(0,1)
+ scene.game.inbound(0)
+ scene.game.freeze = 0
+ scene.game.players[0].pos = Vector2(970,465)
+ scene.game.players[0].vel = Vector2.RIGHT*200
+ scene.game.players[0].charge = 0.22
+ scene.game.players[2].pos = Vector2(300,300)
+ scene.game.players[3].pos = Vector2(300,600)
+ scene.game.ball = scene.game.players[0].pos
+ scene.game.shoot_ball(0,false)
+ scene.game.flight.time = 0.12
+ scene.game.ball = scene.game.flight_position()
+ scene.game.players[0].pos = scene.game.finisher_position(scene.game.flight.time)
+ for athlete in scene.arena.athletes:
+  athlete.body.first_pose = true
+ scene.arena.reset_camera()
+ for frame in range(3):
+  await process_frame
+ await RenderingServer.frame_post_draw
+ if scene.arena.athletes[0].body.action != "layup":
+  push_error("Generated layup clip was not selected")
+  quit(1)
+  return
+ root.get_texture().get_image().save_png("res://tests/layup_3d.png")
+ scene.game.players[0].pos = Vector2(200,465)
+ scene.game.players[1].pos = Vector2(800,465)
+ scene.game.players[2].pos = Vector2(500,465)
+ scene.game.players[0].jump = 0
+ for seed_value in range(20):
+  scene.game.owner = 0
+  scene.game.ball = scene.game.players[0].pos
+  scene.game.pass_ball(0,false)
+  scene.game.flight.time = scene.game.flight.duration*0.5
+  scene.game.ball = scene.game.flight_position()
+  scene.game.rng.seed = seed_value
+  scene.game.steal(2,false)
+  if scene.game.owner == 2:
+   break
+ if scene.game.owner != 2:
+  push_error("Render fixture failed pass interception")
+  quit(1)
+  return
+ for athlete in scene.arena.athletes:
+  athlete.body.first_pose = true
+ scene.arena.reset_camera()
+ for frame in range(3):
+  await process_frame
+ await RenderingServer.frame_post_draw
+ root.get_texture().get_image().save_png("res://tests/interception_3d.png")
  scene.saved_result = true
  scene.game.score = [42,39]
  scene.game.phase = "finished"

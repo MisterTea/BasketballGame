@@ -187,6 +187,7 @@ func _initialize() -> void:
  s.players[0].pos = Vector2(1020,465)
  s.ball = s.players[0].pos
  s.players[0].charge = 0.58
+ s.players[0].vel = (s.hoop_for(0)-s.players[0].pos).normalized()*200
  s.shoot_ball(0,true)
  s.flight.time = 0.25
  s.ball = s.flight_position()
@@ -201,6 +202,7 @@ func _initialize() -> void:
  check(s.owner == 1 and s.flight.is_empty(),"the airborne dish reaches the teammate using normal pass flight")
  s.owner = 0
  s.ball = s.players[0].pos
+ s.players[0].vel = (s.hoop_for(0)-s.players[0].pos).normalized()*200
  s.shoot_ball(0,true)
  s.flight.time = 0.25
  s.flight.blocked = true
@@ -210,6 +212,7 @@ func _initialize() -> void:
  s.players[0].pos = Vector2(1020,465)
  s.ball = s.players[0].pos
  s.players[0].charge = 0.58
+ s.players[0].vel = (s.hoop_for(0)-s.players[0].pos).normalized()*200
  s.shoot_ball(0,true)
  s.flight.time = s.flight.duration*0.92
  s.ball = s.flight_position()

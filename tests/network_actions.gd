@@ -15,6 +15,11 @@ var host_dish = false
 var dish_received_at = -1.0
 var shatter_ready = false
 var host_shatter = false
+var inbound_seen_at = -1.0
+var layup_ready = false
+var host_layup = false
+var intercept_ready = false
+var host_intercept = false
 
 func neutral() -> Dictionary:
  return {"move":Vector2.ZERO,"shoot":false,"pass":false,"turbo":true}
@@ -56,7 +61,7 @@ func receive(data: Dictionary) -> void:
   command["pass"] = true
   net.send_command(command)
   stage = 4
- if stage == 4 and state.flight.get("kind","") == "pass" and state.flight.target == 3 and state.flight.start_height > 3.0 and state.stats[2].attempts == 0:
+ if stage == 4 and state.flight.get("kind","") == "pass" and state.flight.target == 3 and state.flight.start_height > 3.0 and state.flight.get("turbo",false) and state.flight.duration < 0.25 and state.stats[2].attempts == 0:
   print("NETWORK ACTION PASS: reliable client Pass cancels dunk into a dish")
   stage = 5
  if stage == 5 and state.owner == 3 and state.score == [0,0]:
@@ -69,7 +74,23 @@ func receive(data: Dictionary) -> void:
   print("NETWORK ACTION PASS: remote fourth-quarter dunk shatters the correct physical board")
   stage = 9
  if stage == 9 and state.pending_inbound == -1 and state.owner == 0 and state.board_breaks[1] >= 0 and state.board_breaks[0] < 0:
-  print("NETWORK ACTION CLIENT PASS: inbound resumes with persistent glass state")
+  print("NETWORK ACTION PASS: inbound resumes with persistent glass state")
+  stage = 10
+ if stage == 10 and state.banner == "LAYUP TEST READY":
+  stage = 11
+  stage_time = 0
+ if stage == 12 and state.flight.get("finish","") == "layup" and state.flight.arc_height == 1.0:
+  print("NETWORK ACTION PASS: remote running release launches a layup")
+  stage = 13
+ if stage == 13 and state.owner == 0 and state.score == [0,4] and state.stats[2].dunks == 1:
+  stage = 14
+ if stage == 14 and state.banner == "INTERCEPT TEST READY":
+  var command = neutral()
+  command["pass"] = true
+  net.send_command(command)
+  stage = 15
+ if stage == 15 and state.owner == 2 and state.flight.is_empty() and state.stats[2].steals == 1 and state.score == [0,4]:
+  print("NETWORK ACTION CLIENT PASS: reliable remote swipe intercepts the pass")
   net.leave()
   quit(0)
 
@@ -87,6 +108,13 @@ func _process(delta: float) -> bool:
    var commands = net.commands()
    commands[1] = neutral()
    commands[3] = neutral()
+   if intercept_ready and not host_intercept and commands[2].get("pass",false):
+    state.freeze = 0
+    state.rng.seed = 1
+    var sample_state = state.rng.state
+    while state.rng.randf() >= 0.1:
+     sample_state = state.rng.state
+    state.rng.state = sample_state # Controlled successful chance; peer supplies the swipe.
    state.tick(delta,commands)
    if host_dish and state.owner == 3 and not shatter_ready:
     if dish_received_at < 0:
@@ -106,6 +134,36 @@ func _process(delta: float) -> bool:
    # This fixture guarantees a made shot; the remote peer supplies every input.
    if shatter_ready and state.flight.get("dunk",false):
     state.flight.made = true
+   if host_shatter and state.pending_inbound == -1 and state.owner == 0 and not layup_ready:
+    if inbound_seen_at < 0:
+     inbound_seen_at = elapsed
+    if elapsed-inbound_seen_at > 0.3:
+     layup_ready = true
+     state.freeze = 0
+     state.owner = 2
+     state.players[2].pos = Vector2(960,465)
+     state.players[2].charge = 0
+     state.players[2].jump = 0
+     state.players[2].drive = 0
+     state.ball = state.players[2].pos
+     state.announce("LAYUP TEST READY")
+   if layup_ready and state.flight.get("layup",false):
+    state.flight.made = true
+    host_layup = true
+   if host_layup and state.owner == 0 and state.score == [0,4] and not intercept_ready:
+    if state.freeze < 0.5:
+     intercept_ready = true
+     state.players[0].pos = Vector2(200,465)
+     state.players[1].pos = Vector2(800,465)
+     state.players[2].pos = Vector2(500,465)
+     state.players[2].cooldown = 0
+     state.ball = state.players[0].pos
+     state.pass_ball(0,false)
+     state.flight.time = state.flight.duration*0.5
+     state.ball = state.flight_position()
+     state.freeze = 10 # Hold the fixture until the reliable remote swipe arrives.
+     state.announce("INTERCEPT TEST READY")
+   host_intercept = host_intercept or intercept_ready and state.owner == 2 and state.stats[2].steals == 1
    host_fake = host_fake or state.players[2].fake > 0
    host_dunk = host_dunk or state.flight.get("dunk",false)
    host_dish = host_dish or state.banner == "AIRBORNE DISH!"
@@ -114,7 +172,7 @@ func _process(delta: float) -> bool:
    if broadcast_time >= 0.05:
     broadcast_time = 0
     net.broadcast(state.snapshot())
-   if host_fake and host_dunk and host_dish and host_shatter and net.members.size() == 1:
+   if host_fake and host_dunk and host_dish and host_shatter and host_layup and host_intercept and net.members.size() == 1:
     print("NETWORK ACTION HOST PASS: input, simulation, snapshot and disconnect")
     net.leave()
     quit(0)
@@ -132,11 +190,21 @@ func _process(delta: float) -> bool:
      stage = 1
    elif stage == 2:
     command.shoot = true
+    command.move = Vector2.LEFT
     if stage_time >= 0.58:
      stage = 3
    elif stage == 7:
     command.shoot = true
+    command.move = Vector2.RIGHT
     if stage_time >= 0.58:
      stage = 8
+   elif stage == 11:
+    command.shoot = true
+    command.turbo = false
+    command.move = Vector2.RIGHT
+    if stage_time >= 0.22:
+     stage = 12
+   elif stage == 12:
+    command.turbo = false
    net.send_command(command)
  return false

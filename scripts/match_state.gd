@@ -64,7 +64,7 @@ func start(a: int, b: int, seconds: float = QUARTER_SECONDS, level: int = 1) -> 
  flight = {}
  for i in range(4):
   var t = i / 2
-  players.append({"pos":Vector2(420 if t == 0 else 860, 400 + (i % 2) * 140), "vel":Vector2.ZERO, "turbo":1.0, "jump":0.0, "stun":0.0, "cooldown":0.0, "charge":0.0, "fake":0.0, "shoot_held":false, "face":1 if t == 0 else -1})
+  players.append({"pos":Vector2(420 if t == 0 else 860, 400 + (i % 2) * 140), "vel":Vector2.ZERO, "turbo":1.0, "jump":0.0, "stun":0.0, "cooldown":0.0, "charge":0.0, "fake":0.0, "drive":0.0, "swipe":0.0, "shoot_held":false, "face":1 if t == 0 else -1})
   stats.append({"points":0, "attempts":0, "made":0, "dunks":0, "steals":0, "blocks":0, "rebounds":0, "goaltends":0})
  begin_tipoff()
 
@@ -165,7 +165,7 @@ func record_miss(shooter: int) -> void:
   player_streak[shooter] = 0
  refresh_heat_summary()
 
-func award_basket(shooter: int, points: int, dunk: bool, natural: bool = true) -> bool:
+func award_basket(shooter: int, points: int, dunk: bool, natural: bool = true, specialty: bool = false) -> bool:
  var team = shooter / 2
  score[team] += points
  stats[shooter].points += points
@@ -175,7 +175,7 @@ func award_basket(shooter: int, points: int, dunk: bool, natural: bool = true) -
  if natural:
   record_natural_basket(shooter)
   # Authored trigger: the first made specialty dunk per hoop in Q4/overtime.
-  if dunk and quarter >= 4:
+  if dunk and specialty and quarter >= 4:
    var side = 0 if hoop_for(team).x < 640 else 1
    if board_breaks[side] < 0:
     board_breaks[side] = elapsed
@@ -187,6 +187,10 @@ func flight_position() -> Vector2:
   return ball
  return flight.start.lerp(flight.end,clampf(flight.time/flight.duration,0,1))
 
+func finisher_position(flight_time: float) -> Vector2:
+ var progress = clampf(flight_time/flight.duration/0.8,0,1)
+ return flight.player_start.lerp(flight.player_end,smoothstep(0,1,progress))
+
 func ball_height() -> float:
  if tipoff.get("active",false):
   var t = maxf(0,tipoff.time-TIP_TOSS)
@@ -197,7 +201,7 @@ func ball_height() -> float:
  if not flight.is_empty():
   var t = clampf(flight.time/flight.duration,0,1)
   if flight.kind == "shot":
-   return lerpf(1.3,3.05,t)+sin(t*PI)*(1.7 if flight.dunk else 4.6)
+   return lerpf(1.3,3.05,t)+sin(t*PI)*flight.get("arc_height",1.7 if flight.dunk else 4.6)
   return lerpf(flight.get("start_height",1.1),1.1,t)+sin(t*PI)*(2.2 if flight.get("alley",false) else 0.5)
  if owner >= 0:
   return 0.30+absf(sin(elapsed*12.0))*0.9
@@ -240,6 +244,8 @@ func inbound(team: int) -> void:
   players[i].pos = Vector2(h.x + (190 if h.x < 640 else -190), 390 + (i % 2) * 145)
   players[i].charge = 0.0
   players[i].fake = 0.0
+  players[i].drive = 0.0
+  players[i].swipe = 0.0
   players[i].shoot_held = false
   players[i].jump = 0.0
  players[owner].pos = own_hoop + Vector2(85 if own_hoop.x < 640 else -85, 0)
@@ -292,6 +298,8 @@ func tick(delta: float, commands: Dictionary) -> void:
   p.stun = maxf(0.0, p.stun - delta)
   p.jump = maxf(0.0, p.jump - delta)
   p.fake = maxf(0.0, p.fake - delta)
+  p.swipe = maxf(0.0,p.swipe-delta)
+  p.drive = maxf(0.0,p.drive-delta)
   var c: Dictionary = effective_commands[i] if effective_commands.has(i) else ai(i)
   if p.stun > 0:
    p.charge = 0.0
@@ -309,9 +317,17 @@ func tick(delta: float, commands: Dictionary) -> void:
   if infinite_turbo or is_player_on_fire(i):
    p.turbo = 1.0
   p.vel = move * speed
-  p.pos = (p.pos + p.vel * delta).clamp(COURT.position + Vector2(18,18), COURT.end - Vector2(18,18))
-  if absf(move.x) > 0.1:
-   p.face = signf(move.x)
+  if p.vel.length() > 40 and p.vel.dot((hoop_for(i/2)-p.pos).normalized()) > 20:
+   p.drive = 0.16
+  if not flight.is_empty() and flight.kind == "shot" and flight.shooter == i and flight.has("player_start"):
+   var destination = finisher_position(flight.time+delta)
+   p.vel = (destination-p.pos)/maxf(delta,0.0001)
+   p.pos = destination
+   p.drive = 0.0
+  else:
+   p.pos = (p.pos + p.vel * delta).clamp(COURT.position + Vector2(18,18), COURT.end - Vector2(18,18))
+  if absf(p.vel.x) > 0.1:
+   p.face = signf(p.vel.x)
   var shoot: bool = c.get("shoot", false)
   if owner == i:
    if c.get("pass", false) and p.cooldown <= 0:
@@ -321,6 +337,10 @@ func tick(delta: float, commands: Dictionary) -> void:
    elif shoot:
     p.fake = 0.0
     p.charge = minf(1.25, p.charge + delta)
+    var finish = finish_kind(i,turbo)
+    if (finish == "turbo_dunk" and p.charge >= 0.16) or (finish == "dunk" and p.charge >= 0.35):
+     shoot_ball(i,turbo)
+     p.charge = 0.0
    elif p.shoot_held and p.charge > 0:
     if p.charge < 0.16 and commands.has(i):
      p.fake = 0.38
@@ -368,6 +388,8 @@ func ai(i: int) -> Dictionary:
  if owner == i:
   var hoop = hoop_for(team)
   target = hoop + Vector2(-90 if hoop.x > 640 else 90, 10 * sin(elapsed + i))
+  if p.charge > 0 and p.pos.distance_to(hoop) < 165:
+   target = hoop+Vector2(60 if hoop.x > 640 else -60,0)
   var dist: float = p.pos.distance_to(hoop)
   turbo = dist < 240
   if dist < 125 or shot_clock < 3 or (dist < 370 and fmod(elapsed + i, 5.0) < 0.7):
@@ -379,7 +401,7 @@ func ai(i: int) -> Dictionary:
   if shooter / 2 != team:
    target = flight_position()
    var t = clampf(flight.time/flight.duration,0,1)
-   var arc = 1.7 if flight.dunk else 4.6
+   var arc: float = flight.get("arc_height",1.7 if flight.dunk else 4.6)
    var descending = 1.75+PI*arc*cos(t*PI) < 0
    var reacts: bool = flight.time >= 0.18-0.04*clampi(difficulty,0,2) and flight.get("cpu_block_allowed",[true,true,true,true])[i]
    shoot = reacts and not flight.blocked and p.cooldown <= 0 and p.pos.distance_to(target) < 72 and ball_height() <= 4.6 and (not descending or flight.dunk or is_player_on_fire(i))
@@ -403,36 +425,59 @@ func nearest_defender(i: int) -> float:
    distance = minf(distance, players[j].pos.distance_to(players[i].pos))
  return distance
 
-func shoot_ball(i: int, turbo: bool) -> void:
+func finish_kind(i: int, turbo: bool, alley: bool = false) -> String:
+ if alley:
+  return "alley_oop"
+ var p: Dictionary = players[i]
+ var hoop = hoop_for(i/2)
+ var moving: bool = p.drive > 0 or (p.vel.length() > 40 and p.vel.dot((hoop-p.pos).normalized()) > 20)
+ var distance: float = p.pos.distance_to(hoop)
+ if not moving or distance >= 165:
+  return "jumper"
+ if turbo and (p.turbo > 0.1 or infinite_turbo or is_player_on_fire(i)):
+  return "turbo_dunk"
+ if p.charge < 0.35 or distance >= 115:
+  return "layup"
+ return "dunk"
+
+func shoot_ball(i: int, turbo: bool, alley: bool = false) -> void:
  teammate_shot_order = -1
  var p: Dictionary = players[i]
  p.fake = 0.0
  var hoop = hoop_for(i / 2)
  var distance: float = p.pos.distance_to(hoop)
- var dunk = turbo and distance < 165 and p.turbo > 0.1
+ var finish = finish_kind(i,turbo,alley)
+ var dunk = finish in ["dunk","turbo_dunk","alley_oop"]
+ var specialty = finish in ["turbo_dunk","alley_oop"]
+ var layup = finish == "layup"
  var timing = maxf(0.0, 1.0 - absf(p.charge - 0.58) / 0.58)
  var contest = clampf((95 - nearest_defender(i)) / 95.0, 0.0, 1.0)
  var chance = 0.24 + rating(i, 1) * 0.038 + timing * 0.27 - distance * 0.0006 - contest * 0.22
  if dunk:
-  chance = 0.82 + rating(i, 2) * 0.015 - contest * 0.12
+  chance = (0.82 if specialty else 0.70) + rating(i, 2) * 0.015 - contest * 0.12
+ elif layup:
+  chance = 0.65+rating(i,1)*0.025+timing*0.08-contest*0.18
  if is_player_on_fire(i):
   chance += 0.30
  var points = 3 if distance > 300 else 2
  if dunk:
   points = 2
-  p.jump = 0.85
-  p.pos = p.pos.lerp(hoop, 0.58)
+  p.jump = 0.85 if specialty else 0.70
  else:
-  p.jump = 0.50
+  p.jump = 0.55 if layup else 0.50
+ p.drive = 0.0
  stats[i].attempts += 1
- flight = {"kind":"shot", "start":ball, "end":hoop, "time":0.0, "duration":0.75 if dunk else 1.05, "shooter":i, "points":points, "made":rng.randf() < clampf(chance, 0.05, 0.99), "dunk":dunk, "blocked":false}
+ flight = {"kind":"shot", "start":ball, "end":hoop, "time":0.0, "duration":0.75 if specialty else 0.60 if dunk else 0.62 if layup else 1.05, "shooter":i, "points":points, "made":rng.randf() < clampf(chance, 0.05, 0.99), "dunk":dunk, "layup":layup, "super_dunk":specialty, "finish":finish, "arc_height":1.7 if specialty else 1.1 if dunk else 1.0 if layup else 4.6, "blocked":false}
+ if dunk or layup:
+  flight.player_start = p.pos
+  flight.player_end = hoop+Vector2(-1 if hoop.x > 640 else 1,0)*(28 if dunk else 50)
  # One decision per defender per shot prevents perfect frame-by-frame reactions.
  flight.cpu_block_allowed = []
  for defender in range(4):
   flight.cpu_block_allowed.append(rng.randf() < 0.15+0.10*clampi(difficulty,0,2))
  owner = -1
  p.cooldown = 0.65
- announce("BOOMSHAKA!" if dunk else ("PERFECT RELEASE!" if timing > 0.94 else "FROM DOWNTOWN!" if points == 3 else "UP IT GOES"), "dunk" if dunk else "shot")
+ announce("SUPER JAM!" if specialty else "SLAM DUNK!" if dunk else "LAY IT UP!" if layup else ("PERFECT RELEASE!" if timing > 0.94 else "FROM DOWNTOWN!" if points == 3 else "UP IT GOES"), "dunk" if dunk else "shot")
 
 func pass_ball(i: int, turbo: bool) -> void:
  teammate_shot_order = -1
@@ -440,7 +485,9 @@ func pass_ball(i: int, turbo: bool) -> void:
  var release_height = ball_height() if not flight.is_empty() and flight.get("kind","") == "shot" else 1.1
  var mate = (i / 2) * 2 + (1 - i % 2)
  var alley = turbo and players[mate].pos.distance_to(hoop_for(i / 2)) < 220
- flight = {"kind":"pass", "start":ball, "end":players[mate].pos, "start_height":release_height, "time":0.0, "duration":0.38 if alley else 0.25, "target":mate, "alley":alley}
+ var distance: float = ball.distance_to(players[mate].pos)
+ var duration = clampf(distance/2300.0,0.10,0.42) if turbo else clampf(distance/1400.0,0.16,0.65)
+ flight = {"kind":"pass", "start":ball, "end":players[mate].pos, "start_height":release_height, "time":0.0, "duration":0.38 if alley else duration, "target":mate, "alley":alley, "turbo":turbo}
  owner = -1
  players[i].cooldown = 0.45
  announce("LOB IT UP!" if alley else "NICE PASS", "pass")
@@ -455,7 +502,7 @@ func defend(i: int, turbo: bool) -> void:
   var t = clampf(flight.time/flight.duration,0,1)
   var contact = flight_position()
   var reach = players[i].pos.distance_to(contact)
-  var arc = 1.7 if flight.dunk else 4.6
+  var arc: float = flight.get("arc_height",1.7 if flight.dunk else 4.6)
   var descending = 1.75+PI*arc*cos(t*PI) < 0
   var at_rim = contact.distance_to(flight.end) < 115
   if descending and at_rim and reach < 78 and ball_height() <= 4.6:
@@ -482,6 +529,11 @@ func defend(i: int, turbo: bool) -> void:
 
 func steal(i: int, shove: bool) -> void:
  players[i].cooldown = 0.65
+ players[i].swipe = 0.25
+ if not flight.is_empty() and flight.kind == "pass" and not flight.get("tip",false) and int(flight.target)/2 != i/2:
+  if players[i].pos.distance_to(flight_position()) < (68 if shove else 56) and ball_height() <= 2.5 and rng.randf() < 0.45+rating(i,3)*0.04:
+   intercept_pass(i)
+  return
  if owner < 0 or owner / 2 == i / 2:
   return
  var victim = owner
@@ -499,10 +551,28 @@ func steal(i: int, shove: bool) -> void:
   players[victim].fake = 0.0
   announce("SHOVED! NO FOULS!" if shove else "PICKED THEIR POCKET!", "steal")
 
+func intercept_pass(i: int) -> void:
+ owner = i
+ flight = {}
+ ball = players[i].pos
+ shot_clock = 24.0
+ players[i].cooldown = 0.8
+ players[i].swipe = 0.25
+ stats[i].steals += 1
+ announce("PASS PICKED OFF!", "steal")
+
 func tick_flight(delta: float) -> void:
  flight.time += delta
  var t = clampf(flight.time / flight.duration, 0, 1)
  ball = flight.start.lerp(flight.end, t)
+ if flight.kind == "pass" and not flight.get("tip",false) and t > 0.12 and t < 0.88 and ball_height() <= 2.5:
+  for i in range(4):
+   if i/2 == int(flight.target)/2 or players[i].stun > 0 or players[i].cooldown > 0:
+    continue
+   var rate = 2.5+rating(i,3)*0.25
+   if players[i].pos.distance_to(ball) < 42 and rng.randf() < 1.0-exp(-rate*delta):
+    intercept_pass(i)
+    return
  if t < 1:
   return
  if flight.kind == "pass":
@@ -513,13 +583,13 @@ func tick_flight(delta: float) -> void:
   flight = {}
   if alley:
    players[owner].charge = 0.58
-   shoot_ball(owner, true)
+   shoot_ball(owner, true, true)
   return
  var shooter: int = flight.shooter
  var team = shooter / 2
  if flight.made and not flight.blocked:
   var was_on_fire = is_player_on_fire(shooter)
-  var shattered = award_basket(shooter,flight.points,flight.dunk)
+  var shattered = award_basket(shooter,flight.points,flight.dunk,true,flight.get("super_dunk",false))
   var name_text: String = Teams.DATA[teams[team]].players[shooter%2]
   var message = "HE'S ON FIRE! " + name_text if is_player_on_fire(shooter) and not was_on_fire else ("HE'S HEATING UP! " + name_text if player_streak[shooter] == 2 else "BOOMSHAKA!" if flight.dunk else "THREE POINTER!" if flight.points == 3 else "NOTHING BUT NET!")
   if shattered:
