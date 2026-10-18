@@ -1,5 +1,8 @@
 extends Node2D
 
+const ArenaView = preload("res://scripts/arena_3d.gd")
+var arena: SubViewport
+
 const BG = Color("091321")
 const INK = Color("e9f3ff")
 const MUTED = Color("8195ae")
@@ -67,6 +70,9 @@ func _ready() -> void:
  add_child(sound_player)
  make_sounds()
  game.start(picks[0], picks[1])
+ arena = ArenaView.new()
+ arena.name = "ArenaViewport"
+ add_child(arena)
  show_menu()
  # CLI hooks for repeatable engine/network smoke tests.
  var args = OS.get_cmdline_user_args()
@@ -511,12 +517,12 @@ func text_at(text: String, pos: Vector2, size: int = 20, color: Color = INK, cen
 func _draw() -> void:
  if font == null:
   return
- draw_rect(Rect2(0,0,1280,800),BG)
  if screen == "game" or screen == "results":
   draw_arena()
   if screen == "game":
    draw_hud()
  else:
+  draw_rect(Rect2(0,0,1280,800),BG)
   for x in range(0,1280,40):
    draw_line(Vector2(x,0),Vector2(x,800),Color(0.08,0.15,0.23,0.3))
   if screen == "menu":
@@ -533,115 +539,18 @@ func _draw() -> void:
    text_at("★  ARCADE BASKETBALL  ★",Vector2(936,548),16,GOLD,true)
 
 func draw_arena() -> void:
- # Stands and animated crowd lights.
- for row in range(3):
-  for col in range(48):
-   var px = 28+col*26
-   var py = 165+row*24
-   var brightness = 0.16 + 0.10*sin(visual_time*2.0+col*2.7+row)
-   draw_circle(Vector2(px,py),5,Color(0.3,0.55,0.8,brightness+0.2))
- draw_rect(Rect2(70,239,1140,470),Color("152333"))
- draw_rect(MatchState.COURT,Color("be884c"))
- for strip in range(24):
-  var x = 115+strip*43.75
-  draw_rect(Rect2(x,265,43.75,410),Color("ce995a") if strip%2 else Color("c48e50"))
-  draw_line(Vector2(x,265),Vector2(x,675),Color(0.35,0.2,0.1,0.12),1)
-  for seam in range(4):
-   var y = 280+seam*112+(strip%3)*17
-   draw_line(Vector2(x,y),Vector2(x+43,y),Color(0.35,0.2,0.1,0.14))
- var white = Color("fff1cf")
- draw_rect(MatchState.COURT,white,false,3)
- draw_line(Vector2(640,265),Vector2(640,675),white,3,true)
- draw_arc(Vector2(640,465),74,0,TAU,64,white,3,true)
- draw_circle(Vector2(640,465),54,Color(0.13,0.19,0.23,0.13))
- text_at("RR",Vector2(640,482),44,Color(1,0.94,0.8,0.60),true)
- for side in range(2):
-  var h: Vector2 = MatchState.HOOPS[side]
-  var dir = 1 if side == 0 else -1
-  draw_rect(Rect2(115 if side == 0 else 955,375,210,180),Color(0.2,0.25,0.29,0.17))
-  draw_rect(Rect2(115 if side == 0 else 955,375,210,180),white,false,2)
-  draw_arc(Vector2(325 if side == 0 else 955,465),62,-PI/2 if side == 0 else PI/2,PI/2 if side == 0 else 3*PI/2,40,white,2,true)
-  var angle = asin(180.0/300.0)
-  draw_arc(h,300,-angle if side == 0 else PI-angle,angle if side == 0 else PI+angle,60,white,2,true)
-  var arc_x = h.x + dir*240
-  draw_line(Vector2(115 if side == 0 else 1165,285),Vector2(arc_x,285),white,2,true)
-  draw_line(Vector2(115 if side == 0 else 1165,645),Vector2(arc_x,645),white,2,true)
-  # Backboard is raised above the ground-plane hoop position.
-  draw_line(h+Vector2(-dir*26,0),h+Vector2(-dir*26,-122),Color("63768d"),9,true)
-  draw_rect(Rect2(h+Vector2(-41,-144),Vector2(82,49)),Color("c6e3f5"))
-  draw_rect(Rect2(h+Vector2(-21,-131),Vector2(42,27)),Color("ef6238"),false,3)
-  draw_arc(h+Vector2(0,-95),24,0,TAU,32,Color("ff6035"),5,true)
-  for strand in range(5):
-   draw_line(h+Vector2(-20+strand*10,-93),h+Vector2(-12+strand*6,-65),Color("e1f0ee"),1,true)
- text_at("RIM RUMBLE  /  NO FOULS. ALL FIRE.",Vector2(640,744),18,MUTED,true)
- if game.players.is_empty():
-  return
- var order = [0,1,2,3]
- order.sort_custom(func(a,b): return game.players[a].pos.y < game.players[b].pos.y)
- for i in order:
-  draw_athlete(i)
- var height = 0.0
- if not game.flight.is_empty():
-  var t = clampf(game.flight.time/game.flight.duration,0,1)
-  if game.flight.kind == "shot":
-   height = sin(t*PI)*170 + t*95
-  else:
-   height = sin(t*PI)*(90 if game.flight.alley else 24)+25
- elif game.owner >= 0:
-  height = 18+absf(sin(game.elapsed*12))*12
- var ball_pos: Vector2 = rendered_ball if net.online and not net.hosting and rendered_positions.size() == 4 else game.ball
- draw_circle(ball_pos,7,Color(0,0,0,0.22))
- var b: Vector2 = ball_pos-Vector2(0,height)
- if game.owner >= 0 and game.on_fire(game.owner/2):
-  draw_circle(b,15,Color(1,0.3,0.06,0.24))
- draw_circle(b,9,Color("ec7935"))
- draw_arc(b,9,0,TAU,20,Color("542e26"),1.5,true)
- draw_line(b-Vector2(9,0),b+Vector2(9,0),Color("542e26"),1,true)
- draw_line(b-Vector2(0,9),b+Vector2(0,9),Color("542e26"),1,true)
-
-func draw_athlete(i: int) -> void:
- var p: Dictionary = game.players[i]
- var pos: Vector2 = rendered_positions[i] if net.online and not net.hosting and rendered_positions.size() == 4 else p.pos
- var color = Teams.color_for(game.teams[i/2])
- var is_controlled = (i == net.local_slot) if net.online else (i == controlled[0] or (local_two and i == controlled[1]))
- draw_set_transform(pos,0,Vector2(1,0.38))
- draw_circle(Vector2.ZERO,21,Color(0,0,0,0.35))
- if is_controlled:
-  draw_arc(Vector2.ZERO,26,0,TAU,32,GOLD,3,true)
- draw_set_transform(Vector2.ZERO)
- var jump_height: float = sin(clampf(p.jump/0.85,0,1)*PI)*100
- var base = pos-Vector2(0,jump_height)
- var step: float = sin(game.elapsed*18+i)*minf(p.vel.length()/140,1)*9
- var skin = [Color("b37550"),Color("e6b485"),Color("8f593d"),Color("cf9368")][i]
- if game.on_fire(i/2):
-  for flame in range(5):
-   var offset = Vector2(sin(game.elapsed*10+flame*2)*19,-18-flame*13)
-   draw_circle(base+offset,13-flame,Color(1,0.35+flame*0.08,0.05,0.26))
- # Legs, oversized sneakers, jersey, arms, and head.
- draw_line(base+Vector2(-7,-15),base+Vector2(-10+step,-2),skin,8,true)
- draw_line(base+Vector2(7,-15),base+Vector2(10-step,-2),skin,8,true)
- draw_line(base+Vector2(-13+step,0),base+Vector2(-3+step,0),Color("f5f6ed"),7,true)
- draw_line(base+Vector2(5-step,0),base+Vector2(15-step,0),Color("f5f6ed"),7,true)
- draw_rect(Rect2(base+Vector2(-13,-42),Vector2(26,30)),color)
- draw_rect(Rect2(base+Vector2(-13,-19),Vector2(26,9)),color.darkened(0.3))
- var arms = -62 if p.jump > 0.1 else -23
- draw_line(base+Vector2(-13,-38),base+Vector2(-23,arms),skin,7,true)
- draw_line(base+Vector2(13,-38),base+Vector2(24,arms),skin,7,true)
- draw_circle(base+Vector2(0,-55),19 if game.big_heads else 12,skin)
- draw_arc(base+Vector2(0,-57),19 if game.big_heads else 12,PI,TAU,18,Color("20212b"),5,true)
- draw_circle(base+Vector2(p.face*5,-56),1.6,BG)
- text_at(str(i%2+1),base+Vector2(0,-23),17,BG,true)
- if p.stun > 0:
-  text_at("★ ★ ★",base+Vector2(0,-82),17,GOLD,true)
- if is_controlled:
-  var number = "YOU" if net.online else "P1" if i < 2 else "P2"
-  text_at(number,base+Vector2(0,-88),13,GOLD,true)
-  draw_colored_polygon(PackedVector2Array([base+Vector2(-5,-81),base+Vector2(5,-81),base+Vector2(0,-73)]),GOLD)
- text_at(Teams.DATA[game.teams[i/2]].players[i%2],pos+Vector2(0,26),12,INK,true)
- if p.charge > 0:
-  draw_rect(Rect2(base+Vector2(-27,-108),Vector2(54,7)),BG)
-  draw_rect(Rect2(base+Vector2(-27,-108),Vector2(54*minf(p.charge/1.16,1),7)),GOLD)
-  draw_line(base+Vector2(0,-110),base+Vector2(0,-99),INK,2)
+ # A true 3D viewport is composited between the existing HUD and controls.
+ draw_rect(Rect2(0,133,1280,600),BG)
+ if is_instance_valid(arena):
+  draw_texture_rect(arena.get_texture(),Rect2(0,133,1280,600),false)
+  for i in range(game.players.size()):
+   var player: Dictionary = game.players[i]
+   if player.charge <= 0:
+    continue
+   var point: Vector2 = arena.shot_meter_position(i)+Vector2(0,133)
+   draw_rect(Rect2(point-Vector2(29,5),Vector2(58,10)),BG)
+   draw_rect(Rect2(point-Vector2(27,3),Vector2(54*minf(player.charge/1.16,1),6)),GOLD)
+   draw_line(point+Vector2(0,-6),point+Vector2(0,6),INK,2)
 
 func draw_hud() -> void:
  draw_rect(Rect2(0,0,1280,133),Color("0d1b2c"))
@@ -683,15 +592,26 @@ func set_initials(value: String) -> void:
 
 
 func _process(delta: float) -> void:
- if screen != "game" or not net.online or net.hosting:
+ if not is_instance_valid(arena):
   return
- if rendered_positions.size() != game.players.size():
-  rendered_positions = []
-  for player in game.players:
-   rendered_positions.append(player.pos)
-  rendered_ball = game.ball
- var factor = 1.0-exp(-delta*24.0)
- for i in range(game.players.size()):
-  var target: Vector2 = game.players[i].pos
-  rendered_positions[i] = target if rendered_positions[i].distance_to(target) > 260 else rendered_positions[i].lerp(target,factor)
- rendered_ball = game.ball if rendered_ball.distance_to(game.ball) > 300 else rendered_ball.lerp(game.ball,factor)
+ if screen != "game" and screen != "results":
+  arena.render_target_update_mode = SubViewport.UPDATE_DISABLED
+  return
+ var positions: Array = []
+ var ball_position: Vector2 = game.ball
+ if net.online and not net.hosting:
+  if rendered_positions.size() != game.players.size():
+   rendered_positions = []
+   for player in game.players:
+    rendered_positions.append(player.pos)
+   rendered_ball = game.ball
+  var factor = 1.0-exp(-delta*24.0)
+  for i in range(game.players.size()):
+   var target: Vector2 = game.players[i].pos
+   rendered_positions[i] = target if rendered_positions[i].distance_to(target) > 260 else rendered_positions[i].lerp(target,factor)
+  rendered_ball = game.ball if rendered_ball.distance_to(game.ball) > 300 else rendered_ball.lerp(game.ball,factor)
+  positions = rendered_positions
+  ball_position = rendered_ball
+ var active: Array = [net.local_slot] if net.online else ([controlled[0],controlled[1]] if local_two else [controlled[0]])
+ arena.present(game,positions,ball_position,active,delta,paused or screen == "results")
+ queue_redraw()

@@ -1,6 +1,6 @@
 # Rim Rumble
 
-An original Godot 4.5 arcade basketball game inspired by the pace and three-button controls of NBA Jam. The project contains all source, procedural visuals, and synthesized sound; no asset downloads or addons are required.
+An original Godot 4.5 arcade basketball game inspired by the pace and three-button controls of NBA Jam. The project contains all source, a true 3D arena with procedural meshes and textures, and synthesized sound; no asset downloads or addons are required.
 
 ## Run
 
@@ -11,6 +11,16 @@ godot --path E:/github/jam_game
 ```
 
 A Windows convenience launcher is included: `./play.ps1 -Godot 'C:/path/to/godot.exe'`. No exported executable or Godot engine binary is checked into Git.
+
+## 3D arena
+
+The court is a rectangular 28 × 15 mesh with a repeating, staggered hardwood plank texture, painted keys, regulation-style markings, and an elevated sideline perspective camera. Both baskets have modeled poles, padded bases, bracing, transparent framed backboards, orange rims, and tapered string nets.
+
+Four low-poly humanoids wear team jerseys and have articulated arms, elbows, legs, and knees. Running, jumping, shooting, dunks, stuns, and dribbling are presented from the existing match state. Controlled-player rings, name tags, shot meters, fire effects, and Big Head mode remain available. The crowd consists of 464 camera-facing billboard spectators, drawn with one MultiMesh and an animated four-frame cheering atlas with eight spectator variants.
+
+This is a presentation change: the original controls, simulation coordinates, rules, shot timing, CPU logic, and multiplayer protocol are preserved. Clients' smoothed network positions feed the 3D models. The scoreboard, menus, and control hints retain their existing layout. All geometry, hardwood, and crowd artwork are generated locally; no external assets are needed.
+
+![3D gameplay](docs/gameplay.png)
 
 ## Play modes
 
@@ -56,17 +66,18 @@ The host simulates gameplay at 60 Hz and accepts only bounded input commands tie
 ./tests/run.ps1 -Godot 'C:/path/to/Godot_v4.5.1-stable_win64_console.exe' -Capture
 ```
 
-The simulation suite checks turbo, shot release, scoring, fire, alley-oops, blocks, rebounds, steals/shoves, halftime, overtime, snapshot restoration, and a complete CPU match. The networking test starts four real Godot processes and checks slot assignment, team selection, readiness, authoritative snapshots, and disconnection. Render smoke tests exercise menus, selection, gameplay, options, help, network setup, lobby, and results. Screenshots and logs are generated under `tests/` and ignored by Git.
+The 3D suite checks geometry, floor tiling, articulated poses, modeled baskets, crowd instancing, camera framing, interpolation, and simulation immutability. GPU capture checks that the crowd pixels animate, and captures dunk/fire and Big Head poses. The simulation suite checks turbo, shot release, scoring, fire, alley-oops, blocks, rebounds, steals/shoves, halftime, overtime, snapshot restoration, and a complete CPU match. The networking test starts four real Godot processes and checks slot assignment, team selection, readiness, authoritative snapshots, and disconnection. Render smoke tests exercise menus, selection, gameplay, options, help, network setup, lobby, and results. Screenshots and logs are generated under `tests/` and ignored by Git.
 
 Tested with official Godot 4.5.1 on Windows; network tests use loopback. Public-internet latency, packet loss, real gamepad hardware, other operating systems, and exported builds have not been validated.
 
 ## Scope and remaining work
 
-This is a playable original prototype, **not feature-for-feature NBA Jam arcade parity**. It uses stylized 2D procedural art and fictional teams, rather than licensed NBA rosters, digitized sprites, original audio, or the original court perspective. Not included: all historical rosters and secret characters, substitutions, arcade cabinet credit/service/DIP-switch emulation, licensed commentary and music, original animation/collision fidelity, attract/replay sequences, backboard destruction, online matchmaking, controller-only menus, remappable controls, and production-quality network prediction/reconnection. Tuning and extended human playtesting remain necessary.
+This is a playable original prototype, **not feature-for-feature NBA Jam arcade parity**. It uses original low-poly 3D art, an elevated sideline camera, and fictional teams, rather than licensed NBA rosters, digitized sprites, or original audio. Not included: all historical rosters and secret characters, substitutions, arcade cabinet credit/service/DIP-switch emulation, licensed commentary and music, original animation/collision fidelity, attract/replay sequences, backboard destruction, online matchmaking, controller-only menus, remappable controls, and production-quality network prediction/reconnection. Tuning and extended human playtesting remain necessary.
 
 ## Source map
 
-- `scripts/main.gd`: menu flow, local inputs, rendering, sound, saved records, arcade ladder.
+- `scripts/main.gd`: menu flow, local inputs, HUD, sound, saved records, arcade ladder.
+- `scripts/arena_3d.gd`: 3D arena, repeating hardwood, articulated humanoids, baskets, billboard crowd shader/atlas, sideline camera, and ball presentation.
 - `scripts/match_state.gd`: host/offline simulation, CPU behavior, basketball rules, snapshots.
 - `scripts/network.gd`: ENet lobby, peer slots, readiness, validated inputs, state delivery.
 - `scripts/teams.gd`: original teams and athlete ratings.

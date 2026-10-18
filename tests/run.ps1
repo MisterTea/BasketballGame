@@ -4,6 +4,8 @@ $projectRoot = Split-Path $PSScriptRoot -Parent
 & $Godot --headless --path $projectRoot --editor --quit
 & $Godot --headless --path $projectRoot --script res://tests/simulation.gd
 if ($LASTEXITCODE -ne 0) { throw "Simulation tests failed" }
+& $Godot --headless --path $projectRoot --script res://tests/arena_3d.gd
+if ($LASTEXITCODE -ne 0) { throw "3D arena tests failed" }
 $processes = @()
 try {
  for ($i = 0; $i -lt 4; $i++) {
