@@ -56,7 +56,9 @@ func run() -> void:
  scene.game.ball = scene.game.flight.start.lerp(scene.game.flight.end,0.48)
  scene.game.players[0].jump = 0.43
  scene.arena.athletes[0].body.first_pose = true
- scene.game.streak[0] = 3
+ scene.game.player_streak[0] = 3
+ scene.game.fire_player = 0
+ scene.game.refresh_heat_summary()
  scene.game.banner = "BOOMSHAKA!"
  scene.game.banner_time = 2.0
  for frame in range(3):
@@ -68,6 +70,17 @@ func run() -> void:
   await process_frame
  await RenderingServer.frame_post_draw
  root.get_texture().get_image().save_png("res://tests/big_heads_3d.png")
+ scene.game.flight.time = scene.game.flight.duration*0.92
+ scene.game.players[2].pos = scene.game.flight_position()
+ scene.game.defend(2,false)
+ if scene.game.stats[2].goaltends != 1 or scene.game.score[0] != 2:
+  push_error("Render fixture did not trigger actual goaltending")
+  quit(1)
+  return
+ for frame in range(3):
+  await process_frame
+ await RenderingServer.frame_post_draw
+ root.get_texture().get_image().save_png("res://tests/goaltending.png")
  scene.saved_result = true
  scene.game.score = [42,39]
  scene.game.phase = "finished"

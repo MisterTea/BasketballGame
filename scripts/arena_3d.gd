@@ -9,6 +9,7 @@ var world: Node3D
 var camera: Camera3D
 var athletes: Array = []
 var basketball: Node3D
+var ball_fire: Array = []
 var crowd: MultiMeshInstance3D
 var wood_material: StandardMaterial3D
 var last_teams: Array = []
@@ -422,6 +423,17 @@ func build_ball() -> void:
    seam_ring.rotation.x = PI/2
   if axis == 2:
    seam_ring.rotation.z = PI/2
+ for i in range(8):
+  var flame = SphereMesh.new()
+  flame.radius = 0.22
+  flame.height = 0.65
+  flame.radial_segments = 6
+  flame.rings = 3
+  var ember = mesh(world,flame,Vector3.ZERO,material(GOLD if i < 3 else Color("ff6622"),0.7,true))
+  ember.name = "FireBallTrail%d" % i
+  ember.visible = false
+  ember.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+  ball_fire.append(ember)
 
 func present(state: MatchState, positions: Array, ball: Vector2, controlled_slots: Array, delta: float, paused: bool) -> void:
  render_target_update_mode = SubViewport.UPDATE_ALWAYS
@@ -478,21 +490,24 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
    actor.control.text = "★ ★ ★"
   for flame in range(5):
    var ember: MeshInstance3D = actor.fire[flame]
-   ember.visible = state.on_fire(i/2)
+   ember.visible = state.is_player_on_fire(i)
    var angle = time*3+flame*TAU/5
    ember.position = Vector3(cos(angle)*0.43,0.7+fmod(time*1.8+flame*0.37,1.6)+jump,sin(angle)*0.43)
    ember.scale.y = 0.6+sin(time*13+flame)*0.25
- var ball_height = 0.24
- if not state.flight.is_empty():
-  var t = clampf(state.flight.time/state.flight.duration,0,1)
-  if state.flight.kind == "shot":
-   ball_height = lerpf(1.3,3.05,t)+sin(t*PI)*(1.7 if state.flight.dunk else 4.6)
-  else:
-   ball_height = 1.1+sin(t*PI)*(2.2 if state.flight.alley else 0.5)
- elif state.owner >= 0:
-  ball_height = 0.30+absf(sin(state.elapsed*12.0))*0.9
+ var ball_height = state.ball_height()
  basketball.position = court_point(ball,ball_height)
  basketball.rotation = Vector3(time*3.2,0,time*2.1)
+ var burning_shot = not state.flight.is_empty() and state.flight.kind == "shot" and state.is_player_on_fire(state.flight.shooter) and not state.flight.blocked
+ for i in range(ball_fire.size()):
+  var ember: MeshInstance3D = ball_fire[i]
+  ember.visible = burning_shot
+  if burning_shot:
+   var t = clampf(state.flight.time/state.flight.duration-0.018*(i+1),0,1)
+   var point: Vector2 = state.flight.start.lerp(state.flight.end,t)
+   point += ball-state.flight_position()
+   var height = lerpf(1.3,3.05,t)+sin(t*PI)*(1.7 if state.flight.dunk else 4.6)
+   ember.position = court_point(point,height+0.10+0.08*sin(time*17+i))
+   ember.scale = Vector3.ONE*(1.0-float(i)/10.0)
 
 func shot_meter_position(index: int) -> Vector2:
  var actor: Dictionary = athletes[index]

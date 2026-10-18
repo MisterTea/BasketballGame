@@ -20,13 +20,17 @@ func setup() -> void:
  is_host = OS.get_cmdline_user_args().has("--host")
  net.game_started.connect(func(options):
   state.start(options.teams[0],options.teams[1],30)
+  if is_host:
+   for basket in range(3):
+    state.record_natural_basket(0)
+   state.stats[2].goaltends = 1
   started = true
   print("STARTED slot=",net.local_slot))
  net.state_received.connect(func(data):
   state.apply_snapshot(data)
   count += 1
   if count >= 45 and not finished:
-   if state.players.size() == 4 and state.clock < 30 and state.teams == [3,5] and state.players[net.local_slot].pos.x < (420 if net.local_slot < 2 else 860)-30:
+   if state.players.size() == 4 and state.clock < 30 and state.teams == [3,5] and state.players[net.local_slot].pos.x < (420 if net.local_slot < 2 else 860)-30 and state.fire_player == 0 and state.player_streak == [3,0,0,0] and state.stats[2].goaltends == 1:
     print("NETWORK CLIENT PASS slot=",net.local_slot," snapshots=",count)
     finished = true
     call_deferred("finish_client")

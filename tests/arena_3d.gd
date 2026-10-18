@@ -19,7 +19,9 @@ func run() -> void:
  state.start(0,1)
  state.players[0].jump = 0.4
  state.players[1].vel = Vector2(180,0)
- state.streak[0] = 3
+ state.player_streak[0] = 3
+ state.fire_player = 0
+ state.refresh_heat_summary()
  var before = state.snapshot()
  arena.present(state,[],state.ball,[0],0.1,false)
  check(state.snapshot() == before,"3D presentation does not mutate gameplay state")
@@ -30,7 +32,7 @@ func run() -> void:
  check(arena.athletes.size() == 4 and arena.athletes[0].arms.size() == 2 and arena.athletes[0].legs.size() == 2,"four humanoids have articulated arms and legs")
  check(arena.athletes[0].body.position.y > 1 and arena.athletes[0].body.action == "block","jump state produces an airborne HY-Motion block pose")
  check(arena.athletes[0].marker.visible and not arena.athletes[1].marker.visible,"controlled athlete receives a floor marker")
- check(arena.athletes[0].fire[0].visible and not arena.athletes[2].fire[0].visible,"on-fire visuals follow the correct team")
+ check(arena.athletes[0].fire[0].visible and not arena.athletes[1].fire[0].visible and not arena.athletes[2].fire[0].visible,"on-fire visuals follow only the burning athlete")
  var left = arena.world.get_node("LeftBasket/OrangeRim")
  var right = arena.world.get_node("RightBasket/OrangeRim")
  check(is_equal_approx(left.position.y,3.05) and is_equal_approx(right.position.y,3.05),"both modeled rims align with the 3D shot destination")
@@ -49,6 +51,16 @@ func run() -> void:
  arena.present(state,display_positions,state.ball+Vector2(20,0),[2],0.1,false)
  check(arena.athletes[2].root.position.is_equal_approx(arena.court_point(display_positions[2])),"network-smoothed coordinates drive the 3D athlete")
  check(state.snapshot() == before,"interpolated presentation still leaves simulation unchanged")
+ state.players[0].charge = 0.58
+ state.shoot_ball(0,false)
+ state.flight.time = state.flight.duration*0.5
+ state.ball = state.flight_position()
+ before = state.snapshot()
+ arena.present(state,[],state.ball,[0],0.1,false)
+ check(arena.ball_fire[0].visible and arena.ball_fire[0].position.distance_to(arena.basketball.position) < 1.0 and state.snapshot() == before,"a burning shooter's ball has a non-authoritative flame trail")
+ state.fire_player = 1
+ arena.present(state,[],state.ball,[0],0.1,false)
+ check(not arena.ball_fire[0].visible,"a burning teammate cannot ignite another shooter's ball")
  print("3D ARENA TESTS: ","PASS" if failures == 0 else "FAIL")
  arena.queue_free()
  await process_frame

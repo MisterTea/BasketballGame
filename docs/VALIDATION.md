@@ -30,3 +30,14 @@ Run `tests/run.ps1 -Capture` to reproduce with a Godot executable. The render te
 
 
 - Export pack successfully built with all animation/skeleton JSON and license notices; the packed game boots successfully without the Python runtime.
+
+## Arcade rules addition — 2026-10-18
+
+- Editor import/compilation and all 78 assertions pass: simulation 17, arcade rules 31, arena 17, HY-Motion 13.
+- Four real ENet processes pass the lobby/ready/start/movement/disconnect test. Each client receives 45 authoritative snapshots and verifies the burning athlete, individual heat array and goaltending statistic.
+- GPU smoke test passes with actual OpenGL rendering. Latest crowd capture differs at 1,935 sampled pixels (threshold 100).
+- Visually inspected the revised help page, individually burning dunk, actual goaltending award/banner/inbound, and GT results column. Images have no overlapping help text or clipped stat columns.
+- Added reachable ascending-shot CPU blocks, fixed the previously unreachable CPU shot-detection branch, and covered cold/hot late-shot decisions. A complete accelerated CPU match still reaches the final buzzer with scoring.
+- Added a flaming shot trail, with tests proving that only the actual burning shooter produces it and that rendering leaves authoritative state unchanged.
+- The three-minute default, individual fire, CPU teammate orders and goaltending replace earlier prototype rules. Earlier statements that the simulation was unchanged describe the previous graphics/animation commits only.
+- Original-game heat/goaltending edge cases remain provisional where evidence comes from Tournament Edition. Video playback remains unverified after browser origin access was denied. See [research evidence and fidelity limits](ARCADE_RESEARCH.md).

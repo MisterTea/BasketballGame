@@ -30,7 +30,7 @@ func _initialize() -> void:
   state.shoot_ball(0,false)
   state.flight.made = true
   state.tick_flight(2.0)
- check(state.on_fire(0),"three consecutive baskets ignite fire")
+ check(state.on_fire(0),"three consecutive baskets by one athlete ignite fire")
  state.owner = 2
  state.players[2].charge = 0.58
  state.shoot_ball(2,false)

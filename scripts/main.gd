@@ -16,7 +16,7 @@ var selection_side = 0
 var mode = "solo"
 var local_two = false
 var controlled: Array = [0, 2]
-var seconds = 120.0
+var seconds = 180.0
 var level = 1
 var big_heads = false
 var infinite_turbo = false
@@ -339,7 +339,7 @@ func show_help() -> void:
  label_at("GAMEPAD",675,176,22,GOLD)
  label_at("Left stick to move • A to shoot / block\nX to pass / steal • RB or RT for turbo\nLB to switch your active athlete",675,222,19,INK,510)
  label_at("MAKE THE HIGHLIGHT REEL",675,330,22,GOLD)
- label_at("Hold SHOOT, release near the gold timing mark.\nTurbo + shoot near the rim for a huge dunk.\nTurbo + pass to a teammate near the rim for an alley-oop.\nOn defense: shoot to block, pass to steal, turbo + pass to shove.\nThree consecutive team baskets ignite FIRE.\nFour quarters. Ties go to overtime.\nESC: pause offline / leave menu online. M: mute.",675,378,18,INK,510)
+ label_at("Hold SHOOT, release near the gold timing mark.\nTurbo + shoot near the rim for a huge dunk.\nTurbo + pass to a teammate near the rim for an alley-oop.\nOn defense: shoot to block, pass to steal, turbo + pass to shove.\nCPU teammate has the ball? Pass calls for it; Shoot orders a shot.\nThree unanswered baskets by one athlete ignite FIRE.\nFire survives misses and permits goaltending.\nFour quarters. Ties go to overtime.\nESC: pause offline / leave menu online. M: mute.",675,378,16,INK,510)
  label_at("Network players use player-one controls. Missing teammates are controlled by the CPU.",60,723,16,MUTED)
 
 func show_results() -> void:
@@ -364,11 +364,15 @@ func show_results() -> void:
  label_at("%s   %d  —  %d   %s" % [Teams.DATA[picks[0]].name,game.score[0],game.score[1],Teams.DATA[picks[1]].name],60,137,34,GOLD)
  panel(60,214,1160,360)
  label_at("ATHLETE",88,235,17,MUTED)
- label_at("PTS      FG       DUNKS       STL       BLK       REB",580,235,17,MUTED)
+ var stat_columns = [580,670,780,890,980,1070,1150]
+ for column in range(7):
+  label_at(["PTS","FG","DUNKS","STL","BLK","REB","GT"][column],stat_columns[column],235,17,MUTED)
  for i in range(4):
   var s: Dictionary = game.stats[i]
   label_at(Teams.DATA[picks[i/2]].players[i%2],88,290+i*60,22,Teams.color_for(picks[i/2]))
-  label_at("%02d       %d/%d           %d             %d           %d           %d" % [s.points,s.made,s.attempts,s.dunks,s.steals,s.blocks,s.rebounds],580,292+i*60,20)
+  var values = [str(s.points),"%d/%d" % [s.made,s.attempts],str(s.dunks),str(s.steals),str(s.blocks),str(s.rebounds),str(s.goaltends)]
+  for column in range(7):
+   label_at(values[column],stat_columns[column],292+i*60,20)
  if mode == "ladder" and won and tournament_round < 6 and not net.online:
   label_at("ARCADE LADDER   •   %d / 7 TEAMS DEFEATED" % tournament_wins,60,625,20,GOLD)
   button("NEXT CHALLENGER   →",870,652,350,func(): tournament_round += 1; picks[1] = ladder_opponent(); begin_match({"teams":picks,"seconds":seconds,"level":mini(2,level+tournament_round/3)}),true,60)
@@ -563,7 +567,7 @@ func draw_hud() -> void:
   text_at(Teams.DATA[game.teams[side]].name,Vector2(x+20,75),25,color)
   text_at("%02d" % game.score[side],Vector2(x+265,93),53,INK)
   if game.on_fire(side):
-   text_at("ON FIRE!",Vector2(x+20,105),17,GOLD)
+   text_at("FIRE: "+str(Teams.DATA[game.teams[side]].players[game.fire_player%2]),Vector2(x+20,105),15,GOLD)
   else:
    for pip in range(3):
     draw_circle(Vector2(x+27+pip*18,100),5,color if pip < game.streak[side] else Color("334255"))
@@ -573,7 +577,7 @@ func draw_hud() -> void:
  text_at("SHOT  %02d" % int(ceil(game.shot_clock)),Vector2(640,114),17,Color("ff7554") if game.shot_clock < 5 else GOLD,true)
  for i in range(4):
   var x = 70+i*307
-  text_at("%s  ·  TURBO" % Teams.DATA[game.teams[i/2]].players[i%2],Vector2(x,776),12,MUTED)
+  text_at("%s  ·  %s" % [Teams.DATA[game.teams[i/2]].players[i%2],"ON FIRE!" if game.is_player_on_fire(i) else "HEATING UP" if game.player_streak[i] == 2 else "TURBO"],Vector2(x,776),12,GOLD if game.player_streak[i] >= 2 else MUTED)
   draw_rect(Rect2(x,785,210,5),Color("263d52"))
   draw_rect(Rect2(x,785,210*game.players[i].turbo,5),Teams.color_for(game.teams[i/2]))
  if game.banner_time > 0:
