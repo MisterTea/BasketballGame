@@ -1,0 +1,7 @@
+.godot/
+exports/
+*.tmp
+*.log
+
+tests/*.png
+tests/*.png.import
