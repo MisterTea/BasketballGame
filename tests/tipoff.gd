@@ -79,7 +79,7 @@ func run() -> void:
  check(s.tipoff.jumps[0] < 0,"a partner cannot override a human-controlled center")
  s = fresh()
  until(s,1.41,neutral())
- s.tick(0.01,{0:{"tip_jump":true,"shoot":false},2:{}})
+ s.tick(0.01,{0:{"jump_press":true,"shoot":false},2:{}})
  check(s.tipoff.jumps[0] > 0,"a reliable tip-off press survives independently of held Shoot packets")
  s = fresh()
  until(s,MatchState.TIP_DECISION,{})

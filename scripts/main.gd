@@ -338,9 +338,9 @@ func show_help() -> void:
  label_at("PLAYER TWO — LOCAL VERSUS",88,430,20,GOLD)
  label_at("MOVE     ARROWS\nSHOOT / BLOCK     NUMPAD 1\nPASS / STEAL     NUMPAD 2\nTURBO     NUMPAD 0    •    SWITCH     NUMPAD 3",88,475,18)
  label_at("GAMEPAD",675,176,22,GOLD)
- label_at("Left stick to move • A to shoot / block\nX to pass / steal • RB or RT for turbo\nLB to switch your active athlete",675,222,19,INK,510)
+ label_at("Left stick moves • A: shoot / jump / block\nX to pass / steal • RB or RT for turbo\nLB to switch your active athlete",675,222,19,INK,510)
  label_at("MAKE THE HIGHLIGHT REEL",675,330,22,GOLD)
- label_at("Tap SHOOT to fake; release jump shots at the gold mark.\nRun + short SHOOT hold: layup. Hold longer close for a dunk.\nAdd TURBO for a super dunk; PASS mid-dunk to dish.\nTURBO + PASS: faster pass / lob to a teammate near the rim.\nDefense: SHOOT blocks; PASS steals or intercepts.\nTURBO + PASS shoves. CPU teammate has the ball?\nPASS calls for it; hold/release SHOOT orders their shot.\nThree unanswered baskets by one athlete ignite FIRE.\nFire survives misses; an opponent basket ends it.\nQ4 / overtime: specialty dunks can shatter a backboard.\nTip-off: tap SHOOT as the tossed ball rises.\nESC: pause offline / leave menu online. M: mute.",675,378,16,INK,510)
+ label_at("Tap SHOOT to fake; release jump shots at the gold mark.\nRun + short SHOOT hold: layup. Hold longer close for a dunk.\nAdd TURBO for a super dunk; PASS mid-dunk to dish.\nAlley-oop: receiver SHOOT, passer TURBO + PASS.\nDefense: SHOOT blocks; PASS steals or intercepts.\nTURBO + PASS shoves. CPU teammate has the ball?\nSHOOT jumps + starts CPU shot; quick TURBO + PASS lobs.\nThree unanswered baskets by one athlete ignite FIRE.\nFire survives misses; an opponent basket ends it.\nQ4 / overtime: specialty dunks can shatter a backboard.\nTip-off: tap SHOOT as the tossed ball rises.\nESC: pause offline / leave menu online. M: mute.",675,378,16,INK,510)
  label_at("Network players use player-one controls. Missing teammates are controlled by the CPU.",60,723,16,MUTED)
 
 func show_results() -> void:
@@ -429,7 +429,7 @@ func read_command(index: int) -> Dictionary:
   if stick.length() > 0.18:
    move = stick.limit_length()
   turbo = turbo or Input.get_joy_axis(index,JOY_AXIS_TRIGGER_RIGHT) > 0.3
- return {"move":move,"shoot":Input.is_action_pressed(prefix+"shoot"),"tip_jump":game.tipoff.get("active",false) and Input.is_action_just_pressed(prefix+"shoot"),"pass":Input.is_action_just_pressed(prefix+"pass"),"turbo":turbo}
+ return {"move":move,"shoot":Input.is_action_pressed(prefix+"shoot"),"jump_press":Input.is_action_just_pressed(prefix+"shoot"),"pass":Input.is_action_just_pressed(prefix+"pass"),"turbo":turbo}
 
 func _physics_process(delta: float) -> void:
  visual_time += delta
@@ -606,7 +606,7 @@ func draw_hud() -> void:
   draw_rect(Rect2(Vector2(280,155)+offset,Vector2(720,62)),Color(0.03,0.06,0.1,0.88))
   text_at(game.banner,Vector2(640,197)+offset,30,GOLD,true)
  draw_rect(Rect2(250,692,780,32),Color(0.03,0.06,0.1,0.88))
- text_at("J  SHOOT / BLOCK    K  PASS / STEAL    SPACE  TURBO    TAB  SWITCH    ESC  MENU",Vector2(640,714),13,INK,true)
+ text_at("J  SHOOT / JUMP / BLOCK    K  PASS / STEAL    SPACE  TURBO    TAB  SWITCH    ESC  MENU",Vector2(640,714),13,INK,true)
 
 func set_initials(value: String) -> void:
  initials = value.to_upper().strip_edges().left(12)

@@ -41,6 +41,7 @@ func _initialize() -> void:
  state.owner = 0
  state.ball = state.players[0].pos
  state.players[1].pos = state.hoop_for(0)+Vector2(-100,0)
+ state.start_receive_jump(1) # Receiver has already jumped for the coordinated lob.
  state.pass_ball(0,true)
  state.tick_flight(1.0)
  check(state.flight.get("dunk",false) and state.flight.shooter == 1,"alley-oop becomes teammate dunk")

@@ -11,13 +11,15 @@ if ($LASTEXITCODE -ne 0) { throw "Tip-off tests failed" }
 if ($LASTEXITCODE -ne 0) { throw "Arcade rules tests failed" }
 & $Godot --headless --path $projectRoot --script res://tests/finishing.gd
 if ($LASTEXITCODE -ne 0) { throw "Finishing and passing tests failed" }
+& $Godot --headless --path $projectRoot --script res://tests/alley_oop.gd
+if ($LASTEXITCODE -ne 0) { throw "Coordinated alley-oop tests failed" }
 & $Godot --headless --path $projectRoot --script res://tests/backboards.gd
 if ($LASTEXITCODE -ne 0) { throw "Backboard tests failed" }
 & $Godot --headless --path $projectRoot --script res://tests/arena_3d.gd
 if ($LASTEXITCODE -ne 0) { throw "3D arena tests failed" }
 & $Godot --headless --path $projectRoot --script res://tests/hy_motion.gd
 if ($LASTEXITCODE -ne 0) { throw "HY-Motion rig and playback tests failed" }
-foreach ($scenario in @(@{ Script = "network_peer"; Peers = 4 }, @{ Script = "network_actions"; Peers = 2 }, @{ Script = "network_tipoff"; Peers = 2 })) {
+foreach ($scenario in @(@{ Script = "network_peer"; Peers = 4 }, @{ Script = "network_actions"; Peers = 2 }, @{ Script = "network_tipoff"; Peers = 2 }, @{ Script = "network_alley"; Peers = 4 })) {
  $processes = @()
  try {
   for ($i = 0; $i -lt $scenario.Peers; $i++) {

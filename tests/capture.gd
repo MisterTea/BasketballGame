@@ -237,6 +237,46 @@ func run() -> void:
   await process_frame
  await RenderingServer.frame_post_draw
  root.get_texture().get_image().save_png("res://tests/interception_3d.png")
+ scene.game.start(0,1)
+ scene.game.inbound(0)
+ scene.game.freeze = 0
+ scene.game.big_heads = false
+ scene.game.players[0].pos = Vector2(785,465)
+ scene.game.players[1].pos = Vector2(1015,465)
+ scene.game.players[2].pos = Vector2(250,300)
+ scene.game.players[3].pos = Vector2(250,600)
+ scene.game.ball = scene.game.players[0].pos
+ scene.game.tick(1.0/60.0,{0:{"pass":true,"turbo":true},1:{"shoot":true},2:{},3:{}})
+ while scene.game.flight.kind == "pass" and scene.game.flight.time < 0.25:
+  scene.game.tick(1.0/60.0,{0:{},1:{},2:{},3:{}})
+ if not scene.game.flight.get("alley",false):
+  push_error("Render fixture did not coordinate the receiver's jump and lob")
+  quit(1)
+  return
+ for athlete in scene.arena.athletes:
+  athlete.body.first_pose = true
+ scene.arena.reset_camera()
+ for frame in range(3):
+  await process_frame
+ await RenderingServer.frame_post_draw
+ root.get_texture().get_image().save_png("res://tests/alley_lob.png")
+ while scene.game.flight.kind == "pass":
+  scene.game.tick(1.0/60.0,{0:{},1:{},2:{},3:{}})
+ if scene.game.flight.get("finish","") != "alley_oop":
+  push_error("Render fixture failed the airborne catch")
+  quit(1)
+  return
+ scene.arena.athletes[1].body.first_pose = true
+ for frame in range(3):
+  await process_frame
+ await RenderingServer.frame_post_draw
+ root.get_texture().get_image().save_png("res://tests/alley_catch.png")
+ scene.game.tick(0.25,{0:{},1:{},2:{},3:{}})
+ scene.arena.athletes[1].body.first_pose = true
+ for frame in range(3):
+  await process_frame
+ await RenderingServer.frame_post_draw
+ root.get_texture().get_image().save_png("res://tests/alley_dunk.png")
  scene.saved_result = true
  scene.game.score = [42,39]
  scene.game.phase = "finished"

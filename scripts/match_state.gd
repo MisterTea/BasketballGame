@@ -64,7 +64,7 @@ func start(a: int, b: int, seconds: float = QUARTER_SECONDS, level: int = 1) -> 
  flight = {}
  for i in range(4):
   var t = i / 2
-  players.append({"pos":Vector2(420 if t == 0 else 860, 400 + (i % 2) * 140), "vel":Vector2.ZERO, "turbo":1.0, "jump":0.0, "stun":0.0, "cooldown":0.0, "charge":0.0, "fake":0.0, "drive":0.0, "swipe":0.0, "shoot_held":false, "face":1 if t == 0 else -1})
+  players.append({"pos":Vector2(420 if t == 0 else 860, 400 + (i % 2) * 140), "vel":Vector2.ZERO, "turbo":1.0, "jump":0.0, "receive_jump":0.0, "stun":0.0, "cooldown":0.0, "charge":0.0, "fake":0.0, "drive":0.0, "swipe":0.0, "shoot_held":false, "face":1 if t == 0 else -1})
   stats.append({"points":0, "attempts":0, "made":0, "dunks":0, "steals":0, "blocks":0, "rebounds":0, "goaltends":0})
  begin_tipoff()
 
@@ -93,7 +93,7 @@ func tick_tipoff(delta: float, commands: Dictionary) -> void:
   var controller = jumper if commands.has(jumper) else jumper+1
   var human = commands.has(controller)
   var shoot: bool = commands.get(controller,{}).get("shoot",false)
-  var pressed: bool = (shoot and not tipoff.held[team]) or commands.get(controller,{}).get("tip_jump",false)
+  var pressed: bool = (shoot and not tipoff.held[team]) or commands.get(controller,{}).get("jump_press",false)
   tipoff.held[team] = shoot
   if tipoff.jumps[team] >= 0:
    continue
@@ -201,9 +201,11 @@ func ball_height() -> float:
  if not flight.is_empty():
   var t = clampf(flight.time/flight.duration,0,1)
   if flight.kind == "shot":
-   return lerpf(1.3,3.05,t)+sin(t*PI)*flight.get("arc_height",1.7 if flight.dunk else 4.6)
-  return lerpf(flight.get("start_height",1.1),1.1,t)+sin(t*PI)*(2.2 if flight.get("alley",false) else 0.5)
+   return lerpf(flight.get("release_height",1.3),3.05,t)+sin(t*PI)*flight.get("arc_height",1.7 if flight.dunk else 4.6)
+  return lerpf(flight.get("start_height",1.1),flight.get("end_height",1.1),t)+sin(t*PI)*(1.4 if flight.get("alley",false) else 0.5)
  if owner >= 0:
+  if players[owner].receive_jump > 0:
+   return 1.1+receive_height(owner)
   return 0.30+absf(sin(elapsed*12.0))*0.9
  return 0.24
 
@@ -228,6 +230,36 @@ func teammate_commands(commands: Dictionary) -> Dictionary:
   teammate_shot_order = owner if cpu.shoot else -1
  return effective
 
+func receive_height(i: int) -> float:
+ return sin(clampf(1.0-players[i].receive_jump/0.7,0,1)*PI)*1.65
+
+func start_receive_jump(i: int) -> void:
+ players[i].receive_jump = 0.7
+ players[i].jump = 0.7
+ players[i].cooldown = 0.75
+ players[i].charge = 0.0
+ players[i].fake = 0.0
+
+func prepare_receivers(delta: float, commands: Dictionary, effective: Dictionary) -> void:
+ if owner < 0:
+  return
+ var receiver = (owner/2)*2+(1-owner%2)
+ var p: Dictionary = players[receiver]
+ if p.stun > delta or p.cooldown > delta:
+  return
+ var request: Dictionary = effective[receiver]
+ var shoot: bool = request.get("shoot",false)
+ var pressed: bool = (shoot and not p.shoot_held) or request.get("jump_press",false)
+ var sender: Dictionary = effective[owner]
+ var turbo: bool = sender.get("turbo",false) and (players[owner].turbo > 0.02 or infinite_turbo or is_player_on_fire(owner))
+ if commands.has(receiver):
+  # The caller can jump while their Shoot order also starts a CPU shot windup.
+  if pressed:
+   start_receive_jump(receiver)
+ elif sender.get("pass",false) and turbo and players[owner].cooldown <= delta and players[owner].stun <= delta and p.pos.distance_to(hoop_for(receiver/2)) < 220:
+  start_receive_jump(receiver)
+  effective[receiver].move = Vector2.ZERO
+
 func inbound(team: int) -> void:
  if not tipoff.is_empty():
   tipoff.active = false
@@ -248,6 +280,7 @@ func inbound(team: int) -> void:
   players[i].swipe = 0.0
   players[i].shoot_held = false
   players[i].jump = 0.0
+  players[i].receive_jump = 0.0
  players[owner].pos = own_hoop + Vector2(85 if own_hoop.x < 640 else -85, 0)
  ball = players[owner].pos
  freeze = 1.0
@@ -282,6 +315,11 @@ func tick(delta: float, commands: Dictionary) -> void:
   inbound(next_team)
   return
  var effective_commands = teammate_commands(commands)
+ # Cache intent before any player acts so simultaneous jump/pass is slot-order independent.
+ for i in range(4):
+  if not effective_commands.has(i):
+   effective_commands[i] = ai(i)
+ prepare_receivers(delta,commands,effective_commands)
  # A dunker may abandon the attempt for a pass before reaching the rim.
  # The existing reliable Pass event also carries this action online.
  if not flight.is_empty() and flight.kind == "shot" and flight.dunk and not flight.blocked and flight.time < flight.duration*0.85:
@@ -297,13 +335,15 @@ func tick(delta: float, commands: Dictionary) -> void:
   p.cooldown = maxf(0.0, p.cooldown - delta)
   p.stun = maxf(0.0, p.stun - delta)
   p.jump = maxf(0.0, p.jump - delta)
+  p.receive_jump = maxf(0.0,p.receive_jump-delta)
   p.fake = maxf(0.0, p.fake - delta)
   p.swipe = maxf(0.0,p.swipe-delta)
   p.drive = maxf(0.0,p.drive-delta)
-  var c: Dictionary = effective_commands[i] if effective_commands.has(i) else ai(i)
+  var c: Dictionary = effective_commands[i]
   if p.stun > 0:
    p.charge = 0.0
    p.shoot_held = false
+   p.receive_jump = 0.0
    continue
   var move: Vector2 = c.get("move", Vector2.ZERO)
   move = move.limit_length()
@@ -351,7 +391,7 @@ func tick(delta: float, commands: Dictionary) -> void:
   else:
    # Off-ball commands target a CPU ball carrier; never override another human.
    var ordering_cpu = owner >= 0 and owner / 2 == i / 2 and not commands.has(owner)
-   if not ordering_cpu:
+   if not ordering_cpu and p.receive_jump <= 0:
     if shoot and not p.shoot_held and p.cooldown <= 0:
      defend(i, turbo)
     if c.get("pass", false) and p.cooldown <= 0:
@@ -385,7 +425,9 @@ func ai(i: int) -> Dictionary:
  var shoot = false
  var pass_action = false
  var turbo = false
- if owner == i:
+ if not flight.is_empty() and flight.kind == "pass" and flight.get("alley",false) and flight.target == i and p.receive_jump > 0:
+  target = p.pos
+ elif owner == i:
   var hoop = hoop_for(team)
   target = hoop + Vector2(-90 if hoop.x > 640 else 90, 10 * sin(elapsed + i))
   if p.charge > 0 and p.pos.distance_to(hoop) < 165:
@@ -402,7 +444,7 @@ func ai(i: int) -> Dictionary:
    target = flight_position()
    var t = clampf(flight.time/flight.duration,0,1)
    var arc: float = flight.get("arc_height",1.7 if flight.dunk else 4.6)
-   var descending = 1.75+PI*arc*cos(t*PI) < 0
+   var descending = 3.05-flight.get("release_height",1.3)+PI*arc*cos(t*PI) < 0
    var reacts: bool = flight.time >= 0.18-0.04*clampi(difficulty,0,2) and flight.get("cpu_block_allowed",[true,true,true,true])[i]
    shoot = reacts and not flight.blocked and p.cooldown <= 0 and p.pos.distance_to(target) < 72 and ball_height() <= 4.6 and (not descending or flight.dunk or is_player_on_fire(i))
   else:
@@ -440,7 +482,7 @@ func finish_kind(i: int, turbo: bool, alley: bool = false) -> String:
   return "layup"
  return "dunk"
 
-func shoot_ball(i: int, turbo: bool, alley: bool = false) -> void:
+func shoot_ball(i: int, turbo: bool, alley: bool = false, release_height: float = 1.3) -> void:
  teammate_shot_order = -1
  var p: Dictionary = players[i]
  p.fake = 0.0
@@ -450,6 +492,8 @@ func shoot_ball(i: int, turbo: bool, alley: bool = false) -> void:
  var dunk = finish in ["dunk","turbo_dunk","alley_oop"]
  var specialty = finish in ["turbo_dunk","alley_oop"]
  var layup = finish == "layup"
+ var launch_height = receive_height(i) if alley else 0.0
+ p.receive_jump = 0.0
  var timing = maxf(0.0, 1.0 - absf(p.charge - 0.58) / 0.58)
  var contest = clampf((95 - nearest_defender(i)) / 95.0, 0.0, 1.0)
  var chance = 0.24 + rating(i, 1) * 0.038 + timing * 0.27 - distance * 0.0006 - contest * 0.22
@@ -471,6 +515,8 @@ func shoot_ball(i: int, turbo: bool, alley: bool = false) -> void:
  if dunk or layup:
   flight.player_start = p.pos
   flight.player_end = hoop+Vector2(-1 if hoop.x > 640 else 1,0)*(28 if dunk else 50)
+  flight.player_launch_height = launch_height
+ flight.release_height = release_height
  # One decision per defender per shot prevents perfect frame-by-frame reactions.
  flight.cpu_block_allowed = []
  for defender in range(4):
@@ -484,10 +530,10 @@ func pass_ball(i: int, turbo: bool) -> void:
  players[i].fake = 0.0
  var release_height = ball_height() if not flight.is_empty() and flight.get("kind","") == "shot" else 1.1
  var mate = (i / 2) * 2 + (1 - i % 2)
- var alley = turbo and players[mate].pos.distance_to(hoop_for(i / 2)) < 220
+ var alley = turbo and players[mate].receive_jump > 0 and players[mate].stun <= 0 and players[mate].pos.distance_to(hoop_for(i / 2)) < 220
  var distance: float = ball.distance_to(players[mate].pos)
  var duration = clampf(distance/2300.0,0.10,0.42) if turbo else clampf(distance/1400.0,0.16,0.65)
- flight = {"kind":"pass", "start":ball, "end":players[mate].pos, "start_height":release_height, "time":0.0, "duration":0.38 if alley else duration, "target":mate, "alley":alley, "turbo":turbo}
+ flight = {"kind":"pass", "start":ball, "end":players[mate].pos, "start_height":release_height, "end_height":3.8 if alley else 1.1, "time":0.0, "duration":0.38 if alley else duration, "target":mate, "passer":i, "alley":alley, "turbo":turbo}
  owner = -1
  players[i].cooldown = 0.45
  announce("LOB IT UP!" if alley else "NICE PASS", "pass")
@@ -503,7 +549,7 @@ func defend(i: int, turbo: bool) -> void:
   var contact = flight_position()
   var reach = players[i].pos.distance_to(contact)
   var arc: float = flight.get("arc_height",1.7 if flight.dunk else 4.6)
-  var descending = 1.75+PI*arc*cos(t*PI) < 0
+  var descending = 3.05-flight.get("release_height",1.3)+PI*arc*cos(t*PI) < 0
   var at_rim = contact.distance_to(flight.end) < 115
   if descending and at_rim and reach < 78 and ball_height() <= 4.6:
    if flight.dunk or is_player_on_fire(i):
@@ -578,12 +624,20 @@ func tick_flight(delta: float) -> void:
  if flight.kind == "pass":
   var receiver: int = flight.target
   var alley: bool = flight.alley
+  var catch_height = ball_height()
+  var catchable: bool = players[receiver].receive_jump > 0 and players[receiver].stun <= 0 and players[receiver].pos.distance_to(flight.end) < 70 and players[receiver].pos.distance_to(hoop_for(receiver/2)) < 220
+  if alley and not catchable:
+   owner = -1
+   flight = {}
+   announce("LOB MISSED! LOOSE BALL","miss")
+   return
   owner = receiver
   ball = players[owner].pos
   flight = {}
   if alley:
    players[owner].charge = 0.58
-   shoot_ball(owner, true, true)
+   shoot_ball(owner, true, true, catch_height)
+   announce("ALLEY-OOP!","dunk")
   return
  var shooter: int = flight.shooter
  var team = shooter / 2

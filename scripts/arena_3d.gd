@@ -543,7 +543,12 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   actor.root.position = court_point(point)
   var jump = sin(clampf(p.jump/0.85,0,1)*PI)*2.65
   if not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.shooter == i and state.flight.has("player_start"):
-   jump = sin(clampf(state.flight.time/state.flight.duration,0,1)*PI)*(2.65 if state.flight.get("super_dunk",false) else 1.8 if state.flight.dunk else 1.15)
+   var progress = clampf(state.flight.time/state.flight.duration,0,1)
+   var launch: float = state.flight.get("player_launch_height",0.0)
+   var peak = 2.65 if state.flight.get("super_dunk",false) else 1.8 if state.flight.dunk else 1.15
+   jump = lerpf(launch,0,progress)+sin(progress*PI)*(peak-launch*0.5)
+  elif p.receive_jump > 0:
+   jump = state.receive_height(i)
   var tip_jump = -1.0
   if not state.tipoff.is_empty() and i%2 == 0 and state.tipoff.jumps[i/2] >= 0:
    var age: float = state.elapsed-state.tipoff.started_at-state.tipoff.jumps[i/2]
@@ -566,9 +571,15 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   elif state.pending_inbound >= 0 and state.shatter_shooter == i:
    next_action = "dunk"
    phase = 1.0
+  elif p.receive_jump > 0:
+   next_action = "block"
+   var progress = 1.0-clampf(p.receive_jump/0.7,0,1)
+   phase = progress*0.64 if progress <= 0.5 else 0.32+(progress-0.5)*1.36
   elif not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.shooter == i:
    next_action = "dunk" if state.flight.dunk else "layup" if state.flight.get("layup",false) else "shoot"
    phase = clampf(state.flight.time/state.flight.duration,0,1) if state.flight.dunk else 0.45+0.55*clampf(state.flight.time/state.flight.duration,0,1)
+   if state.flight.get("finish","") == "alley_oop":
+    phase = 0.55+0.45*clampf(state.flight.time/state.flight.duration,0,1)
   elif p.charge > 0:
    next_action = "shoot"
    phase = 0.45*clampf(p.charge/0.58,0,1)
@@ -596,11 +607,16 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   actor.control.text = ("P1" if i < 2 else "P2") if controlled_slots.has(i) else ""
   actor.control.position.y = 2.72+jump
   actor.label.position.y = 2.35+jump
+  if p.receive_jump > 0 or (not state.flight.is_empty() and state.flight.get("finish","") == "alley_oop" and state.flight.shooter == i):
+   actor.label.position.y = 3.1+jump
+   actor.control.position.y = 3.45+jump
   var label_offset = (-0.7 if i == 0 else 0.7 if i == 2 else 0.0) if state.tipoff.get("active",false) else 0.0
   actor.label.position.x = label_offset
   actor.control.position.x = label_offset
   if p.stun > 0:
    actor.control.text = "★ ★ ★"
+  elif p.receive_jump > 0 and p.pos.distance_to(state.hoop_for(i/2)) < 220 and ((state.owner >= 0 and state.owner != i and state.owner/2 == i/2) or (not state.flight.is_empty() and state.flight.kind == "pass" and state.flight.get("alley",false) and state.flight.target == i)):
+   actor.control.text = "LOB!"
   for flame in range(5):
    var ember: MeshInstance3D = actor.fire[flame]
    ember.visible = state.is_player_on_fire(i)
@@ -620,7 +636,7 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
    var t = clampf(state.flight.time/state.flight.duration-0.018*(i+1),0,1)
    var point: Vector2 = state.flight.start.lerp(state.flight.end,t)
    point += ball-state.flight_position()
-   var height = lerpf(1.3,3.05,t)+sin(t*PI)*state.flight.get("arc_height",1.7 if state.flight.dunk else 4.6)
+   var height = lerpf(state.flight.get("release_height",1.3),3.05,t)+sin(t*PI)*state.flight.get("arc_height",1.7 if state.flight.dunk else 4.6)
    ember.position = court_point(point,height+0.10+0.08*sin(time*17+i))
    ember.scale = Vector3.ONE*(1.0-float(i)/10.0)
 

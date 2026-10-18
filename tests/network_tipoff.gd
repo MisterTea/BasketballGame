@@ -75,5 +75,5 @@ func _process(delta: float) -> bool:
    var jump: bool = not jump_sent and state.tipoff.active and state.tipoff.time >= 1.4 and state.tipoff.time < 1.6
    jump_sent = jump_sent or jump
    # Deliberately omit held Shoot: only the reliable one-shot event can win.
-   net.send_command({"move":Vector2.ZERO,"shoot":false,"tip_jump":jump,"pass":false,"turbo":false})
+   net.send_command({"move":Vector2.ZERO,"shoot":false,"jump_press":jump,"pass":false,"turbo":false})
  return false
