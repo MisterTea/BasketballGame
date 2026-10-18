@@ -144,5 +144,53 @@ func _initialize() -> void:
  call[0]["pass"] = true
  s.tick(1.0/60.0,call)
  check(s.owner == 1 and s.flight.is_empty() and s.players[1].charge == 0,"off-ball requests never commandeer a human teammate")
+ s = fresh()
+ s.record_natural_basket(0)
+ s.record_natural_basket(0)
+ call = {0:neutral(),1:neutral(),2:neutral(),3:neutral()}
+ call[0].shoot = true
+ s.tick(0.10,call)
+ call[0].shoot = false
+ s.tick(1.0/60.0,call)
+ check(s.owner == 0 and s.flight.is_empty() and s.players[0].fake > 0,"a short Shoot tap head-fakes without releasing possession")
+ check(s.stats[0].attempts == 0 and s.player_streak[0] == 2,"head-fakes do not count as missed shots or reset heat")
+ copy.apply_snapshot(s.snapshot())
+ check(copy.players[0].fake == s.players[0].fake,"head-fake animation state survives snapshot restoration")
+ call[0].shoot = true
+ s.tick(0.58,call)
+ call[0].shoot = false
+ s.tick(1.0/60.0,call)
+ check(s.flight.get("shooter",-1) == 0 and s.stats[0].attempts == 1,"a held shot after a fake still releases normally")
+ s = fresh()
+ s.owner = 1
+ call = {0:neutral(),2:neutral(),3:neutral()}
+ call[0].shoot = true
+ s.tick(0.05,call)
+ call[0].shoot = false
+ s.tick(1.0/60.0,call)
+ check(s.flight.get("shooter",-1) == 1 and s.players[1].fake == 0,"a tapped CPU teammate order shoots rather than head-faking")
+ s = fresh()
+ s.players[0].pos = Vector2(1020,465)
+ s.ball = s.players[0].pos
+ s.players[0].charge = 0.58
+ s.shoot_ball(0,true)
+ s.flight.time = 0.25
+ s.ball = s.flight_position()
+ var release_point = s.ball
+ call = {0:neutral(),1:neutral(),2:neutral(),3:neutral()}
+ call[0]["pass"] = true
+ s.tick(1.0/60.0,call)
+ check(s.flight.get("kind","") == "pass" and s.flight.target == 1 and s.flight.start == release_point,"Pass during a dunk dishes from the current airborne ball position")
+ check(s.flight.start_height > 3.0 and s.ball_height() > 3.0,"airborne dishes preserve ball elevation instead of snapping to chest height")
+ check(s.stats[0].attempts == 0 and s.score == [0,0] and s.players[0].jump > 0,"abandoned dunks retain the leap without adding a shot or score")
+ s.tick_flight(1.0)
+ check(s.owner == 1 and s.flight.is_empty(),"the airborne dish reaches the teammate using normal pass flight")
+ s.owner = 0
+ s.ball = s.players[0].pos
+ s.shoot_ball(0,true)
+ s.flight.time = 0.25
+ s.flight.blocked = true
+ s.tick(1.0/60.0,call)
+ check(s.flight.kind == "shot" and s.flight.blocked,"a blocked dunk cannot be rescued with a pass")
  print("ARCADE RULE TESTS: ",checks," checks, ","PASS" if failures == 0 else "FAIL")
  quit(0 if failures == 0 else 1)

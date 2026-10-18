@@ -47,6 +47,15 @@ func run() -> void:
   return
  print("PASS: animated billboard crowd changed ",changed," sampled pixels")
  scene.paused = true
+ scene.game.players[0].fake = 0.19
+ scene.arena.athletes[0].body.first_pose = true
+ scene.game.banner = "HEAD FAKE!"
+ scene.game.banner_time = 2.0
+ for frame in range(3):
+  await process_frame
+ await RenderingServer.frame_post_draw
+ root.get_texture().get_image().save_png("res://tests/head_fake.png")
+ scene.game.players[0].fake = 0.0
  scene.game.players[0].pos = Vector2(1030,465)
  scene.game.players[0].charge = 0.58
  scene.game.ball = scene.game.players[0].pos
@@ -61,6 +70,7 @@ func run() -> void:
  scene.game.refresh_heat_summary()
  scene.game.banner = "BOOMSHAKA!"
  scene.game.banner_time = 2.0
+ scene.arena.reset_camera()
  for frame in range(3):
   await process_frame
  await RenderingServer.frame_post_draw
@@ -81,6 +91,32 @@ func run() -> void:
   await process_frame
  await RenderingServer.frame_post_draw
  root.get_texture().get_image().save_png("res://tests/goaltending.png")
+ scene.game.freeze = 0
+ scene.game.owner = 0
+ scene.game.players[0].pos = Vector2(1030,465)
+ scene.game.players[1].pos = Vector2(850,580)
+ scene.game.players[0].charge = 0.58
+ scene.game.ball = scene.game.players[0].pos
+ scene.game.shoot_ball(0,true)
+ scene.game.flight.time = 0.25
+ scene.game.ball = scene.game.flight_position()
+ scene.game.tick(1.0/60.0,{0:{"pass":true},1:{},2:{},3:{}})
+ if scene.game.flight.kind != "pass":
+  push_error("Render fixture failed airborne dish input")
+  quit(1)
+  return
+ scene.game.flight.time = 0.12
+ scene.game.ball = scene.game.flight_position()
+ scene.arena.athletes[0].body.first_pose = true
+ scene.arena.reset_camera()
+ for frame in range(3):
+  await process_frame
+ await RenderingServer.frame_post_draw
+ if scene.arena.athletes[0].body.action != "pass":
+  push_error("Airborne dish did not select generated pass animation")
+  quit(1)
+  return
+ root.get_texture().get_image().save_png("res://tests/airborne_dish.png")
  scene.saved_result = true
  scene.game.score = [42,39]
  scene.game.phase = "finished"

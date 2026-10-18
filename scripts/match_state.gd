@@ -54,7 +54,7 @@ func start(a: int, b: int, seconds: float = QUARTER_SECONDS, level: int = 1) -> 
  flight = {}
  for i in range(4):
   var t = i / 2
-  players.append({"pos":Vector2(420 if t == 0 else 860, 400 + (i % 2) * 140), "vel":Vector2.ZERO, "turbo":1.0, "jump":0.0, "stun":0.0, "cooldown":0.0, "charge":0.0, "shoot_held":false, "face":1 if t == 0 else -1})
+  players.append({"pos":Vector2(420 if t == 0 else 860, 400 + (i % 2) * 140), "vel":Vector2.ZERO, "turbo":1.0, "jump":0.0, "stun":0.0, "cooldown":0.0, "charge":0.0, "fake":0.0, "shoot_held":false, "face":1 if t == 0 else -1})
   stats.append({"points":0, "attempts":0, "made":0, "dunks":0, "steals":0, "blocks":0, "rebounds":0, "goaltends":0})
  owner = 0
  ball = players[0].pos
@@ -125,7 +125,7 @@ func ball_height() -> float:
   var t = clampf(flight.time/flight.duration,0,1)
   if flight.kind == "shot":
    return lerpf(1.3,3.05,t)+sin(t*PI)*(1.7 if flight.dunk else 4.6)
-  return 1.1+sin(t*PI)*(2.2 if flight.get("alley",false) else 0.5)
+  return lerpf(flight.get("start_height",1.1),1.1,t)+sin(t*PI)*(2.2 if flight.get("alley",false) else 0.5)
  if owner >= 0:
   return 0.30+absf(sin(elapsed*12.0))*0.9
  return 0.24
@@ -162,6 +162,7 @@ func inbound(team: int) -> void:
   var h = hoop_for(1 - side)
   players[i].pos = Vector2(h.x + (190 if h.x < 640 else -190), 390 + (i % 2) * 145)
   players[i].charge = 0.0
+  players[i].fake = 0.0
   players[i].shoot_held = false
   players[i].jump = 0.0
  players[owner].pos = own_hoop + Vector2(85 if own_hoop.x < 640 else -85, 0)
@@ -189,11 +190,22 @@ func tick(delta: float, commands: Dictionary) -> void:
   inbound(next_team)
   return
  var effective_commands = teammate_commands(commands)
+ # A dunker may abandon the attempt for a pass before reaching the rim.
+ # The existing reliable Pass event also carries this action online.
+ if not flight.is_empty() and flight.kind == "shot" and flight.dunk and not flight.blocked and flight.time < flight.duration*0.85:
+  var dunker: int = flight.shooter
+  if commands.has(dunker) and commands[dunker].get("pass",false):
+   stats[dunker].attempts = maxi(0,stats[dunker].attempts-1)
+   pass_ball(dunker,commands[dunker].get("turbo",false))
+   players[dunker].charge = 0.0
+   players[dunker].shoot_held = false
+   announce("AIRBORNE DISH!", "pass")
  for i in range(4):
   var p: Dictionary = players[i]
   p.cooldown = maxf(0.0, p.cooldown - delta)
   p.stun = maxf(0.0, p.stun - delta)
   p.jump = maxf(0.0, p.jump - delta)
+  p.fake = maxf(0.0, p.fake - delta)
   var c: Dictionary = effective_commands[i] if effective_commands.has(i) else ai(i)
   if p.stun > 0:
    p.charge = 0.0
@@ -221,9 +233,14 @@ func tick(delta: float, commands: Dictionary) -> void:
     p.charge = 0.0
     shoot = false
    elif shoot:
+    p.fake = 0.0
     p.charge = minf(1.25, p.charge + delta)
    elif p.shoot_held and p.charge > 0:
-    shoot_ball(i, turbo)
+    if p.charge < 0.16 and commands.has(i):
+     p.fake = 0.38
+     announce("HEAD FAKE!", "fake")
+    else:
+     shoot_ball(i, turbo)
     p.charge = 0.0
   else:
    # Off-ball commands target a CPU ball carrier; never override another human.
@@ -302,6 +319,7 @@ func nearest_defender(i: int) -> float:
 func shoot_ball(i: int, turbo: bool) -> void:
  teammate_shot_order = -1
  var p: Dictionary = players[i]
+ p.fake = 0.0
  var hoop = hoop_for(i / 2)
  var distance: float = p.pos.distance_to(hoop)
  var dunk = turbo and distance < 165 and p.turbo > 0.1
@@ -327,9 +345,11 @@ func shoot_ball(i: int, turbo: bool) -> void:
 
 func pass_ball(i: int, turbo: bool) -> void:
  teammate_shot_order = -1
+ players[i].fake = 0.0
+ var release_height = ball_height() if not flight.is_empty() and flight.get("kind","") == "shot" else 1.1
  var mate = (i / 2) * 2 + (1 - i % 2)
  var alley = turbo and players[mate].pos.distance_to(hoop_for(i / 2)) < 220
- flight = {"kind":"pass", "start":ball, "end":players[mate].pos, "time":0.0, "duration":0.38 if alley else 0.25, "target":mate, "alley":alley}
+ flight = {"kind":"pass", "start":ball, "end":players[mate].pos, "start_height":release_height, "time":0.0, "duration":0.38 if alley else 0.25, "target":mate, "alley":alley}
  owner = -1
  players[i].cooldown = 0.45
  announce("LOB IT UP!" if alley else "NICE PASS", "pass")
@@ -385,6 +405,7 @@ func steal(i: int, shove: bool) -> void:
   stats[i].steals += 1
   players[i].cooldown = 0.8
   players[victim].charge = 0.0
+  players[victim].fake = 0.0
   announce("SHOVED! NO FOULS!" if shove else "PICKED THEIR POCKET!", "steal")
 
 func tick_flight(delta: float) -> void:

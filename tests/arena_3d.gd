@@ -39,12 +39,12 @@ func run() -> void:
  check(arena.world.has_node("LeftBasket/GlassBackboard") and arena.world.has_node("RightBasket/PolePadding"),"backboards, supports, and padding are modeled")
  check(arena.crowd.multimesh.instance_count == 464,"crowd uses 464 instanced billboard spectators")
  check(arena.crowd.multimesh.mesh.material.shader.code.contains("TIME * 5.5"),"billboard atlas animation runs on the GPU")
- var framed = true
- for x in [-14,14]:
-  for z in [-7.5,7.5]:
-   var projected = arena.camera.unproject_position(Vector3(x,0,z))
-   framed = framed and Rect2(0,0,1280,600).has_point(projected)
- check(framed and arena.camera.position.z > arena.camera.position.y,"elevated sideline camera frames every court corner")
+ var camera_x: float = arena.camera.position.x
+ arena.present(state,[],Vector2(1100,465),[0],0.1,false)
+ check(arena.camera.position.x > camera_x and arena.camera.position.x < 7.5 and arena.camera.position.z > arena.camera.position.y,"sideline camera smoothly pans toward possession within court bounds")
+ var camera_before: Transform3D = arena.camera.transform
+ arena.present(state,[],Vector2(150,465),[0],0.1,true)
+ check(arena.camera.transform == camera_before,"pausing freezes the camera while retaining the sideline view")
  var display_positions: Array = []
  for i in range(4):
   display_positions.append(state.players[i].pos+Vector2(10,5))
@@ -61,6 +61,25 @@ func run() -> void:
  state.fire_player = 1
  arena.present(state,[],state.ball,[0],0.1,false)
  check(not arena.ball_fire[0].visible,"a burning teammate cannot ignite another shooter's ball")
+ state.flight = {}
+ state.players[0].charge = 0
+ state.players[0].jump = 0
+ state.players[0].fake = 0.19
+ before = state.snapshot()
+ arena.present(state,[],state.ball,[0],0.1,false)
+ check(arena.athletes[0].body.action == "shoot" and state.snapshot() == before,"head-fakes reuse generated shooting poses without changing the simulation")
+ state.players[2].pos = Vector2(1145,650)
+ arena.reset_camera()
+ arena.present(state,[],Vector2(140,465),[0],0.1,false)
+ var indicator: Dictionary = arena.player_indicator(2)
+ check(indicator.visible and indicator.direction.x > 0 and indicator.point.x == 1250,"off-screen athlete indicator points toward the missing player at the viewport edge")
+ state.phase = "finished"
+ arena.present(state,[],state.ball,[0],0.1,true)
+ var framed = true
+ for x in [-14,14]:
+  for z in [-7.5,7.5]:
+   framed = framed and Rect2(0,0,1280,600).has_point(arena.camera.unproject_position(Vector3(x,0,z)))
+ check(framed and arena.camera.position.x == 0,"results restore the complete court overview")
  print("3D ARENA TESTS: ","PASS" if failures == 0 else "FAIL")
  arena.queue_free()
  await process_frame

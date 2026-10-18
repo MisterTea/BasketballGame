@@ -15,6 +15,8 @@ var wood_material: StandardMaterial3D
 var last_teams: Array = []
 var time = 0.0
 var materials: Dictionary = {}
+var camera_initialized = false
+var camera_focus = 0.0
 
 func _ready() -> void:
  size = Vector2i(1280,600)
@@ -42,6 +44,32 @@ func _ready() -> void:
  camera.look_at(Vector3(0,0.9,0))
  camera.current = true
  camera.far = 120.0
+
+func reset_camera() -> void:
+ camera_initialized = false
+
+func update_camera(state: MatchState, ball: Vector2, delta: float, paused: bool) -> void:
+ if state.phase == "finished":
+  camera.position = Vector3(0,19,34)
+  camera.fov = 24.5
+  camera.look_at(Vector3(0,0.9,0))
+  camera_initialized = false
+  return
+ var target = clampf(court_point(ball).x*0.72,-7.5,7.5)
+ if not camera_initialized:
+  camera_focus = target
+  camera_initialized = true
+ elif not paused:
+  camera_focus = lerpf(camera_focus,target,1.0-exp(-delta*5.0))
+ camera.position = Vector3(camera_focus,13,23)
+ camera.fov = 26.0
+ camera.look_at(Vector3(camera_focus,1.4,0))
+
+func player_indicator(index: int) -> Dictionary:
+ var point = camera.unproject_position(athletes[index].root.position+Vector3(0,1.2,0))
+ var bounds = Rect2(30,40,1220,490)
+ var edge = point.clamp(bounds.position,bounds.end)
+ return {"visible":not bounds.has_point(point),"point":edge,"direction":(point-edge).normalized()}
 
 func court_point(point: Vector2, height: float = 0.0) -> Vector3:
  return Vector3((point.x-640.0)*COURT_SCALE.x,height,(point.y-470.0)*COURT_SCALE.y)
@@ -468,12 +496,15 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   elif p.charge > 0:
    next_action = "shoot"
    phase = 0.45*clampf(p.charge/0.58,0,1)
-  elif p.jump > 0:
-   next_action = "block"
-   phase = 1.0-clampf(p.jump/0.62,0,1)
+  elif p.get("fake",0.0) > 0:
+   next_action = "shoot"
+   phase = 0.42*sin((1.0-clampf(p.fake/0.38,0,1))*PI)
   elif not state.flight.is_empty() and state.flight.kind == "pass" and (int(state.flight.target)/2)*2+(1-int(state.flight.target)%2) == i:
    next_action = "pass"
    phase = clampf(state.flight.time/state.flight.duration,0,1)
+  elif p.jump > 0:
+   next_action = "block"
+   phase = 1.0-clampf(p.jump/0.62,0,1)
   elif p.cooldown > 0.2 and state.owner >= 0 and state.owner/2 != i/2:
    next_action = "steal"
    phase = 1.0-clampf(p.cooldown/0.65,0,1)
@@ -497,6 +528,7 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
  var ball_height = state.ball_height()
  basketball.position = court_point(ball,ball_height)
  basketball.rotation = Vector3(time*3.2,0,time*2.1)
+ update_camera(state,ball,delta,paused)
  var burning_shot = not state.flight.is_empty() and state.flight.kind == "shot" and state.is_player_on_fire(state.flight.shooter) and not state.flight.blocked
  for i in range(ball_fire.size()):
   var ember: MeshInstance3D = ball_fire[i]

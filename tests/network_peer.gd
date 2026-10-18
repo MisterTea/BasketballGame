@@ -9,6 +9,7 @@ var ready_sent = false
 var finished = false
 var started = false
 var broadcast_elapsed = 0.0
+var saw_fake = false
 
 func _initialize() -> void:
  call_deferred("setup")
@@ -24,13 +25,15 @@ func setup() -> void:
    for basket in range(3):
     state.record_natural_basket(0)
    state.stats[2].goaltends = 1
+   state.players[0].fake = 0.38
   started = true
   print("STARTED slot=",net.local_slot))
  net.state_received.connect(func(data):
   state.apply_snapshot(data)
+  saw_fake = saw_fake or state.players[0].get("fake",0.0) > 0
   count += 1
   if count >= 45 and not finished:
-   if state.players.size() == 4 and state.clock < 30 and state.teams == [3,5] and state.players[net.local_slot].pos.x < (420 if net.local_slot < 2 else 860)-30 and state.fire_player == 0 and state.player_streak == [3,0,0,0] and state.stats[2].goaltends == 1:
+   if state.players.size() == 4 and state.clock < 30 and state.teams == [3,5] and state.players[net.local_slot].pos.x < (420 if net.local_slot < 2 else 860)-30 and state.fire_player == 0 and state.player_streak == [3,0,0,0] and state.stats[2].goaltends == 1 and saw_fake:
     print("NETWORK CLIENT PASS slot=",net.local_slot," snapshots=",count)
     finished = true
     call_deferred("finish_client")

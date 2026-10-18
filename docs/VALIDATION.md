@@ -41,3 +41,12 @@ Run `tests/run.ps1 -Capture` to reproduce with a Godot executable. The render te
 - Added a flaming shot trail, with tests proving that only the actual burning shooter produces it and that rendering leaves authoritative state unchanged.
 - The three-minute default, individual fire, CPU teammate orders and goaltending replace earlier prototype rules. Earlier statements that the simulation was unchanged describe the previous graphics/animation commits only.
 - Original-game heat/goaltending edge cases remain provisional where evidence comes from Tournament Edition. Video playback remains unverified after browser origin access was denied. See [research evidence and fidelity limits](ARCADE_RESEARCH.md).
+
+## Camera and arcade actions addition — 2026-10-18
+
+- Final editor import and all 92 assertions pass: simulation 17, arcade rules 41, arena 21, HY-Motion 13. Both real-process networking scenarios pass. Latest GPU smoke capture passes with 1,704 changed crowd sample pixels.
+- Rule coverage now includes short-tap head-fakes, unchanged possession/heat/shot counts, normal shooting afterward, CPU orders shooting rather than faking, dunk-to-pass cancellation, preserved airborne release height, teammate receipt and blocked-dunk cancellation prevention.
+- Arena coverage now includes smooth bounded possession tracking, camera pause, edge arrow direction/placement, generated head-fake poses, airborne generated pass poses, and the results overview. Geometry, animation and simulation immutability checks remain.
+- Four-player loopback clients additionally observe fake pose state. A second real two-process test drives remote Shoot press/release, authoritative head-fake, dunk launch, reliable Pass event, elevated pass snapshot, teammate receipt and disconnect.
+- GPU captures of the closer court, named burning dunk, head-fake, actual airborne dish, results overview and expanded help page visually inspected. A dark plate keeps control hints readable over the court. Paused screenshot fixtures explicitly reset the camera when staging a new possession.
+- Camera framing/smoothing, 160 ms tap threshold and 85% dunk cancellation cutoff are authored values awaiting cabinet footage comparison. No new HY-Motion inference or skeleton changes were needed.

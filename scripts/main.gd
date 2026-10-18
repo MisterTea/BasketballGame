@@ -303,6 +303,7 @@ func begin_match(settings: Dictionary) -> void:
  last_event = -1
  controlled = [0,2]
  rendered_positions = []
+ arena.reset_camera()
  clear_ui()
 
 func show_options() -> void:
@@ -339,7 +340,7 @@ func show_help() -> void:
  label_at("GAMEPAD",675,176,22,GOLD)
  label_at("Left stick to move • A to shoot / block\nX to pass / steal • RB or RT for turbo\nLB to switch your active athlete",675,222,19,INK,510)
  label_at("MAKE THE HIGHLIGHT REEL",675,330,22,GOLD)
- label_at("Hold SHOOT, release near the gold timing mark.\nTurbo + shoot near the rim for a huge dunk.\nTurbo + pass to a teammate near the rim for an alley-oop.\nOn defense: shoot to block, pass to steal, turbo + pass to shove.\nCPU teammate has the ball? Pass calls for it; Shoot orders a shot.\nThree unanswered baskets by one athlete ignite FIRE.\nFire survives misses and permits goaltending.\nFour quarters. Ties go to overtime.\nESC: pause offline / leave menu online. M: mute.",675,378,16,INK,510)
+ label_at("Tap SHOOT to head-fake. Hold for a real shot.\nRelease near the gold timing mark.\nTurbo + shoot near the rim for a huge dunk.\nPress PASS during a dunk to dish to your teammate.\nTurbo + pass to a teammate near the rim for an alley-oop.\nOn defense: shoot to block, pass to steal, turbo + pass to shove.\nCPU teammate has the ball? Pass calls for it; Shoot orders a shot.\nThree unanswered baskets by one athlete ignite FIRE.\nFire survives misses and permits goaltending.\nFour quarters. Ties go to overtime.\nESC: pause offline / leave menu online. M: mute.",675,378,16,INK,510)
  label_at("Network players use player-one controls. Missing teammates are controlled by the CPU.",60,723,16,MUTED)
 
 func show_results() -> void:
@@ -548,6 +549,14 @@ func draw_arena() -> void:
  if is_instance_valid(arena):
   draw_texture_rect(arena.get_texture(),Rect2(0,133,1280,600),false)
   for i in range(game.players.size()):
+   var indicator: Dictionary = arena.player_indicator(i)
+   if screen == "game" and indicator.visible:
+    var edge: Vector2 = indicator.point+Vector2(0,133)
+    var direction: Vector2 = indicator.direction
+    var side = direction.orthogonal()
+    var color = Teams.color_for(game.teams[i/2])
+    draw_colored_polygon(PackedVector2Array([edge+direction*12,edge-direction*9+side*8,edge-direction*9-side*8]),color)
+    text_at("%d %s" % [i+1,Teams.DATA[game.teams[i/2]].players[i%2]],edge-direction*48+Vector2(0,5),12,color,true)
    var player: Dictionary = game.players[i]
    if player.charge <= 0:
     continue
@@ -584,7 +593,8 @@ func draw_hud() -> void:
   var offset = Vector2(sin(visual_time*60)*shake*18,0)
   draw_rect(Rect2(Vector2(280,155)+offset,Vector2(720,62)),Color(0.03,0.06,0.1,0.88))
   text_at(game.banner,Vector2(640,197)+offset,30,GOLD,true)
- text_at("J  SHOOT / BLOCK    K  PASS / STEAL    SPACE  TURBO    TAB  SWITCH    ESC  MENU",Vector2(640,714),13,MUTED,true)
+ draw_rect(Rect2(250,692,780,32),Color(0.03,0.06,0.1,0.88))
+ text_at("J  SHOOT / BLOCK    K  PASS / STEAL    SPACE  TURBO    TAB  SWITCH    ESC  MENU",Vector2(640,714),13,INK,true)
 
 func set_initials(value: String) -> void:
  initials = value.to_upper().strip_edges().left(12)
