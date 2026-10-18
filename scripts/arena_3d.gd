@@ -17,6 +17,7 @@ var time = 0.0
 var materials: Dictionary = {}
 var camera_initialized = false
 var camera_focus = 0.0
+var baskets: Array = []
 
 func _ready() -> void:
  size = Vector2i(1280,600)
@@ -64,6 +65,11 @@ func update_camera(state: MatchState, ball: Vector2, delta: float, paused: bool)
  camera.position = Vector3(camera_focus,13,23)
  camera.fov = 26.0
  camera.look_at(Vector3(camera_focus,1.4,0))
+ var latest = maxf(state.board_breaks[0],state.board_breaks[1])
+ if latest >= 0:
+  var age = state.elapsed-latest
+  var impact = maxf(0,1.0-age/0.65)*0.13
+  camera.position += Vector3(sin(age*73)*impact,cos(age*91)*impact,0)
 
 func player_indicator(index: int) -> Dictionary:
  var point = camera.unproject_position(athletes[index].root.position+Vector3(0,1.2,0))
@@ -279,10 +285,14 @@ func build_basket(side: int) -> void:
  for y in [2.95,4.13]:
   box(group,Vector3(0.1,0.05,1.99),Vector3(board_x,y,center.z),net_material)
  var target_x = board_x-side*0.06
+ var target_marks = Node3D.new()
+ target_marks.name = "TargetMarkings"
+ group.add_child(target_marks)
  for z in [-0.34,0.34]:
-  box(group,Vector3(0.026,0.51,0.035),Vector3(target_x,3.35,center.z+z),net_material)
+  box(target_marks,Vector3(0.026,0.51,0.035),Vector3(target_x,3.35,center.z+z),net_material)
  for y in [3.095,3.605]:
-  box(group,Vector3(0.026,0.035,0.715),Vector3(target_x,y,center.z),net_material)
+  box(target_marks,Vector3(0.026,0.035,0.715),Vector3(target_x,y,center.z),net_material)
+ build_glass_shards(group,Vector3(board_x,3.54,center.z),side,target_marks)
  rod(group,Vector3(board_x,3.05,center.z),center,0.045,orange)
  ring(group,0.43,0.035,center,orange,36).name = "OrangeRim"
  for layer in range(4):
@@ -298,6 +308,58 @@ func build_basket(side: int) -> void:
   var cross_mid = center+Vector3(cos(angle-0.15)*0.34,-0.31,sin(angle-0.15)*0.34)
   rod(group,top,cross_mid,0.009,net_material,4)
   rod(group,cross_mid,bottom,0.009,net_material,4)
+
+func build_glass_shards(group: Node3D, center: Vector3, side: int, target_marks: Node3D) -> void:
+ var pieces = Node3D.new()
+ pieces.name = "GlassShards"
+ group.add_child(pieces)
+ pieces.visible = false
+ var shard_mat = material(Color(0.55,0.85,1.0,0.82),0.15,true)
+ shard_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+ shard_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+ var random = RandomNumberGenerator.new()
+ random.seed = 1993+side
+ var shards: Array = []
+ # Triangles tile the original glass plane, then fly independently.
+ for row in range(5):
+  for column in range(7):
+   var y = -0.59+float(row)*1.18/5.0
+   var z = -0.97+float(column)*1.94/7.0
+   var corners = [Vector3(0,y,z),Vector3(0,y+1.18/5.0,z),Vector3(0,y+1.18/5.0,z+1.94/7.0),Vector3(0,y,z+1.94/7.0)]
+   for indices in [[0,1,2],[0,2,3]]:
+    var origin: Vector3 = (corners[indices[0]]+corners[indices[1]]+corners[indices[2]])/3.0
+    var arrays = []
+    arrays.resize(Mesh.ARRAY_MAX)
+    arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([corners[indices[0]]-origin,corners[indices[1]]-origin,corners[indices[2]]-origin])
+    arrays[Mesh.ARRAY_NORMAL] = PackedVector3Array([Vector3(side,0,0),Vector3(side,0,0),Vector3(side,0,0)])
+    var shape = ArrayMesh.new()
+    shape.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
+    var piece = mesh(pieces,shape,center+origin,shard_mat)
+    piece.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+    shards.append({"mesh":piece,"origin":center+origin,"velocity":Vector3(-side*random.randf_range(1.4,4.5),random.randf_range(1.0,4.0),origin.z*3.0+random.randf_range(-2.0,2.0)),"spin":Vector3(random.randf_range(-8,8),random.randf_range(-8,8),random.randf_range(-8,8))})
+ baskets.append({"glass":group.get_node("GlassBackboard"),"target":target_marks,"pieces":pieces,"shards":shards})
+
+func update_backboards(state: MatchState) -> void:
+ for side in range(2):
+  var basket: Dictionary = baskets[side]
+  var broken: bool = state.board_breaks[side] >= 0
+  basket.glass.visible = not broken
+  basket.target.visible = not broken
+  var age = maxf(0,state.elapsed-state.board_breaks[side])
+  basket.pieces.visible = broken and age < 6.0
+  if not basket.pieces.visible:
+   continue
+  var t = minf(age,1.8)
+  for shard in basket.shards:
+   var position: Vector3 = shard.origin+shard.velocity*t-Vector3(0,4*t*t,0)
+   var grounded = position.y <= 0.035
+   position.y = maxf(0.035,position.y)
+   shard.mesh.position = position
+   if grounded:
+    shard.mesh.basis = Basis(Vector3.UP,shard.spin.y*t)*Basis(Vector3.BACK,PI/2)
+   else:
+    shard.mesh.rotation = shard.spin*t
+   shard.mesh.transparency = clampf((age-4.0)/2.0,0,1)
 
 func build_stands() -> void:
  var riser = material(Color("192637"))
@@ -490,6 +552,9 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   if p.stun > 0:
    next_action = "stun"
    phase = 1.0-clampf(p.stun/0.85,0,1)
+  elif state.pending_inbound >= 0 and state.shatter_shooter == i:
+   next_action = "dunk"
+   phase = 1.0
   elif not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.shooter == i:
    next_action = "dunk" if state.flight.dunk else "shoot"
    phase = clampf(state.flight.time/state.flight.duration,0,1) if state.flight.dunk else 0.45+0.55*clampf(state.flight.time/state.flight.duration,0,1)
@@ -528,6 +593,7 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
  var ball_height = state.ball_height()
  basketball.position = court_point(ball,ball_height)
  basketball.rotation = Vector3(time*3.2,0,time*2.1)
+ update_backboards(state)
  update_camera(state,ball,delta,paused)
  var burning_shot = not state.flight.is_empty() and state.flight.kind == "shot" and state.is_player_on_fire(state.flight.shooter) and not state.flight.blocked
  for i in range(ball_fire.size()):

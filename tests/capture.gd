@@ -80,6 +80,12 @@ func run() -> void:
   await process_frame
  await RenderingServer.frame_post_draw
  root.get_texture().get_image().save_png("res://tests/big_heads_3d.png")
+ # Goaltending applies to a released jump shot, not a held dunk.
+ scene.game.owner = 0
+ scene.game.players[0].pos = Vector2(850,465)
+ scene.game.players[0].charge = 0.58
+ scene.game.ball = scene.game.players[0].pos
+ scene.game.shoot_ball(0,false)
  scene.game.flight.time = scene.game.flight.duration*0.92
  scene.game.players[2].pos = scene.game.flight_position()
  scene.game.defend(2,false)
@@ -117,6 +123,37 @@ func run() -> void:
   quit(1)
   return
  root.get_texture().get_image().save_png("res://tests/airborne_dish.png")
+ scene.game.start(0,1)
+ scene.game.quarter = 4
+ scene.game.freeze = 0
+ scene.game.owner = 2
+ scene.game.players[2].pos = Vector2(1020,465)
+ scene.game.players[2].charge = 0.58
+ scene.game.ball = scene.game.players[2].pos
+ scene.game.shoot_ball(2,true)
+ scene.game.flight.made = true
+ for frame in range(120):
+  if scene.game.flight.is_empty():
+   break
+  scene.game.tick(1.0/60.0,{0:{},1:{},2:{},3:{}})
+ scene.game.tick(0.30,{})
+ if scene.game.board_breaks[1] < 0 or scene.game.pending_inbound != 0 or not scene.sounds.has("shatter"):
+  push_error("Render fixture failed real shattering dunk")
+  quit(1)
+  return
+ scene.play_sound("shatter")
+ scene.arena.reset_camera()
+ for athlete in scene.arena.athletes:
+  athlete.body.first_pose = true
+ for frame in range(3):
+  await process_frame
+ await RenderingServer.frame_post_draw
+ root.get_texture().get_image().save_png("res://tests/backboard_shatter.png")
+ scene.game.tick(2.0,{})
+ for frame in range(3):
+  await process_frame
+ await RenderingServer.frame_post_draw
+ root.get_texture().get_image().save_png("res://tests/backboard_settled.png")
  scene.saved_result = true
  scene.game.score = [42,39]
  scene.game.phase = "finished"

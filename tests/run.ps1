@@ -7,6 +7,8 @@ if ($LASTEXITCODE -ne 0) { throw "Editor import failed" }
 if ($LASTEXITCODE -ne 0) { throw "Simulation tests failed" }
 & $Godot --headless --path $projectRoot --script res://tests/arcade_rules.gd
 if ($LASTEXITCODE -ne 0) { throw "Arcade rules tests failed" }
+& $Godot --headless --path $projectRoot --script res://tests/backboards.gd
+if ($LASTEXITCODE -ne 0) { throw "Backboard tests failed" }
 & $Godot --headless --path $projectRoot --script res://tests/arena_3d.gd
 if ($LASTEXITCODE -ne 0) { throw "3D arena tests failed" }
 & $Godot --headless --path $projectRoot --script res://tests/hy_motion.gd

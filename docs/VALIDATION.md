@@ -50,3 +50,12 @@ Run `tests/run.ps1 -Capture` to reproduce with a Godot executable. The render te
 - Four-player loopback clients additionally observe fake pose state. A second real two-process test drives remote Shoot press/release, authoritative head-fake, dunk launch, reliable Pass event, elevated pass snapshot, teammate receipt and disconnect.
 - GPU captures of the closer court, named burning dunk, head-fake, actual airborne dish, results overview and expanded help page visually inspected. A dark plate keeps control hints readable over the court. Paused screenshot fixtures explicitly reset the camera when staging a new possession.
 - Camera framing/smoothing, 160 ms tap threshold and 85% dunk cancellation cutoff are authored values awaiting cabinet footage comparison. No new HY-Motion inference or skeleton changes were needed.
+
+## Backboard spectacle and dunk defense — 2026-10-18
+
+- Editor import and all 122 assertions pass: simulation 17, arcade rules 43, backboards 28, arena 21, HY-Motion 13. Targeted backboard checks include early/missed/blocked/non-dunk exclusions, normal scoring, clock freeze, delayed inbound, buzzer handling, overtime, independent physical hoops and rematch reset.
+- Procedural glass uses 70 triangles per board. Tests compare all 70 reconstructed fragment transforms in a fresh replica view, confirm pause, flat floor contact, debris expiry, intact opposite glass, hidden target markings and presentation nonmutation.
+- Real two-process ENet test additionally executes a remote fourth-quarter dunk, verifies the correct physical board's timestamp and score, waits through the spectacle, and confirms opposing possession with persistent broken glass. Successful scoring is forced only in the test fixture; the client supplies the shot inputs.
+- Late cold-defender dunk rejection is now legal, including CPU decisions. Existing released-shot goaltending and fire-block tests continue to pass. The GPU goaltending scene was corrected to use a released jumper.
+- GPU shatter and settled-debris captures visually inspected, along with help layout. A dedicated synthesized crash sound is constructed and played by the capture; audio fidelity has not been compared to the cabinet.
+- Source evidence is the accessible 1993 Vance/Henderson arcade FAQ archive. The first-made-late-dunk trigger, one break per physical hoop, hold duration, debris behavior and persistent empty frame are authored prototype choices pending footage verification.

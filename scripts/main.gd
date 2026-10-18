@@ -340,7 +340,7 @@ func show_help() -> void:
  label_at("GAMEPAD",675,176,22,GOLD)
  label_at("Left stick to move • A to shoot / block\nX to pass / steal • RB or RT for turbo\nLB to switch your active athlete",675,222,19,INK,510)
  label_at("MAKE THE HIGHLIGHT REEL",675,330,22,GOLD)
- label_at("Tap SHOOT to head-fake. Hold for a real shot.\nRelease near the gold timing mark.\nTurbo + shoot near the rim for a huge dunk.\nPress PASS during a dunk to dish to your teammate.\nTurbo + pass to a teammate near the rim for an alley-oop.\nOn defense: shoot to block, pass to steal, turbo + pass to shove.\nCPU teammate has the ball? Pass calls for it; Shoot orders a shot.\nThree unanswered baskets by one athlete ignite FIRE.\nFire survives misses and permits goaltending.\nFour quarters. Ties go to overtime.\nESC: pause offline / leave menu online. M: mute.",675,378,16,INK,510)
+ label_at("Tap SHOOT to head-fake. Hold for a real shot.\nRelease near the gold timing mark.\nTurbo + shoot near the rim for a huge dunk.\nPress PASS during a dunk to dish to your teammate.\nTurbo + pass to a teammate near the rim for an alley-oop.\nOn defense: shoot to block, pass to steal, turbo + pass to shove.\nCPU teammate has the ball? Pass calls for it; Shoot orders a shot.\nThree unanswered baskets by one athlete ignite FIRE.\nFire survives misses and permits goaltending.\nMade dunks shatter each board once in Q4 / overtime.\nFour quarters. Ties go to overtime.\nESC: pause offline / leave menu online. M: mute.",675,378,16,INK,510)
  label_at("Network players use player-one controls. Missing teammates are controlled by the CPU.",60,723,16,MUTED)
 
 func show_results() -> void:
@@ -455,8 +455,8 @@ func _physics_process(delta: float) -> void:
    game.tick(delta,commands)
   if game.event_id != last_event:
    last_event = game.event_id
-   if game.event_kind == "score" or game.event_kind == "dunk":
-    shake = 0.18
+   if game.event_kind in ["score","dunk","shatter"]:
+    shake = 0.45 if game.event_kind == "shatter" else 0.18
    play_sound(game.event_kind)
   if game.phase == "finished":
    if net.hosting:
@@ -493,7 +493,9 @@ func save_profile() -> void:
  file.save("user://records.cfg")
 
 func make_sounds() -> void:
- for entry in [["shot",620,0.08],["pass",390,0.06],["score",880,0.25],["dunk",140,0.2],["steal",280,0.12],["block",120,0.18],["miss",190,0.1],["whistle",1100,0.30],["catch",440,0.05],["start",660,0.16]]:
+ var noise = RandomNumberGenerator.new()
+ noise.seed = 1993
+ for entry in [["shot",620,0.08],["pass",390,0.06],["score",880,0.25],["dunk",140,0.2],["steal",280,0.12],["block",120,0.18],["miss",190,0.1],["whistle",1100,0.30],["catch",440,0.05],["start",660,0.16],["shatter",85,0.7]]:
   var sample = AudioStreamWAV.new()
   sample.format = AudioStreamWAV.FORMAT_16_BITS
   sample.mix_rate = 22050
@@ -504,6 +506,8 @@ func make_sounds() -> void:
    var t = float(frame)/22050
    var envelope = pow(1.0-float(frame)/frames,2)
    var wave = sin(TAU*float(entry[1])*t*(1.0+t*0.8)) * envelope * 0.16
+   if entry[0] == "shatter":
+    wave = (noise.randf_range(-1,1)*0.30+sin(TAU*2960*t)*sin(TAU*130*t)*0.12)*exp(-t*6)+sin(TAU*85*t)*exp(-t*25)*0.18
    bytes.encode_s16(frame*2,int(wave*32767))
   sample.data = bytes
   sounds[entry[0]] = sample

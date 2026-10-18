@@ -31,6 +31,9 @@ var difficulty = 1
 var big_heads = false
 var infinite_turbo = false
 var period_length = QUARTER_SECONDS
+var board_breaks: Array = [-1.0,-1.0]
+var pending_inbound = -1
+var shatter_shooter = -1
 
 func start(a: int, b: int, seconds: float = QUARTER_SECONDS, level: int = 1) -> void:
  rng.randomize()
@@ -40,6 +43,9 @@ func start(a: int, b: int, seconds: float = QUARTER_SECONDS, level: int = 1) -> 
  player_streak = [0, 0, 0, 0]
  fire_player = -1
  teammate_shot_order = -1
+ board_breaks = [-1.0,-1.0]
+ pending_inbound = -1
+ shatter_shooter = -1
  stats = []
  players = []
  difficulty = level
@@ -105,7 +111,7 @@ func record_miss(shooter: int) -> void:
   player_streak[shooter] = 0
  refresh_heat_summary()
 
-func award_basket(shooter: int, points: int, dunk: bool, natural: bool = true) -> void:
+func award_basket(shooter: int, points: int, dunk: bool, natural: bool = true) -> bool:
  var team = shooter / 2
  score[team] += points
  stats[shooter].points += points
@@ -114,6 +120,13 @@ func award_basket(shooter: int, points: int, dunk: bool, natural: bool = true) -
   stats[shooter].dunks += 1
  if natural:
   record_natural_basket(shooter)
+  # Authored trigger: the first made specialty dunk per hoop in Q4/overtime.
+  if dunk and quarter >= 4:
+   var side = 0 if hoop_for(team).x < 640 else 1
+   if board_breaks[side] < 0:
+    board_breaks[side] = elapsed
+    return true
+ return false
 
 func flight_position() -> Vector2:
  if flight.is_empty():
@@ -121,6 +134,9 @@ func flight_position() -> Vector2:
  return flight.start.lerp(flight.end,clampf(flight.time/flight.duration,0,1))
 
 func ball_height() -> float:
+ if pending_inbound >= 0:
+  var age = maxf(0,elapsed-maxf(board_breaks[0],board_breaks[1]))
+  return maxf(0.24,3.05-4.0*age*age)
  if not flight.is_empty():
   var t = clampf(flight.time/flight.duration,0,1)
   if flight.kind == "shot":
@@ -152,6 +168,8 @@ func teammate_commands(commands: Dictionary) -> Dictionary:
  return effective
 
 func inbound(team: int) -> void:
+ pending_inbound = -1
+ shatter_shooter = -1
  teammate_shot_order = -1
  owner = team * 2
  flight = {}
@@ -175,7 +193,13 @@ func tick(delta: float, commands: Dictionary) -> void:
  elapsed += delta
  banner_time = maxf(0.0, banner_time - delta)
  if freeze > 0:
-  freeze -= delta
+  if pending_inbound >= 0:
+   for p in players:
+    p.jump = maxf(0,p.jump-delta)
+  freeze = maxf(0,freeze-delta)
+  return
+ if pending_inbound >= 0:
+  inbound(pending_inbound)
   return
  # A released shot is allowed to finish after either buzzer.
  clock = maxf(0.0, clock - delta)
@@ -295,7 +319,7 @@ func ai(i: int) -> Dictionary:
    var t = clampf(flight.time/flight.duration,0,1)
    var arc = 1.7 if flight.dunk else 4.6
    var descending = 1.75+PI*arc*cos(t*PI) < 0
-   shoot = not flight.blocked and p.cooldown <= 0 and p.pos.distance_to(target) < 72 and ball_height() <= 4.6 and (not descending or is_player_on_fire(i))
+   shoot = not flight.blocked and p.cooldown <= 0 and p.pos.distance_to(target) < 72 and ball_height() <= 4.6 and (not descending or flight.dunk or is_player_on_fire(i))
   else:
    target = hoop_for(team)
  elif owner >= 0 and owner / 2 == team:
@@ -368,12 +392,12 @@ func defend(i: int, turbo: bool) -> void:
   var descending = 1.75+PI*arc*cos(t*PI) < 0
   var at_rim = contact.distance_to(flight.end) < 115
   if descending and at_rim and reach < 78 and ball_height() <= 4.6:
-   if is_player_on_fire(i):
+   if flight.dunk or is_player_on_fire(i):
     flight.made = false
     flight.blocked = true
     stats[i].blocks += 1
     record_miss(shooter)
-    announce("FIRE BLOCK! NO GOALTENDING!", "block")
+    announce("DENIED AT THE RIM!" if flight.dunk else "FIRE BLOCK! NO GOALTENDING!", "block")
    else:
     var points: int = flight.points
     stats[i].goaltends += 1
@@ -428,11 +452,21 @@ func tick_flight(delta: float) -> void:
  var team = shooter / 2
  if flight.made and not flight.blocked:
   var was_on_fire = is_player_on_fire(shooter)
-  award_basket(shooter,flight.points,flight.dunk)
+  var shattered = award_basket(shooter,flight.points,flight.dunk)
   var name_text: String = Teams.DATA[teams[team]].players[shooter%2]
   var message = "HE'S ON FIRE! " + name_text if is_player_on_fire(shooter) and not was_on_fire else ("HE'S HEATING UP! " + name_text if player_streak[shooter] == 2 else "BOOMSHAKA!" if flight.dunk else "THREE POINTER!" if flight.points == 3 else "NOTHING BUT NET!")
-  announce(message,"score")
-  inbound(1-team)
+  if shattered:
+   announce("BOOM! BACKBOARD SHATTERED!","shatter")
+   flight = {}
+   owner = -1
+   ball = hoop_for(team)
+   shot_clock = 24.0
+   pending_inbound = 1-team
+   shatter_shooter = shooter
+   freeze = 1.65
+  else:
+   announce(message,"score")
+   inbound(1-team)
  else:
   record_miss(shooter)
   ball = (flight.end + Vector2(rng.randf_range(-135,135), rng.randf_range(-100,100))).clamp(COURT.position + Vector2(30,30), COURT.end - Vector2(30,30))
@@ -457,7 +491,7 @@ func next_period() -> void:
  inbound(quarter % 2)
 
 func snapshot() -> Dictionary:
- return {"players":players.duplicate(true), "teams":teams.duplicate(), "score":score.duplicate(), "streak":streak.duplicate(), "player_streak":player_streak.duplicate(), "fire_player":fire_player, "teammate_shot_order":teammate_shot_order, "stats":stats.duplicate(true), "ball":ball, "owner":owner, "flight":flight.duplicate(true), "clock":clock, "shot_clock":shot_clock, "quarter":quarter, "overtime":overtime, "phase":phase, "freeze":freeze, "banner":banner, "banner_time":banner_time, "event_id":event_id, "event_kind":event_kind, "elapsed":elapsed, "big_heads":big_heads, "infinite_turbo":infinite_turbo}
+ return {"board_breaks":board_breaks.duplicate(), "pending_inbound":pending_inbound, "shatter_shooter":shatter_shooter, "players":players.duplicate(true), "teams":teams.duplicate(), "score":score.duplicate(), "streak":streak.duplicate(), "player_streak":player_streak.duplicate(), "fire_player":fire_player, "teammate_shot_order":teammate_shot_order, "stats":stats.duplicate(true), "ball":ball, "owner":owner, "flight":flight.duplicate(true), "clock":clock, "shot_clock":shot_clock, "quarter":quarter, "overtime":overtime, "phase":phase, "freeze":freeze, "banner":banner, "banner_time":banner_time, "event_id":event_id, "event_kind":event_kind, "elapsed":elapsed, "big_heads":big_heads, "infinite_turbo":infinite_turbo}
 
 func apply_snapshot(data: Dictionary) -> void:
  for key in data:
