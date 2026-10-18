@@ -84,6 +84,7 @@ func run() -> void:
  check(rig.skeleton.get_bone_pose_rotation(20).is_equal_approx(expected_release),"gameplay release maps to the generated peak wrist pose")
  var state = MatchState.new()
  state.start(0,1)
+ state.inbound(0)
  state.players[0].vel = Vector2.RIGHT*180
  var before = state.snapshot()
  arena.present(state,[],state.ball,[0],0.1,false)

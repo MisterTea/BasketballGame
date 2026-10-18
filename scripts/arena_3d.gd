@@ -542,6 +542,12 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   var point: Vector2 = positions[i] if positions.size() == 4 else p.pos
   actor.root.position = court_point(point)
   var jump = sin(clampf(p.jump/0.85,0,1)*PI)*2.65
+  var tip_jump = -1.0
+  if not state.tipoff.is_empty() and i%2 == 0 and state.tipoff.jumps[i/2] >= 0:
+   var age: float = state.elapsed-state.tipoff.started_at-state.tipoff.jumps[i/2]
+   if age >= 0 and age < 0.62:
+    tip_jump = age/0.62
+    jump = sin(tip_jump*PI)*1.6
   actor.body.position.y = maxf(0,jump)
   var running = clampf(p.vel.length()/230.0,0,1)
   var target_angle = atan2(p.vel.x,p.vel.y) if p.vel.length() > 8 else (PI/2 if p.face > 0 else -PI/2)
@@ -552,6 +558,9 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   if p.stun > 0:
    next_action = "stun"
    phase = 1.0-clampf(p.stun/0.85,0,1)
+  elif tip_jump >= 0:
+   next_action = "block"
+   phase = tip_jump
   elif state.pending_inbound >= 0 and state.shatter_shooter == i:
    next_action = "dunk"
    phase = 1.0
@@ -564,7 +573,7 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   elif p.get("fake",0.0) > 0:
    next_action = "shoot"
    phase = 0.42*sin((1.0-clampf(p.fake/0.38,0,1))*PI)
-  elif not state.flight.is_empty() and state.flight.kind == "pass" and (int(state.flight.target)/2)*2+(1-int(state.flight.target)%2) == i:
+  elif not state.flight.is_empty() and state.flight.kind == "pass" and not state.flight.get("tip",false) and (int(state.flight.target)/2)*2+(1-int(state.flight.target)%2) == i:
    next_action = "pass"
    phase = clampf(state.flight.time/state.flight.duration,0,1)
   elif p.jump > 0:
@@ -582,6 +591,9 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   actor.control.text = ("P1" if i < 2 else "P2") if controlled_slots.has(i) else ""
   actor.control.position.y = 2.72+jump
   actor.label.position.y = 2.35+jump
+  var label_offset = (-0.7 if i == 0 else 0.7 if i == 2 else 0.0) if state.tipoff.get("active",false) else 0.0
+  actor.label.position.x = label_offset
+  actor.control.position.x = label_offset
   if p.stun > 0:
    actor.control.text = "★ ★ ★"
   for flame in range(5):

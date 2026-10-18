@@ -12,6 +12,7 @@ func _initialize() -> void:
  var state = MatchState.new()
  state.start(0,1,2.0)
  check(state.players.size() == 4 and state.score == [0,0],"fresh two-on-two match")
+ state.inbound(0) # Isolate ordinary basketball; full CPU match below includes tip-off.
  state.freeze = 0
  state.players[0].pos = Vector2(500,450)
  state.tick(0.1,{0:{"move":Vector2.RIGHT,"turbo":true}})
@@ -82,6 +83,8 @@ func _initialize() -> void:
   state.tick(1.0/60.0,{})
   frames += 1
  check(state.phase == "finished" and state.quarter == 4,"CPU match reaches a final buzzer")
+ if state.phase != "finished":
+  print("CPU DIAGNOSTIC: overtime=",state.overtime," stats=",state.stats)
  check(state.score[0]+state.score[1] > 0,"CPU players generate scoring gameplay")
  print("SIMULATION TESTS: ","PASS" if failures == 0 else "FAIL", " • final ",state.score," • frames ",frames)
  quit(0 if failures == 0 else 1)

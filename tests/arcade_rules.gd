@@ -16,6 +16,7 @@ func neutral() -> Dictionary:
 func fresh() -> MatchState:
  var state = MatchState.new()
  state.start(0,1)
+ state.inbound(0) # Ordinary-play fixture; tip-off has its own full-flow suite.
  state.rng.seed = 1993
  state.freeze = 0
  return state
@@ -26,7 +27,8 @@ func shot(state: MatchState, shooter: int, late: bool) -> void:
  state.players[shooter].charge = 0.58
  state.ball = state.players[shooter].pos
  state.shoot_ball(shooter,false)
- state.flight.time = state.flight.duration*(0.92 if late else 0.10)
+ state.flight.time = state.flight.duration*(0.92 if late else 0.18)
+ state.flight.cpu_block_allowed = [true,true,true,true] # Guaranteed defensive opportunity fixture.
  state.ball = state.flight_position()
 
 func _initialize() -> void:
@@ -77,6 +79,18 @@ func _initialize() -> void:
  shot(s,0,false)
  s.players[2].pos = s.flight_position()
  check(s.ai(2).shoot,"CPU defenders recognize reachable ascending shots without a ball owner")
+ var reaction_time: float = s.flight.time
+ s.flight.time = 0.02
+ s.players[2].pos = s.flight_position()
+ check(not s.ai(2).shoot,"CPU defenders cannot block immediately on shot release")
+ s.flight.time = reaction_time
+ s.players[2].pos = s.flight_position()
+ s.flight.cpu_block_allowed[2] = false
+ var declined = true
+ for attempt in range(12):
+  declined = declined and not s.ai(2).shoot
+ check(declined,"a declined CPU block decision is not rerolled every frame")
+ s.flight.cpu_block_allowed[2] = true
  s.tick(1.0/60.0,{0:neutral(),1:neutral(),3:neutral()})
  check(s.flight.blocked and s.stats[2].blocks == 1,"CPU shot-blocking commands execute through the normal simulation")
  s = fresh()
@@ -200,6 +214,7 @@ func _initialize() -> void:
  s.flight.time = s.flight.duration*0.92
  s.ball = s.flight_position()
  s.players[2].pos = s.ball
+ s.flight.cpu_block_allowed = [true,true,true,true]
  check(s.ai(2).shoot,"a cold CPU defender may challenge a descending dunk held by its shooter")
  s.defend(2,false)
  check(s.flight.blocked and s.stats[2].blocks == 1 and s.stats[2].goaltends == 0 and s.score == [0,0],"late dunk contact is a legal rejection rather than jump-shot goaltending")

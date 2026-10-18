@@ -17,6 +17,7 @@ func run() -> void:
  root.add_child(arena)
  var state = MatchState.new()
  state.start(0,1)
+ state.inbound(0)
  state.players[0].jump = 0.4
  state.players[1].vel = Vector2(180,0)
  state.player_streak[0] = 3

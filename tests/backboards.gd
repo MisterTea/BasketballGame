@@ -14,6 +14,7 @@ func check(value: bool, message: String) -> void:
 func fresh(period: int = 4) -> MatchState:
  var s = MatchState.new()
  s.start(0,1)
+ s.inbound(0) # Stage ordinary play before testing scored dunks.
  s.quarter = period
  s.elapsed = 10
  s.freeze = 0

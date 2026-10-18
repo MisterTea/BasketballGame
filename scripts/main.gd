@@ -340,7 +340,7 @@ func show_help() -> void:
  label_at("GAMEPAD",675,176,22,GOLD)
  label_at("Left stick to move • A to shoot / block\nX to pass / steal • RB or RT for turbo\nLB to switch your active athlete",675,222,19,INK,510)
  label_at("MAKE THE HIGHLIGHT REEL",675,330,22,GOLD)
- label_at("Tap SHOOT to head-fake. Hold for a real shot.\nRelease near the gold timing mark.\nTurbo + shoot near the rim for a huge dunk.\nPress PASS during a dunk to dish to your teammate.\nTurbo + pass to a teammate near the rim for an alley-oop.\nOn defense: shoot to block, pass to steal, turbo + pass to shove.\nCPU teammate has the ball? Pass calls for it; Shoot orders a shot.\nThree unanswered baskets by one athlete ignite FIRE.\nFire survives misses and permits goaltending.\nMade dunks shatter each board once in Q4 / overtime.\nFour quarters. Ties go to overtime.\nESC: pause offline / leave menu online. M: mute.",675,378,16,INK,510)
+ label_at("Tap SHOOT to head-fake. Hold for a real shot.\nRelease near the gold timing mark.\nTurbo + shoot near the rim for a huge dunk.\nPress PASS during a dunk to dish to your teammate.\nTurbo + pass to a teammate near the rim for an alley-oop.\nOn defense: shoot to block, pass to steal, turbo + pass to shove.\nCPU teammate has the ball? Pass calls for it; Shoot orders a shot.\nThree unanswered baskets by one athlete ignite FIRE.\nFire survives misses and permits goaltending.\nMade dunks shatter each board once in Q4 / overtime.\nTip-off: tap SHOOT as the tossed ball rises.\nESC: pause offline / leave menu online. M: mute.",675,378,16,INK,510)
  label_at("Network players use player-one controls. Missing teammates are controlled by the CPU.",60,723,16,MUTED)
 
 func show_results() -> void:
@@ -429,7 +429,7 @@ func read_command(index: int) -> Dictionary:
   if stick.length() > 0.18:
    move = stick.limit_length()
   turbo = turbo or Input.get_joy_axis(index,JOY_AXIS_TRIGGER_RIGHT) > 0.3
- return {"move":move,"shoot":Input.is_action_pressed(prefix+"shoot"),"pass":Input.is_action_just_pressed(prefix+"pass"),"turbo":turbo}
+ return {"move":move,"shoot":Input.is_action_pressed(prefix+"shoot"),"tip_jump":game.tipoff.get("active",false) and Input.is_action_just_pressed(prefix+"shoot"),"pass":Input.is_action_just_pressed(prefix+"pass"),"turbo":turbo}
 
 func _physics_process(delta: float) -> void:
  visual_time += delta
@@ -588,6 +588,14 @@ func draw_hud() -> void:
  var remaining = int(ceil(game.clock))
  text_at("%d:%02d" % [remaining/60,remaining%60],Vector2(640,83),44,INK,true)
  text_at("SHOT  %02d" % int(ceil(game.shot_clock)),Vector2(640,114),17,Color("ff7554") if game.shot_clock < 5 else GOLD,true)
+ if game.tipoff.get("active",false):
+  draw_rect(Rect2(445,225,390,58),Color(0.03,0.06,0.1,0.88))
+  text_at("SHOOT TO JUMP AS THE BALL RISES",Vector2(640,246),15,INK,true)
+  draw_rect(Rect2(470,260,340,7),Color("334255"))
+  var progress = clampf((game.tipoff.time-MatchState.TIP_TOSS)/(MatchState.TIP_DECISION-MatchState.TIP_TOSS),0,1)
+  draw_rect(Rect2(470,260,340*progress,7),GOLD)
+  var mark = 470+340*(MatchState.TIP_IDEAL_JUMP-MatchState.TIP_TOSS)/(MatchState.TIP_DECISION-MatchState.TIP_TOSS)
+  draw_line(Vector2(mark,256),Vector2(mark,271),INK,3)
  for i in range(4):
   var x = 70+i*307
   text_at("%s  ·  %s" % [Teams.DATA[game.teams[i/2]].players[i%2],"ON FIRE!" if game.is_player_on_fire(i) else "HEATING UP" if game.player_streak[i] == 2 else "TURBO"],Vector2(x,776),12,GOLD if game.player_streak[i] >= 2 else MUTED)

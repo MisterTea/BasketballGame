@@ -4,6 +4,9 @@ extends RefCounted
 const COURT = Rect2(115, 265, 1050, 410)
 const HOOPS = [Vector2(165, 465), Vector2(1115, 465)]
 const QUARTER_SECONDS = 180.0
+const TIP_TOSS = 1.0
+const TIP_IDEAL_JUMP = 1.42
+const TIP_DECISION = 2.05
 var rng = RandomNumberGenerator.new()
 var players: Array = []
 var teams: Array = [0, 1]
@@ -34,6 +37,7 @@ var period_length = QUARTER_SECONDS
 var board_breaks: Array = [-1.0,-1.0]
 var pending_inbound = -1
 var shatter_shooter = -1
+var tipoff: Dictionary = {}
 
 func start(a: int, b: int, seconds: float = QUARTER_SECONDS, level: int = 1) -> void:
  rng.randomize()
@@ -62,9 +66,59 @@ func start(a: int, b: int, seconds: float = QUARTER_SECONDS, level: int = 1) -> 
   var t = i / 2
   players.append({"pos":Vector2(420 if t == 0 else 860, 400 + (i % 2) * 140), "vel":Vector2.ZERO, "turbo":1.0, "jump":0.0, "stun":0.0, "cooldown":0.0, "charge":0.0, "fake":0.0, "shoot_held":false, "face":1 if t == 0 else -1})
   stats.append({"points":0, "attempts":0, "made":0, "dunks":0, "steals":0, "blocks":0, "rebounds":0, "goaltends":0})
- owner = 0
- ball = players[0].pos
- announce("TIP OFF!", "start")
+ begin_tipoff()
+
+func begin_tipoff() -> void:
+ owner = -1
+ freeze = 0
+ ball = Vector2(640,465)
+ players[0].pos = Vector2(610,465)
+ players[2].pos = Vector2(670,465)
+ players[1].pos = Vector2(490,565)
+ players[3].pos = Vector2(790,365)
+ var spread = 0.25-0.05*clampi(difficulty,0,2)
+ tipoff = {"active":true,"time":0.0,"started_at":elapsed,"jumps":[-1.0,-1.0],"held":[false,false],"cpu_at":[TIP_IDEAL_JUMP+rng.randf_range(-spread,spread),TIP_IDEAL_JUMP+rng.randf_range(-spread,spread)],"winner":-1}
+ announce("CENTER COURT — SHOOT TO JUMP", "start")
+
+func tick_tipoff(delta: float, commands: Dictionary) -> void:
+ var previous: float = tipoff.time
+ tipoff.time = minf(TIP_DECISION,tipoff.time+delta)
+ for i in range(4):
+  players[i].vel = Vector2.ZERO
+  players[i].charge = 0.0
+  players[i].jump = maxf(0,players[i].jump-delta)
+  players[i].shoot_held = commands.get(i,{}).get("shoot",false)
+ for team in range(2):
+  var jumper = team*2
+  var controller = jumper if commands.has(jumper) else jumper+1
+  var human = commands.has(controller)
+  var shoot: bool = commands.get(controller,{}).get("shoot",false)
+  var pressed: bool = (shoot and not tipoff.held[team]) or commands.get(controller,{}).get("tip_jump",false)
+  tipoff.held[team] = shoot
+  if tipoff.jumps[team] >= 0:
+   continue
+  var jump_at = -1.0
+  if human and pressed and tipoff.time >= TIP_TOSS and tipoff.time <= TIP_DECISION:
+   jump_at = tipoff.time
+  elif not human and tipoff.time >= tipoff.cpu_at[team]:
+   jump_at = tipoff.cpu_at[team]
+  if jump_at >= 0:
+   tipoff.jumps[team] = jump_at
+   players[jumper].jump = 0.62
+ if previous < TIP_TOSS and tipoff.time >= TIP_TOSS:
+  announce("BALL UP! SHOOT TO JUMP", "whistle")
+ if tipoff.time < TIP_DECISION:
+  return
+ var errors: Array = []
+ for team in range(2):
+  errors.append(absf(tipoff.jumps[team]-TIP_IDEAL_JUMP) if tipoff.jumps[team] >= 0 else 100.0)
+ var winner = rng.randi_range(0,1) if is_equal_approx(errors[0],errors[1]) else (0 if errors[0] < errors[1] else 1)
+ var height = ball_height()
+ tipoff.active = false
+ tipoff.winner = winner
+ var receiver = winner*2+1
+ flight = {"kind":"pass","start":ball,"end":players[receiver].pos,"start_height":height,"time":0.0,"duration":0.35,"target":receiver,"alley":false,"tip":true}
+ announce("%s WINS THE TIP!" % Teams.DATA[teams[winner]].name,"catch")
 
 func announce(message: String, kind: String = "action") -> void:
  banner = message
@@ -134,6 +188,9 @@ func flight_position() -> Vector2:
  return flight.start.lerp(flight.end,clampf(flight.time/flight.duration,0,1))
 
 func ball_height() -> float:
+ if tipoff.get("active",false):
+  var t = maxf(0,tipoff.time-TIP_TOSS)
+  return 1.2+7.5*t-5.5*t*t
  if pending_inbound >= 0:
   var age = maxf(0,elapsed-maxf(board_breaks[0],board_breaks[1]))
   return maxf(0.24,3.05-4.0*age*age)
@@ -168,6 +225,8 @@ func teammate_commands(commands: Dictionary) -> Dictionary:
  return effective
 
 func inbound(team: int) -> void:
+ if not tipoff.is_empty():
+  tipoff.active = false
  pending_inbound = -1
  shatter_shooter = -1
  teammate_shot_order = -1
@@ -192,6 +251,9 @@ func tick(delta: float, commands: Dictionary) -> void:
   return
  elapsed += delta
  banner_time = maxf(0.0, banner_time - delta)
+ if tipoff.get("active",false):
+  tick_tipoff(delta,commands)
+  return
  if freeze > 0:
   if pending_inbound >= 0:
    for p in players:
@@ -319,7 +381,8 @@ func ai(i: int) -> Dictionary:
    var t = clampf(flight.time/flight.duration,0,1)
    var arc = 1.7 if flight.dunk else 4.6
    var descending = 1.75+PI*arc*cos(t*PI) < 0
-   shoot = not flight.blocked and p.cooldown <= 0 and p.pos.distance_to(target) < 72 and ball_height() <= 4.6 and (not descending or flight.dunk or is_player_on_fire(i))
+   var reacts: bool = flight.time >= 0.18-0.04*clampi(difficulty,0,2) and flight.get("cpu_block_allowed",[true,true,true,true])[i]
+   shoot = reacts and not flight.blocked and p.cooldown <= 0 and p.pos.distance_to(target) < 72 and ball_height() <= 4.6 and (not descending or flight.dunk or is_player_on_fire(i))
   else:
    target = hoop_for(team)
  elif owner >= 0 and owner / 2 == team:
@@ -363,6 +426,10 @@ func shoot_ball(i: int, turbo: bool) -> void:
   p.jump = 0.50
  stats[i].attempts += 1
  flight = {"kind":"shot", "start":ball, "end":hoop, "time":0.0, "duration":0.75 if dunk else 1.05, "shooter":i, "points":points, "made":rng.randf() < clampf(chance, 0.05, 0.99), "dunk":dunk, "blocked":false}
+ # One decision per defender per shot prevents perfect frame-by-frame reactions.
+ flight.cpu_block_allowed = []
+ for defender in range(4):
+  flight.cpu_block_allowed.append(rng.randf() < 0.15+0.10*clampi(difficulty,0,2))
  owner = -1
  p.cooldown = 0.65
  announce("BOOMSHAKA!" if dunk else ("PERFECT RELEASE!" if timing > 0.94 else "FROM DOWNTOWN!" if points == 3 else "UP IT GOES"), "dunk" if dunk else "shot")
@@ -491,7 +558,7 @@ func next_period() -> void:
  inbound(quarter % 2)
 
 func snapshot() -> Dictionary:
- return {"board_breaks":board_breaks.duplicate(), "pending_inbound":pending_inbound, "shatter_shooter":shatter_shooter, "players":players.duplicate(true), "teams":teams.duplicate(), "score":score.duplicate(), "streak":streak.duplicate(), "player_streak":player_streak.duplicate(), "fire_player":fire_player, "teammate_shot_order":teammate_shot_order, "stats":stats.duplicate(true), "ball":ball, "owner":owner, "flight":flight.duplicate(true), "clock":clock, "shot_clock":shot_clock, "quarter":quarter, "overtime":overtime, "phase":phase, "freeze":freeze, "banner":banner, "banner_time":banner_time, "event_id":event_id, "event_kind":event_kind, "elapsed":elapsed, "big_heads":big_heads, "infinite_turbo":infinite_turbo}
+ return {"tipoff":tipoff.duplicate(true), "board_breaks":board_breaks.duplicate(), "pending_inbound":pending_inbound, "shatter_shooter":shatter_shooter, "players":players.duplicate(true), "teams":teams.duplicate(), "score":score.duplicate(), "streak":streak.duplicate(), "player_streak":player_streak.duplicate(), "fire_player":fire_player, "teammate_shot_order":teammate_shot_order, "stats":stats.duplicate(true), "ball":ball, "owner":owner, "flight":flight.duplicate(true), "clock":clock, "shot_clock":shot_clock, "quarter":quarter, "overtime":overtime, "phase":phase, "freeze":freeze, "banner":banner, "banner_time":banner_time, "event_id":event_id, "event_kind":event_kind, "elapsed":elapsed, "big_heads":big_heads, "infinite_turbo":infinite_turbo}
 
 func apply_snapshot(data: Dictionary) -> void:
  for key in data:

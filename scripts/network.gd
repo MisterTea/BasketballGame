@@ -12,6 +12,7 @@ var active_match = false
 var members: Dictionary = {}
 var inputs: Dictionary = {}
 var pending_pass: Dictionary = {}
+var pending_tip_jump: Dictionary = {}
 var selections: Array = [0, 1]
 var local_slot = 0
 var local_name = "ACE"
@@ -64,6 +65,7 @@ func leave() -> void:
  members = {}
  inputs = {}
  pending_pass = {}
+ pending_tip_jump = {}
  local_slot = 0
 
 func _peer_connected(id: int) -> void:
@@ -74,6 +76,8 @@ func _peer_left(id: int) -> void:
  if not hosting:
   return
  if members.has(id):
+  pending_pass.erase(members[id].slot)
+  pending_tip_jump.erase(members[id].slot)
   inputs.erase(members[id].slot)
   members.erase(id)
   get_tree().create_timer(0.1).timeout.connect(publish_lobby)
@@ -162,6 +166,9 @@ func start_game(settings: Dictionary) -> void:
  options = settings.duplicate(true)
  options.teams = selections.duplicate()
  active_match = true
+ inputs = {}
+ pending_pass = {}
+ pending_tip_jump = {}
  begin.rpc(options)
  game_started.emit(options)
 
@@ -169,6 +176,9 @@ func start_game(settings: Dictionary) -> void:
 func begin(settings: Dictionary) -> void:
  options = settings
  active_match = true
+ inputs = {}
+ pending_pass = {}
+ pending_tip_jump = {}
  game_started.emit(settings)
 
 func send_command(command: Dictionary) -> void:
@@ -178,6 +188,8 @@ func send_command(command: Dictionary) -> void:
   submit_input.rpc_id(1, command.get("move", Vector2.ZERO), command.get("shoot", false), false, command.get("turbo", false))
   if command.get("pass", false):
    submit_pass.rpc_id(1)
+  if command.get("tip_jump",false):
+   submit_tip_jump.rpc_id(1)
 
 @rpc("any_peer", "call_remote", "unreliable_ordered", 0)
 func submit_input(move: Vector2, shoot: bool, pass_button: bool, turbo: bool) -> void:
@@ -200,6 +212,9 @@ func commands() -> Dictionary:
   if pending_pass.has(slot):
    result[slot]["pass"] = true
    pending_pass.erase(slot)
+  if pending_tip_jump.has(slot):
+   result[slot].tip_jump = true
+   pending_tip_jump.erase(slot)
  return result
 
 func broadcast(data: Dictionary) -> void:
@@ -221,5 +236,11 @@ func submit_pass() -> void:
  var id = multiplayer.get_remote_sender_id()
  if hosting and active_match and members.has(id):
   pending_pass[members[id].slot] = true
+
+@rpc("any_peer", "call_remote", "reliable", 0)
+func submit_tip_jump() -> void:
+ var id = multiplayer.get_remote_sender_id()
+ if hosting and active_match and members.has(id):
+  pending_tip_jump[members[id].slot] = true
 
 

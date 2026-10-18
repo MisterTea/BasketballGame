@@ -29,6 +29,7 @@ func setup() -> void:
  hosting = OS.get_cmdline_user_args().has("--host")
  net.game_started.connect(func(_options):
   state.start(0,1,30)
+  state.inbound(1) # This scenario stages post-tip-off offensive actions.
   state.freeze = 0
   state.owner = 2
   state.players[2].pos = Vector2(275,465)

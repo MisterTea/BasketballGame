@@ -25,7 +25,36 @@ func run() -> void:
  root.get_texture().get_image().save_png("res://tests/lobby.png")
  scene.net.leave()
  scene.begin_match({"teams":[0,1],"seconds":120.0,"level":1})
+ scene.paused = true
+ for frame in range(3):
+  await process_frame
+ await RenderingServer.frame_post_draw
+ root.get_texture().get_image().save_png("res://tests/tipoff_ready.png")
+ for frame in range(98):
+  var t: float = scene.game.tipoff.time
+  scene.game.tick(1.0/60.0,{0:{"shoot":t >= 1.28 and t < 1.35},1:{},2:{"shoot":t >= 1.40 and t < 1.48},3:{}})
+ for athlete in scene.arena.athletes:
+  athlete.body.first_pose = true
+ for frame in range(3):
+  await process_frame
+ await RenderingServer.frame_post_draw
+ root.get_texture().get_image().save_png("res://tests/tipoff_jump.png")
+ while scene.game.tipoff.active:
+  scene.game.tick(1.0/60.0,{0:{},1:{},2:{},3:{}})
+ scene.game.tick(0.4,{0:{},1:{},2:{},3:{}})
+ if scene.game.tipoff.winner != 1 or scene.game.owner != 3:
+  push_error("Rendered tip-off did not award the better jump to the away partner")
+  quit(1)
+  return
+ for athlete in scene.arena.athletes:
+  athlete.body.first_pose = true
+ for frame in range(3):
+  await process_frame
+ await RenderingServer.frame_post_draw
+ root.get_texture().get_image().save_png("res://tests/tipoff_result.png")
+ scene.game.inbound(0) # Ordinary-play fixtures follow the separately captured opener.
  scene.game.freeze = 0
+ scene.paused = false
  for frame in range(90):
   await process_frame
  await RenderingServer.frame_post_draw
@@ -124,6 +153,7 @@ func run() -> void:
   return
  root.get_texture().get_image().save_png("res://tests/airborne_dish.png")
  scene.game.start(0,1)
+ scene.game.inbound(0)
  scene.game.quarter = 4
  scene.game.freeze = 0
  scene.game.owner = 2
@@ -163,5 +193,8 @@ func run() -> void:
  await RenderingServer.frame_post_draw
  root.get_texture().get_image().save_png("res://tests/results.png")
  print("RENDER SMOKE PASS")
+ scene.queue_free()
+ await process_frame
+ await process_frame
  quit()
 

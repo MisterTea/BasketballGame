@@ -5,6 +5,8 @@ $projectRoot = Split-Path $PSScriptRoot -Parent
 if ($LASTEXITCODE -ne 0) { throw "Editor import failed" }
 & $Godot --headless --path $projectRoot --script res://tests/simulation.gd
 if ($LASTEXITCODE -ne 0) { throw "Simulation tests failed" }
+& $Godot --headless --path $projectRoot --script res://tests/tipoff.gd
+if ($LASTEXITCODE -ne 0) { throw "Tip-off tests failed" }
 & $Godot --headless --path $projectRoot --script res://tests/arcade_rules.gd
 if ($LASTEXITCODE -ne 0) { throw "Arcade rules tests failed" }
 & $Godot --headless --path $projectRoot --script res://tests/backboards.gd
@@ -13,7 +15,7 @@ if ($LASTEXITCODE -ne 0) { throw "Backboard tests failed" }
 if ($LASTEXITCODE -ne 0) { throw "3D arena tests failed" }
 & $Godot --headless --path $projectRoot --script res://tests/hy_motion.gd
 if ($LASTEXITCODE -ne 0) { throw "HY-Motion rig and playback tests failed" }
-foreach ($scenario in @(@{ Script = "network_peer"; Peers = 4 }, @{ Script = "network_actions"; Peers = 2 })) {
+foreach ($scenario in @(@{ Script = "network_peer"; Peers = 4 }, @{ Script = "network_actions"; Peers = 2 }, @{ Script = "network_tipoff"; Peers = 2 })) {
  $processes = @()
  try {
   for ($i = 0; $i -lt $scenario.Peers; $i++) {
