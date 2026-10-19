@@ -151,5 +151,33 @@ func run() -> void:
 	check(restored.last_shot_feedback.percentage == s.last_shot_feedback.percentage, "last_shot_feedback survives snapshot restoration")
 	check(restored.last_shot_feedback.quality == s.last_shot_feedback.quality, "quality feedback survives snapshot restoration")
 	
+	# 10. Signature Dunk Pool, On-Fire Acrobatics & Defender Knockdown
+	s = fresh()
+	s.players[0].pos = hoop + Vector2(-120, 0)
+	s.players[0].vel = Vector2(120, 0)
+	s.players[0].drive = 0.35
+	s.players[0].charge = 0.58
+	s.players[0].turbo = 1.0
+	s.players[2].pos = hoop + Vector2(-30, 0) # Defender under the rim
+	s.ball = s.players[0].pos
+	s.fire_player = 0 # On fire!
+	s.shoot_ball(0, true) # Drives for a signature dunk
+	check(s.flight.dunk and s.flight.get("super_dunk", false), "on-fire turbo drive executes a signature super dunk")
+	check(s.flight.arc_height >= 4.0, "on-fire signature dunk elevates to spectacular jump height: %.2fm" % s.flight.arc_height)
+	check(MatchState.SIGNATURE_DUNKS.has(s.flight.dunk_style), "dunk style selected from signature pool: %s" % s.flight.dunk_style)
+	# Fast-forward dunk to basket completion
+	s.flight.time = s.flight.duration
+	s.tick_flight(0.01)
+	check(s.players[2].stun > 0.8, "flaming signature dunk knocks opposing defender near the rim flat onto the floor")
+	
+	# 11. Sound Effects Procedural Generation
+	var main_scene = load("res://scripts/main.gd").new()
+	main_scene.make_sounds()
+	for snd in ["score", "dunk", "miss", "shatter", "buzzer", "fire", "cheer", "turbo", "whistle"]:
+		check(main_scene.sounds.has(snd), "procedural sound generated: %s" % snd)
+		var stream: AudioStreamWAV = main_scene.sounds[snd]
+		check(stream.data.size() > 500 and stream.mix_rate == 22050, "sound %s contains valid 22.05kHz 16-bit PCM waveform" % snd)
+	main_scene.free()
+	
 	print("SHOT PERCENTAGE TESTS: %d checks, %s" % [checks, "PASS" if failures == 0 else "FAIL (%d errors)" % failures])
 	quit(0 if failures == 0 else 1)

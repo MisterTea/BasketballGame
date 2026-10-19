@@ -36,8 +36,12 @@ var visual_time = 0.0
 var paused = false
 var rendered_positions: Array = []
 var rendered_ball = Vector2.ZERO
+var snapshot_received_time: float = 0.0
+var turbo_sound_cooldown: float = 0.0
 var font: Font
 var sounds: Dictionary = {}
+var sound_players: Array = []
+var sound_player_idx: int = 0
 var sound_player: AudioStreamPlayer
 var status_label: Label
 
@@ -55,7 +59,8 @@ func _ready() -> void:
  net.game_started.connect(begin_match)
  net.state_received.connect(func(data):
   if screen == "game":
-   game.apply_snapshot(data))
+   game.apply_snapshot(data)
+   snapshot_received_time = visual_time)
  net.status_changed.connect(func(message):
   status = message
   if screen == "lobby":
@@ -67,8 +72,12 @@ func _ready() -> void:
  ui = Control.new()
  ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
  layer.add_child(ui)
- sound_player = AudioStreamPlayer.new()
- add_child(sound_player)
+ sound_players.clear()
+ for i in range(8):
+  var sp = AudioStreamPlayer.new()
+  add_child(sp)
+  sound_players.append(sp)
+ sound_player = sound_players[0]
  make_sounds()
  game.start(picks[0], picks[1])
  arena = ArenaView.new()
@@ -456,11 +465,22 @@ func _physics_process(delta: float) -> void:
       controlled[p] = (controlled[p]/2)*2 + (1-controlled[p]%2)
      commands[controlled[p]] = read_command(p)
    game.tick(delta,commands)
+  var active_ctl = controlled[0] if not net.online else 0
+  var p0_cmd = read_command(active_ctl)
+  turbo_sound_cooldown = maxf(0.0, turbo_sound_cooldown - delta)
+  if p0_cmd.turbo and p0_cmd.move.length() > 0.25 and turbo_sound_cooldown <= 0.0:
+   play_sound("turbo")
+   turbo_sound_cooldown = 1.3
   if game.event_id != last_event:
    last_event = game.event_id
-   if game.event_kind in ["score","dunk","shatter"]:
+   if game.event_kind in ["score","dunk","shatter","fire"]:
     shake = 0.45 if game.event_kind == "shatter" else 0.18
-   play_sound(game.event_kind)
+   if game.event_kind == "whistle" and (game.banner.contains("FINAL") or game.banner.contains("CLOCK")):
+    play_sound("buzzer")
+   else:
+    play_sound(game.event_kind)
+   if game.event_kind in ["dunk","shatter","fire"] or (game.event_kind == "score" and game.flight.get("super_dunk",false)):
+    play_sound("cheer")
   if game.phase == "finished":
    if net.hosting:
     net.broadcast(game.snapshot())
@@ -498,27 +518,87 @@ func save_profile() -> void:
 func make_sounds() -> void:
  var noise = RandomNumberGenerator.new()
  noise.seed = 1993
- for entry in [["shot",620,0.08],["pass",390,0.06],["score",880,0.25],["dunk",140,0.2],["steal",280,0.12],["block",120,0.18],["miss",190,0.1],["whistle",1100,0.30],["catch",440,0.05],["start",660,0.16],["shatter",85,0.7]]:
+ var sound_defs = [
+  ["shot",0.10],["pass",0.08],["score",0.26],["dunk",0.44],["steal",0.14],
+  ["block",0.22],["miss",0.30],["whistle",0.38],["catch",0.08],["start",0.18],
+  ["shatter",0.75],["buzzer",0.65],["fire",0.55],["cheer",0.60],["turbo",0.22]
+ ]
+ for def in sound_defs:
+  var kind: String = def[0]
+  var duration: float = def[1]
   var sample = AudioStreamWAV.new()
   sample.format = AudioStreamWAV.FORMAT_16_BITS
   sample.mix_rate = 22050
-  var frames = int(22050*entry[2])
+  var frames = int(22050.0*duration)
   var bytes = PackedByteArray()
   bytes.resize(frames*2)
   for frame in range(frames):
-   var t = float(frame)/22050
-   var envelope = pow(1.0-float(frame)/frames,2)
-   var wave = sin(TAU*float(entry[1])*t*(1.0+t*0.8)) * envelope * 0.16
-   if entry[0] == "shatter":
-    wave = (noise.randf_range(-1,1)*0.30+sin(TAU*2960*t)*sin(TAU*130*t)*0.12)*exp(-t*6)+sin(TAU*85*t)*exp(-t*25)*0.18
-   bytes.encode_s16(frame*2,int(wave*32767))
+   var t = float(frame)/22050.0
+   var progress = float(frame)/float(frames)
+   var wave = 0.0
+   match kind:
+    "score":
+     var net_friction = (noise.randf_range(-1.0,1.0)*0.30+sin(TAU*3400.0*t)*0.12)*exp(-t*16.0)
+     var airy_whip = sin(TAU*420.0*(1.0+t*2.0)*t)*exp(-t*22.0)*0.14
+     wave = net_friction+airy_whip
+    "dunk":
+     var sub_bass = sin(TAU*maxf(28.0,58.0-t*45.0)*t)*exp(-t*7.5)*0.38
+     var rim_snap = (sin(TAU*480.0*t)*0.18+sin(TAU*820.0*t)*0.14)*exp(-t*24.0)
+     var slam_crunch = noise.randf_range(-1.0,1.0)*exp(-t*32.0)*0.22
+     wave = sub_bass+rim_snap+slam_crunch
+    "miss":
+     var iron_ring = (sin(TAU*840.0*t)*0.28+sin(TAU*1380.0*t)*0.18+sin(TAU*2200.0*t)*0.08)*exp(-t*16.0)
+     var wood_thud = sin(TAU*170.0*t)*exp(-t*28.0)*0.14
+     wave = iron_ring+wood_thud
+    "shatter":
+     var glass = (noise.randf_range(-1.0,1.0)*0.32+sin(TAU*3100.0*t)*sin(TAU*150.0*t)*0.14)*exp(-t*5.5)
+     var bass = sin(TAU*52.0*t)*exp(-t*18.0)*0.28
+     wave = glass+bass
+    "fire":
+     var burst = noise.randf_range(-1.0,1.0)*exp(-t*8.5)*(0.28+0.15*sin(TAU*20.0*t))
+     var roar = (sin(TAU*110.0*t)*0.20+sin(TAU*65.0*t)*0.18)*exp(-t*4.2)
+     var sparks = noise.randf_range(-1.0,1.0)*sin(TAU*3600.0*t)*exp(-t*7.5)*0.12
+     wave = burst+roar+sparks
+    "whistle":
+     var flutter = 1.0+0.12*sin(TAU*18.0*t)
+     var tone = (sin(TAU*2150.0*flutter*t)*0.18+sin(TAU*2580.0*flutter*t)*0.14)
+     wave = tone*minf(t*35.0,1.0)*exp(-t*3.6)
+    "buzzer":
+     var sq1 = 1.0 if sin(TAU*165.0*t) > 0.0 else -1.0
+     var sq2 = 1.0 if sin(TAU*248.0*t) > 0.0 else -1.0
+     var sq3 = 1.0 if sin(TAU*330.0*t) > 0.0 else -1.0
+     wave = (sq1*0.16+sq2*0.11+sq3*0.06)*minf(t*40.0,1.0)*clampf((duration-t)*8.0,0.0,1.0)
+    "cheer":
+     var swell = sin(clampf(progress,0.0,1.0)*PI)
+     wave = (noise.randf_range(-1.0,1.0)*0.20+sin(TAU*280.0*t)*0.05)*swell
+    "turbo":
+     var freq = lerpf(300.0,920.0,progress)
+     wave = (sin(TAU*freq*t)*0.12+noise.randf_range(-1.0,1.0)*0.15)*sin(progress*PI)
+    "steal":
+     wave = (noise.randf_range(-1.0,1.0)*0.24+sin(TAU*440.0*t)*0.14)*exp(-t*26.0)
+    "block":
+     wave = (sin(TAU*95.0*t)*0.32+noise.randf_range(-1.0,1.0)*0.24)*exp(-t*20.0)
+    "pass":
+     wave = (sin(TAU*320.0*t)*0.20+noise.randf_range(-1.0,1.0)*0.09)*exp(-t*35.0)
+    "shot":
+     wave = sin(TAU*520.0*t*(1.0+t*0.6))*exp(-t*26.0)*0.22
+    "catch":
+     wave = sin(TAU*180.0*t)*exp(-t*40.0)*0.24
+    "start":
+     wave = sin(TAU*660.0*t*(1.0+t*0.8))*pow(1.0-progress,2)*0.18
+    _:
+     wave = sin(TAU*440.0*t)*pow(1.0-progress,2)*0.16
+   wave = clampf(wave,-0.98,0.98)
+   bytes.encode_s16(frame*2,int(wave*32767.0))
   sample.data = bytes
-  sounds[entry[0]] = sample
+  sounds[kind] = sample
 
 func play_sound(kind: String) -> void:
- if not muted and sounds.has(kind):
-  sound_player.stream = sounds[kind]
-  sound_player.play()
+ if not muted and sounds.has(kind) and sound_players.size() > 0:
+  var sp: AudioStreamPlayer = sound_players[sound_player_idx]
+  sound_player_idx = (sound_player_idx+1)%sound_players.size()
+  sp.stream = sounds[kind]
+  sp.play()
 
 func text_at(text: String, pos: Vector2, size: int = 20, color: Color = INK, centered = false) -> void:
  var origin = pos
@@ -688,11 +768,29 @@ func _process(delta: float) -> void:
    for player in game.players:
     rendered_positions.append(player.pos)
    rendered_ball = game.ball
-  var factor = 1.0-exp(-delta*24.0)
+  var dt_snap: float = clampf(visual_time - snapshot_received_time, 0.0, 0.25)
+  var factor = 1.0 - exp(-delta * 26.0)
   for i in range(game.players.size()):
-   var target: Vector2 = game.players[i].pos
-   rendered_positions[i] = target if rendered_positions[i].distance_to(target) > 260 else rendered_positions[i].lerp(target,factor)
-  rendered_ball = game.ball if rendered_ball.distance_to(game.ball) > 300 else rendered_ball.lerp(game.ball,factor)
+   var p_snap = game.players[i]
+   var predicted_pos = p_snap.pos + p_snap.vel * dt_snap
+   predicted_pos.x = clampf(predicted_pos.x, 90.0, 1190.0)
+   predicted_pos.y = clampf(predicted_pos.y, 230.0, 700.0)
+   if rendered_positions[i].distance_to(predicted_pos) > 220.0:
+    rendered_positions[i] = predicted_pos
+   else:
+    rendered_positions[i] = rendered_positions[i].lerp(predicted_pos, factor)
+  if not game.flight.is_empty():
+   var fl = game.flight
+   var t_flight = clampf((fl.time + dt_snap) / maxf(fl.duration, 0.01), 0.0, 1.0)
+   var predicted_ball = fl.start.lerp(fl.end, t_flight)
+   rendered_ball = predicted_ball if rendered_ball.distance_to(predicted_ball) > 280.0 else rendered_ball.lerp(predicted_ball, factor)
+  elif game.owner >= 0 and game.owner < rendered_positions.size():
+   var owner_pos = rendered_positions[game.owner]
+   var face_dir = 1.0 if game.players[game.owner].face > 0 else -1.0
+   var carried_ball = owner_pos + Vector2(face_dir * 18.0, 0.0)
+   rendered_ball = carried_ball if rendered_ball.distance_to(carried_ball) > 200.0 else rendered_ball.lerp(carried_ball, factor)
+  else:
+   rendered_ball = game.ball if rendered_ball.distance_to(game.ball) > 280.0 else rendered_ball.lerp(game.ball, factor)
   positions = rendered_positions
   ball_position = rendered_ball
  var active: Array = [net.local_slot] if net.online else ([controlled[0],controlled[1]] if local_two else [controlled[0]])

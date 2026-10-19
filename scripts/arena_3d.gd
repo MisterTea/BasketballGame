@@ -10,6 +10,7 @@ var camera: Camera3D
 var athletes: Array = []
 var basketball: Node3D
 var ball_fire: Array = []
+var ball_trail: Array = []
 var crowd: MultiMeshInstance3D
 var wood_material: StandardMaterial3D
 var last_teams: Array = []
@@ -524,6 +525,17 @@ func build_ball() -> void:
   ember.visible = false
   ember.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
   ball_fire.append(ember)
+ for i in range(10):
+  var sphere = SphereMesh.new()
+  sphere.radius = 0.16
+  sphere.height = 0.32
+  sphere.radial_segments = 6
+  sphere.rings = 3
+  var trail_particle = mesh(world,sphere,Vector3.ZERO,material(Color("70dcff"),0.5,true))
+  trail_particle.name = "BallTrail%d" % i
+  trail_particle.visible = false
+  trail_particle.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+  ball_trail.append(trail_particle)
 
 func present(state: MatchState, positions: Array, ball: Vector2, controlled_slots: Array, delta: float, paused: bool) -> void:
  render_target_update_mode = SubViewport.UPDATE_ALWAYS
@@ -545,7 +557,7 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   if not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.shooter == i and state.flight.has("player_start"):
    var progress = clampf(state.flight.time/state.flight.duration,0,1)
    var launch: float = state.flight.get("player_launch_height",0.0)
-   var peak = 2.65 if state.flight.get("super_dunk",false) else 1.8 if state.flight.dunk else 1.15
+   var peak = 4.2 if state.is_player_on_fire(i) else (2.85 if state.flight.get("super_dunk",false) else 1.8 if state.flight.dunk else 1.15)
    jump = lerpf(launch,0,progress)+sin(progress*PI)*(peak-launch*0.5)
   elif p.receive_jump > 0:
    jump = state.receive_height(i)
@@ -559,6 +571,42 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   var running = clampf(p.vel.length()/230.0,0,1)
   var target_angle = atan2(p.vel.x,p.vel.y) if p.vel.length() > 8 else (PI/2 if p.face > 0 else -PI/2)
   actor.body.rotation.y = lerp_angle(actor.body.rotation.y,target_angle,1.0-exp(-delta*15))
+  var is_dunking = not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.dunk and state.flight.shooter == i
+  if is_dunking:
+   var dunk_style = state.flight.get("dunk_style", "standard")
+   var dunk_p = clampf(state.flight.time / state.flight.duration, 0.0, 1.0)
+   var face_dir = 1.0 if p.face > 0 else -1.0
+   match dunk_style:
+    "helicopter":
+     actor.body.rotation.y = target_angle + dunk_p * TAU * 3.0
+     actor.body.rotation.z = 0.0
+     actor.body.rotation.x = 0.0
+    "frontflip":
+     actor.body.rotation.y = target_angle
+     actor.body.rotation.z = -dunk_p * TAU * face_dir
+     actor.body.rotation.x = 0.0
+    "backflip":
+     actor.body.rotation.y = target_angle
+     actor.body.rotation.z = dunk_p * TAU * face_dir
+     actor.body.rotation.x = 0.0
+    "spin_360":
+     actor.body.rotation.y = target_angle + dunk_p * TAU
+     actor.body.rotation.z = 0.0
+     actor.body.rotation.x = 0.0
+    "between_legs":
+     actor.body.rotation.y = target_angle
+     actor.body.rotation.z = 0.0
+     actor.body.rotation.x = sin(dunk_p * PI) * 0.45
+    "behind_back":
+     actor.body.rotation.y = target_angle + sin(dunk_p * PI) * 0.75 * face_dir
+     actor.body.rotation.z = 0.0
+     actor.body.rotation.x = sin(dunk_p * PI) * 0.25
+    _:
+     actor.body.rotation.z = 0.0
+     actor.body.rotation.x = 0.0
+  else:
+   actor.body.rotation.z = 0.0
+   actor.body.rotation.x = 0.0
   actor.head.scale = Vector3.ONE*(1.65 if state.big_heads else 1.0)
   var next_action = "idle"
   var phase = -1.0
@@ -625,10 +673,42 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
    ember.scale.y = 0.6+sin(time*13+flame)*0.25
  var ball_height = state.ball_height()
  basketball.position = court_point(ball,ball_height)
+ if not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.dunk:
+  var dunk_style = state.flight.get("dunk_style", "standard")
+  var dunk_p = clampf(state.flight.time / state.flight.duration, 0.0, 1.0)
+  var face_dir = 1.0 if state.players[state.flight.shooter].face > 0 else -1.0
+  if dunk_style == "behind_back" and dunk_p > 0.25 and dunk_p < 0.75:
+   var dip = sin((dunk_p - 0.25) / 0.5 * PI)
+   basketball.position += Vector3(-face_dir * dip * 0.45, -dip * 0.35, 0.0)
+  elif dunk_style == "between_legs" and dunk_p > 0.30 and dunk_p < 0.70:
+   var dip = sin((dunk_p - 0.30) / 0.40 * PI)
+   basketball.position += Vector3(0.0, -dip * 0.55, 0.0)
+  elif dunk_style == "helicopter":
+   var angle = dunk_p * TAU * 3.0
+   basketball.position += Vector3(cos(angle) * 0.42, 0.12, sin(angle) * 0.42)
  basketball.rotation = Vector3(time*3.2,0,time*2.1)
  update_backboards(state)
  update_camera(state,ball,delta,paused)
- var burning_shot = not state.flight.is_empty() and state.flight.kind == "shot" and state.is_player_on_fire(state.flight.shooter) and not state.flight.blocked
+ var in_flight = not state.flight.is_empty()
+ var is_shot = in_flight and state.flight.kind == "shot"
+ var burning_shot = is_shot and state.is_player_on_fire(state.flight.shooter) and not state.flight.blocked
+ var is_turbo_lob = in_flight and (state.flight.get("turbo",false) or state.flight.get("alley",false) or state.flight.get("super_dunk",false))
+ var trail_mat = material(Color("ff4400") if burning_shot else (GOLD if is_turbo_lob else Color("70dcff")), 0.5, true)
+ for i in range(ball_trail.size()):
+  var p_mesh: MeshInstance3D = ball_trail[i]
+  p_mesh.visible = in_flight
+  if in_flight:
+   p_mesh.material_override = trail_mat
+   var delay_t = 0.018 * (i + 1)
+   var delayed_p = clampf(state.flight.time / state.flight.duration - delay_t, 0.0, 1.0)
+   var pt: Vector2 = state.flight.start.lerp(state.flight.end, delayed_p)
+   var arc_h = state.flight.get("arc_height", 1.7 if state.flight.get("dunk",false) else 4.6) if is_shot else (1.4 if state.flight.get("alley",false) else 0.5)
+   var start_h = state.flight.get("release_height", 1.3) if is_shot else state.flight.get("start_height", 1.1)
+   var end_h = 3.05 if is_shot else state.flight.get("end_height", 1.1)
+   var h = lerpf(start_h, end_h, delayed_p) + sin(delayed_p * PI) * arc_h
+   p_mesh.position = court_point(pt, h)
+   var sc = (1.0 - float(i) / float(ball_trail.size())) * 0.85
+   p_mesh.scale = Vector3.ONE * sc
  for i in range(ball_fire.size()):
   var ember: MeshInstance3D = ball_fire[i]
   ember.visible = burning_shot

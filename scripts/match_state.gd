@@ -3,6 +3,7 @@ extends RefCounted
 
 const COURT = Rect2(115, 265, 1050, 410)
 const HOOPS = [Vector2(165, 465), Vector2(1115, 465)]
+const SIGNATURE_DUNKS = ["helicopter", "frontflip", "backflip", "spin_360", "between_legs", "behind_back"]
 const QUARTER_SECONDS = 180.0
 const TIP_TOSS = 1.0
 const TIP_IDEAL_JUMP = 1.42
@@ -620,15 +621,22 @@ func shoot_ball(i: int, turbo: bool, alley: bool = false, release_height: float 
  var breakdown = calculate_shot_percentage(i, p.charge, dunk, layup, specialty, alley)
  var chance: float = breakdown.chance
  var points = 2 if dunk else (3 if breakdown.three_pointer else 2)
+ var burning = is_player_on_fire(i)
+ var dunk_style = "standard"
+ if dunk:
+  if burning or (specialty and rating(i, 2) >= 7.0):
+   dunk_style = SIGNATURE_DUNKS[rng.randi_range(0, SIGNATURE_DUNKS.size() - 1)]
  if dunk:
   points = 2
-  p.jump = 0.85 if specialty else 0.70
+  p.jump = 0.95 if burning else (0.85 if specialty else 0.70)
  else:
   p.jump = 0.55 if layup else 0.50
  p.drive = 0.0
  stats[i].attempts += 1
  var will_make = rng.randf() < chance
- flight = {"kind":"shot", "start":ball, "end":hoop, "time":0.0, "duration":0.75 if specialty else 0.60 if dunk else 0.62 if layup else 1.05, "shooter":i, "points":points, "made":will_make, "dunk":dunk, "layup":layup, "super_dunk":specialty, "finish":finish, "arc_height":1.7 if specialty else 1.1 if dunk else 1.0 if layup else 4.6, "blocked":false, "shot_breakdown":breakdown}
+ var dunk_duration = 0.92 if burning else (0.75 if specialty else 0.60)
+ var dunk_arc = 4.2 if burning else (2.6 if specialty else 1.1)
+ flight = {"kind":"shot", "start":ball, "end":hoop, "time":0.0, "duration":dunk_duration if dunk else (0.62 if layup else 1.05), "shooter":i, "points":points, "made":will_make, "dunk":dunk, "layup":layup, "super_dunk":specialty or burning, "dunk_style":dunk_style, "finish":finish, "arc_height":dunk_arc if dunk else (1.0 if layup else 4.6), "blocked":false, "shot_breakdown":breakdown}
  if dunk or layup:
   flight.player_start = p.pos
   flight.player_end = hoop+Vector2(-1 if hoop.x > 640 else 1,0)*(28 if dunk else 50)
@@ -649,7 +657,24 @@ func shoot_ball(i: int, turbo: bool, alley: bool = false, release_height: float 
   "made": will_make,
   "dunk": dunk
  }
- announce("SUPER JAM!" if specialty else "SLAM DUNK!" if dunk else "LAY IT UP!" if layup else ("PERFECT RELEASE!" if breakdown.quality == "PERFECT" else "FROM DOWNTOWN!" if points == 3 else "UP IT GOES"), "dunk" if dunk else "shot")
+ var callout = "UP IT GOES"
+ if dunk:
+  if burning or specialty:
+   match dunk_style:
+    "helicopter": callout = "HELICOPTER SLAM!"
+    "frontflip": callout = "SOMERSAULT JAM!"
+    "backflip": callout = "BACKFLIP DUNK!"
+    "spin_360": callout = "360 WINDMILL!"
+    "between_legs": callout = "BETWEEN THE LEGS!"
+    "behind_back": callout = "BEHIND THE BACK SLAM!"
+    _: callout = "BOOMSHAKALAKA!"
+  else:
+   callout = "SLAM DUNK!"
+ elif layup:
+  callout = "LAY IT UP!"
+ else:
+  callout = "PERFECT RELEASE!" if breakdown.quality == "PERFECT" else ("FROM DOWNTOWN!" if points == 3 else "UP IT GOES")
+ announce(callout, "dunk" if dunk else "shot")
 
 func pass_ball(i: int, turbo: bool) -> void:
  teammate_shot_order = -1
@@ -768,10 +793,17 @@ func tick_flight(delta: float) -> void:
  var shooter: int = flight.shooter
  var team = shooter / 2
  if flight.made and not flight.blocked:
+  if flight.dunk and (is_player_on_fire(shooter) or flight.get("super_dunk", false)):
+   for d in range(4):
+    if d / 2 != team and players[d].pos.distance_to(hoop_for(team)) < 115.0:
+     players[d].stun = 1.2
+     players[d].pos = (players[d].pos + (players[d].pos - hoop_for(team)).normalized() * 32.0).clamp(COURT.position + Vector2(18,18), COURT.end - Vector2(18,18))
+     players[d].vel = Vector2.ZERO
   var was_on_fire = is_player_on_fire(shooter)
   var shattered = award_basket(shooter,flight.points,flight.dunk,true,flight.get("super_dunk",false))
+  var ignited = is_player_on_fire(shooter) and not was_on_fire
   var name_text: String = Teams.DATA[teams[team]].players[shooter%2]
-  var message = "HE'S ON FIRE! " + name_text if is_player_on_fire(shooter) and not was_on_fire else ("HE'S HEATING UP! " + name_text if player_streak[shooter] == 2 else "BOOMSHAKALAKA!" if flight.get("super_dunk",false) else "SLAM DUNK!" if flight.dunk else "FROM DOWNTOWN!" if flight.points == 3 else "NOTHING BUT NET!")
+  var message = "HE'S ON FIRE! " + name_text if ignited else ("HE'S HEATING UP! " + name_text if player_streak[shooter] == 2 else "BOOMSHAKALAKA!" if flight.get("super_dunk",false) else "SLAM DUNK!" if flight.dunk else "FROM DOWNTOWN!" if flight.points == 3 else "NOTHING BUT NET!")
   if shattered:
    announce("BOOM! BACKBOARD SHATTERED!","shatter")
    flight = {}
@@ -782,7 +814,7 @@ func tick_flight(delta: float) -> void:
    shatter_shooter = shooter
    freeze = 1.65
   else:
-   announce(message,"score")
+   announce(message,"fire" if ignited else ("dunk" if flight.dunk else "score"))
    inbound(1-team)
  else:
   record_miss(shooter)
