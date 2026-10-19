@@ -19,6 +19,7 @@ var materials: Dictionary = {}
 var camera_initialized = false
 var camera_focus = 0.0
 var baskets: Array = []
+var possession_flash_material: StandardMaterial3D
 
 func _ready() -> void:
  size = Vector2i(1280,600)
@@ -34,6 +35,12 @@ func _ready() -> void:
  build_basket(1)
  build_stands()
  build_crowd()
+ possession_flash_material = StandardMaterial3D.new()
+ possession_flash_material.albedo_color = Color.WHITE
+ possession_flash_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+ possession_flash_material.emission_enabled = true
+ possession_flash_material.emission = Color.WHITE
+ possession_flash_material.emission_energy_multiplier = 1.0
  for i in range(4):
   athletes.append(build_athlete(i))
  build_ball()
@@ -80,6 +87,12 @@ func player_indicator(index: int) -> Dictionary:
 
 func court_point(point: Vector2, height: float = 0.0) -> Vector3:
  return Vector3((point.x-640.0)*COURT_SCALE.x,height,(point.y-470.0)*COURT_SCALE.y)
+
+func movement_facing_angle(velocity: Vector2) -> float:
+ # Simulation X/Y maps to world X/Z at different scales, so derive heading
+ # from the actual rendered direction instead of the unscaled 2D vector.
+ var world_velocity = Vector3(velocity.x * COURT_SCALE.x, 0.0, velocity.y * COURT_SCALE.y)
+ return atan2(world_velocity.x, world_velocity.z)
 
 func material(color: Color, roughness: float = 0.7, glow: bool = false) -> StandardMaterial3D:
  var key = str(color)+str(roughness)+str(glow)
@@ -251,11 +264,10 @@ func build_court() -> void:
   box(world,Vector3(b.x-a.x,0.008,b.z-a.z),(a+b)*0.5+Vector3(0,0.008,0),material(Color("26465b") if side == 0 else Color("4b3453")),"PaintedKey")
   court_line([Vector2(start_x,375),Vector2(start_x+210,375),Vector2(start_x+210,555),Vector2(start_x,555),Vector2(start_x,375)],0.055,white)
   court_arc(Vector2(325 if side == 0 else 955,465),62,-PI/2 if side == 0 else PI/2,PI/2 if side == 0 else 3*PI/2,white)
-  var angle = asin(180.0/300.0)
-  court_arc(hoop,300,-angle if side == 0 else PI-angle,angle if side == 0 else PI+angle,white)
-  var arc_x = hoop.x+(240 if side == 0 else -240)
-  court_line([Vector2(115 if side == 0 else 1165,285),Vector2(arc_x,285)],0.055,white)
-  court_line([Vector2(115 if side == 0 else 1165,645),Vector2(arc_x,645)],0.055,white)
+  var three_point = MatchState.three_point_geometry(side)
+  court_arc(three_point.hoop,three_point.radius,three_point.arc_start,three_point.arc_end,white)
+  court_line([Vector2(three_point.baseline_x,three_point.top_y),Vector2(three_point.arc_join_x,three_point.top_y)],0.055,white)
+  court_line([Vector2(three_point.baseline_x,three_point.bottom_y),Vector2(three_point.arc_join_x,three_point.bottom_y)],0.055,white)
  var sideline = label_3d(world,"R I M   R U M B L E   /   A R C A D E   B A S K E T B A L L",Vector3(0,0.02,8.0),0.008,Color("a6b3c5"),false)
  sideline.rotation_degrees.x = -90
  sideline.outline_size = 0
@@ -487,6 +499,21 @@ func build_athlete(index: int) -> Dictionary:
  var marker = ring(root,0.57,0.035,Vector3(0,0.035,0),material(GOLD,0.7,true),32)
  var name_label = label_3d(root,"",Vector3(0,2.38,0),0.007,Color("f8eed9"))
  var control_label = label_3d(root,"",Vector3(0,2.72,0),0.0065,GOLD)
+ var aim_root = Node3D.new()
+ aim_root.name = "AimIndicator"
+ aim_root.visible = false
+ root.add_child(aim_root)
+ var aim_ring = ring(aim_root,0.44,0.024,Vector3(0,0.038,0),material(Color("2eff82"),0.5,true),32)
+ var aim_outer = ring(aim_root,0.68,0.016,Vector3(0,0.038,0),material(Color("10d970"),0.6,true),32)
+ var aim_pips: Array = []
+ var pip_mat = material(Color("70ffb0"),0.4,true)
+ for pip_idx in range(4):
+  var angle = pip_idx * TAU / 4.0
+  var pip_pos = Vector3(cos(angle) * 0.56, 0.038, sin(angle) * 0.56)
+  var tick = box(aim_root, Vector3(0.14, 0.012, 0.028) if (pip_idx % 2 == 0) else Vector3(0.028, 0.012, 0.14), pip_pos, pip_mat)
+  aim_pips.append(tick)
+ var aim_label = label_3d(root,"",Vector3(0,3.02,0),0.0065,Color("2eff82"))
+ aim_label.visible = false
  var fire: Array = []
  for flame in range(5):
   var shape = PrismMesh.new()
@@ -495,7 +522,15 @@ func build_athlete(index: int) -> Dictionary:
   object.visible = false
   object.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
   fire.append(object)
- return {"root":root,"body":body,"head":body.head,"skeleton":body.skeleton,"arms":[body.attach(16),body.attach(17)],"legs":[body.attach(1),body.attach(2)],"jersey":body.jersey,"shorts":body.shorts,"marker":marker,"label":name_label,"control":control_label,"fire":fire}
+ return {"root":root,"body":body,"head":body.head,"skeleton":body.skeleton,"arms":[body.attach(16),body.attach(17)],"legs":[body.attach(1),body.attach(2)],"jersey":body.jersey,"shorts":body.shorts,"marker":marker,"label":name_label,"control":control_label,"fire":fire,"mesh_parts":collect_mesh_parts(body),"aim_indicator":aim_root,"aim_ring":aim_ring,"aim_outer":aim_outer,"aim_pips":aim_pips,"aim_label":aim_label}
+
+func collect_mesh_parts(node: Node) -> Array:
+ var parts: Array = []
+ for child in node.get_children():
+  if child is MeshInstance3D:
+   parts.append({"mesh":child,"material":child.material_override})
+  parts.append_array(collect_mesh_parts(child))
+ return parts
 
 func build_ball() -> void:
  basketball = Node3D.new()
@@ -541,6 +576,7 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
  render_target_update_mode = SubViewport.UPDATE_ALWAYS
  if not paused:
   time += delta
+ var motion_delta = delta * state.gameplay_time_scale()
  if last_teams != state.teams:
   last_teams = state.teams.duplicate()
   for i in range(4):
@@ -551,6 +587,9 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
  for i in range(4):
   var p: Dictionary = state.players[i]
   var actor: Dictionary = athletes[i]
+  var flash_white = p.get("possession_flash", 0.0) > 0.0 and int(time / 0.075) % 2 == 0
+  for part in actor.mesh_parts:
+   part.mesh.material_override = possession_flash_material if flash_white else part.material
   var point: Vector2 = positions[i] if positions.size() == 4 else p.pos
   actor.root.position = court_point(point)
   var jump = 0.0
@@ -578,13 +617,19 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
     jump = sin(tip_jump*PI)*1.6
   actor.body.position.y = maxf(0,jump)
   var running = clampf(p.vel.length()/230.0,0,1)
-  var target_angle = atan2(p.vel.x,p.vel.y) if p.vel.length() > 8 else (PI/2 if p.face > 0 else -PI/2)
-  actor.body.rotation.y = lerp_angle(actor.body.rotation.y,target_angle,1.0-exp(-delta*15))
+  var is_running = p.vel.length() > 8
+  var is_shot_actor = not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.shooter == i
+  var hoop_dir = state.hoop_for(i/2) - p.pos
+  var target_angle = movement_facing_angle(hoop_dir) if (is_shot_actor and not state.flight.dunk) else (movement_facing_angle(p.vel) if is_running else (PI/2 if p.face > 0 else -PI/2))
+  var faces_ball_for_block = p.jump > 0 and p.receive_jump <= 0 and tip_jump < 0 and not is_shot_actor
+  # Locomotion must point along travel immediately; smoothing here made athletes
+  # visibly run backward while their body caught up after a direction change.
+  actor.body.rotation.y = target_angle if (is_running or (is_shot_actor and not state.flight.dunk)) else lerp_angle(actor.body.rotation.y,target_angle,1.0-exp(-motion_delta*15))
   if p.get("spin", 0.0) > 0.0:
    actor.body.rotation.y = target_angle + (1.0 - p.spin / 0.45) * TAU
   elif p.get("elbow", 0.0) > 0.0:
    actor.body.rotation.y = target_angle + sin((1.0 - p.elbow / 0.50) * TAU * 2.0) * 0.9
-  var is_dunking = not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.dunk and state.flight.shooter == i
+  var is_dunking = is_shot_actor and state.flight.dunk
   if is_dunking:
    var dunk_style = state.flight.get("dunk_style", "standard")
    var dunk_p = clampf(state.flight.time / state.flight.duration, 0.0, 1.0)
@@ -663,7 +708,16 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
    next_action = "dribble" if state.owner == i else "run"
   elif state.owner >= 0 and state.owner/2 != i/2:
    next_action = "defense"
-  actor.body.animate(next_action,delta,phase,lerpf(0.75,1.5,running),paused)
+  actor.body.animate(next_action,motion_delta,phase,lerpf(0.75,1.5,running),paused)
+  if faces_ball_for_block and next_action == "block":
+   # The generated block clip includes some root rotation. Compensate for it so
+   # the rendered athlete, not just its outer node, tracks the ball precisely.
+   var ball_direction = ball-point
+   if ball_direction.length_squared() > 0.01:
+    var ball_angle = movement_facing_angle(ball_direction)
+    var root_forward = Basis(actor.skeleton.get_bone_pose_rotation(0)) * Vector3.BACK
+    var root_yaw = atan2(root_forward.x,root_forward.z)
+    actor.body.rotation.y = ball_angle-root_yaw
   actor.marker.visible = controlled_slots.has(i)
   actor.control.text = ("P1" if i < 2 else "P2") if controlled_slots.has(i) else ""
   actor.control.position.y = 2.72+jump
@@ -678,6 +732,42 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
    actor.control.text = "★ ★ ★"
   elif p.receive_jump > 0 and p.pos.distance_to(state.hoop_for(i/2)) < 220 and ((state.owner >= 0 and state.owner != i and state.owner/2 == i/2) or (not state.flight.is_empty() and state.flight.kind == "pass" and state.flight.get("alley",false) and state.flight.target == i)):
    actor.control.text = "LOB!"
+  var is_carrier = state.owner == i
+  var on_court = p.pos.x >= MatchState.COURT.position.x and p.pos.x <= MatchState.COURT.end.x
+  var still_time: float = p.get("still_time", 0.0)
+  var is_still_enough = is_carrier and on_court and still_time >= 0.10 and p.vel.length() <= 10.0 and p.jump <= 0.0
+  var is_charging_still = is_carrier and on_court and p.charge > 0.0 and not p.get("shot_is_moving", false)
+  var is_locking_on = is_carrier and on_court and p.vel.length() <= 10.0 and still_time > 0.0 and still_time < 0.10 and p.charge <= 0.0 and p.jump <= 0.0
+  if is_still_enough or is_charging_still:
+   actor.aim_indicator.visible = true
+   var pulse = 1.0 + sin(time * 9.0) * 0.04
+   actor.aim_indicator.scale = Vector3(pulse, 1.0, pulse)
+   actor.aim_indicator.rotation.y = time * 0.85
+   actor.aim_ring.material_override = material(Color("2eff82"), 0.5, true)
+   actor.aim_outer.material_override = material(Color("10d970"), 0.6, true)
+   var green_pip = material(Color("70ffb0"), 0.4, true)
+   for pip in actor.aim_pips:
+    pip.material_override = green_pip
+   actor.aim_label.visible = true
+   actor.aim_label.text = "⌖ AIMED"
+   actor.aim_label.position.y = 3.02 + jump
+   actor.aim_label.position.x = label_offset
+   actor.aim_label.modulate = Color("2eff82")
+  elif is_locking_on:
+   var lock_p = clampf(still_time / 0.10, 0.0, 1.0)
+   actor.aim_indicator.visible = true
+   var contract = lerpf(1.35, 1.0, lock_p)
+   actor.aim_indicator.scale = Vector3(contract, 1.0, contract)
+   actor.aim_indicator.rotation.y = lock_p * 1.57
+   actor.aim_ring.material_override = material(Color("ffcc33"), 0.5, true)
+   actor.aim_outer.material_override = material(Color("ffaa22"), 0.6, true)
+   var amber_pip = material(Color("ffe066"), 0.4, true)
+   for pip in actor.aim_pips:
+    pip.material_override = amber_pip
+   actor.aim_label.visible = false
+  else:
+   actor.aim_indicator.visible = false
+   actor.aim_label.visible = false
   for flame in range(5):
    var ember: MeshInstance3D = actor.fire[flame]
    ember.visible = state.is_player_on_fire(i) or (state.player_streak[i] == 2 and flame < 2)
@@ -701,7 +791,7 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
    basketball.position += Vector3(cos(angle) * 0.42, 0.12, sin(angle) * 0.42)
  basketball.rotation = Vector3(time*3.2,0,time*2.1)
  update_backboards(state)
- update_camera(state,ball,delta,paused)
+ update_camera(state,ball,motion_delta,paused)
  var in_flight = not state.flight.is_empty()
  var is_shot = in_flight and state.flight.kind == "shot"
  var burning_shot = is_shot and state.is_player_on_fire(state.flight.shooter) and not state.flight.blocked

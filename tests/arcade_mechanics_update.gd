@@ -27,6 +27,9 @@ func run() -> void:
 	root.add_child(main_scene)
 	await process_frame
 	await process_frame
+	check(main_scene.scaled_window_size(2.0, Vector2i(4000, 3000)) == Vector2i(2560, 1600), "Retina scale doubles the macOS window resolution")
+	check(main_scene.scaled_window_size(1.0, Vector2i(4000, 3000)) == Vector2i(1280, 800), "standard-density displays retain the base window resolution")
+	check(main_scene.scaled_window_size(2.0, Vector2i(1920, 1080)) == Vector2i(1728, 1080), "scaled window fits within the usable desktop while preserving aspect ratio")
 
 	check(InputMap.has_action("p0_shove"), "InputMap has action p0_shove")
 	var shove_events = InputMap.action_get_events("p0_shove")
@@ -34,10 +37,10 @@ func run() -> void:
 	check(has_l, "p0_shove is mapped to KEY_L")
 
 	var turbo_events = InputMap.action_get_events("p0_turbo")
-	var has_semicolon = turbo_events.any(func(e): return e is InputEventKey and e.physical_keycode == KEY_SEMICOLON)
-	var has_space = turbo_events.any(func(e): return e is InputEventKey and e.physical_keycode == KEY_SPACE)
-	check(has_semicolon, "p0_turbo is mapped to KEY_SEMICOLON")
-	check(has_space, "p0_turbo retains KEY_SPACE as alternate")
+	var has_shift = turbo_events.any(func(e): return e is InputEventKey and e.physical_keycode == KEY_SHIFT)
+	var has_old_turbo_key = turbo_events.any(func(e): return e is InputEventKey and e.physical_keycode in [KEY_SEMICOLON, KEY_SPACE])
+	check(has_shift, "p0_turbo is mapped to KEY_SHIFT")
+	check(not has_old_turbo_key, "p0_turbo no longer uses semicolon or Space")
 
 	var switch_events = InputMap.action_get_events("p0_switch")
 	var has_f = switch_events.any(func(e): return e is InputEventKey and e.physical_keycode == KEY_F)
@@ -153,6 +156,7 @@ func run() -> void:
 	check(clean_seen, "steals can also produce a clean pick")
 
 	# Verify loose ball pickup delay
+	state.bullet_time_remaining = 0.0
 	state.owner = -1
 	state.flight = {}
 	state.loose_ball_timer = 0.45
@@ -203,6 +207,7 @@ func run() -> void:
 	state.tick_flight(1.20) # Reach rim
 	check(not state.flight.is_empty() and state.flight.kind == "rebound", "missed shot bounces off rim into a rebound flight arc")
 	check(state.flight.arc_height >= 2.0, "rebound arc height has parabolic lift off rim")
+	check(state.flight.duration == MatchState.REBOUND_FLIGHT_DURATION and state.flight.duration > 1.5, "rebound flight uses the slower shared hang-time")
 
 	var max_rebound_h = 0.0
 	var sample_t = 0.0
@@ -219,6 +224,11 @@ func run() -> void:
 	state.players[2].jump = 0.35 # Mid-air jump
 	state.tick_flight(0.01)
 	check(state.owner == 2 and state.flight.is_empty(), "jumping player can snatch rebound mid-air")
+	check(state.players[2].possession_flash == MatchState.POSSESSION_FLASH_DURATION, "rebound winner starts the possession strobe")
+	check(state.bullet_time_remaining == MatchState.BULLET_TIME_DURATION, "rebound pickup starts a half-second bullet-time beat")
+	var elapsed_before_bullet_time = state.elapsed
+	state.tick(0.10, {2: neutral()})
+	check(is_equal_approx(state.elapsed - elapsed_before_bullet_time, 0.10 * MatchState.BULLET_TIME_SCALE), "bullet-time slows authoritative gameplay while using real-time duration")
 
 	print("\n--- RESULTS: %d checks, %d failures ---" % [checks, failures])
 	quit(0 if failures == 0 else 1)

@@ -153,6 +153,7 @@ func run() -> void:
 	state.start(0, 1)
 	state.tipoff = {}
 	state.freeze = 0
+	state.owner = 0
 	state.players[0].turbo = 0.0005 # Just about to empty
 	state.players[0].turbo_burnout = 0.0
 

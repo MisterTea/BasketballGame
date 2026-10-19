@@ -36,7 +36,7 @@ function Run-GodotTest {
     $proc = Start-Process -FilePath $Godot -ArgumentList $argsList -PassThru -NoNewWindow
     if (-not $proc.WaitForExit($TimeoutSeconds * 1000)) {
         try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
-        throw "[TIMEOUT ERROR] Test '$Description' timed out after $TimeoutSeconds seconds without exiting."
+        throw "[TEST FAILED: WATCHDOG TIMEOUT] Test '$Description' timed out after $TimeoutSeconds seconds without exiting."
     }
     if ($proc.ExitCode -ne 0) {
         throw "[TEST FAILURE] Test '$Description' failed with exit code $($proc.ExitCode)."
@@ -84,7 +84,7 @@ try {
             foreach ($process in $processes) {
                 if (-not $process.WaitForExit(20000)) {
                     try { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue } catch {}
-                    throw "Network peer timed out in scenario $($scenario.Script)"
+                    throw "[TEST FAILED: WATCHDOG TIMEOUT] Network peer timed out in scenario $($scenario.Script)"
                 }
                 if ($null -ne $process.ExitCode -and $process.ExitCode -ne 0) {
                     throw ("Network peer failed in scenario $($scenario.Script): inspect tests/" + $scenario.Script + "-*.log")

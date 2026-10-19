@@ -61,6 +61,7 @@ func _initialize() -> void:
  state.players[2].pos = state.players[0].pos+Vector2(40,0)
  state.steal(2,true)
  check(state.owner == 2 and state.players[0].stun > 0,"turbo shove forces a turnover")
+ check(state.players[2].possession_flash == MatchState.POSSESSION_FLASH_DURATION and state.bullet_time_remaining == MatchState.BULLET_TIME_DURATION,"a successful steal flashes its winner and starts bullet-time")
  state.clock = 0
  state.flight = {}
  state.quarter = 2

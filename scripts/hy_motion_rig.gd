@@ -128,7 +128,7 @@ func attach(index: int) -> BoneAttachment3D:
  attachments[index] = attachment
  return attachment
 
-func sample(clip_name: String, seconds: float, blend: float = 1.0, authoritative_jump: bool = false) -> void:
+func sample(clip_name: String, seconds: float, blend: float = 1.0, authoritative_jump: bool = false, filter_heading: bool = false) -> void:
  if not library.has(clip_name):
   return
  var clip: Dictionary = library[clip_name]
@@ -147,10 +147,20 @@ func sample(clip_name: String, seconds: float, blend: float = 1.0, authoritative
   var rotation = qa.slerp(qb,fraction)
   if blend < 1:
    rotation = skeleton.get_bone_pose_rotation(i).slerp(rotation,blend)
+  if i == 0 and filter_heading and clip_name in ["run", "dribble"]:
+   rotation = remove_heading(rotation)
   skeleton.set_bone_pose_rotation(i,rotation)
  var root_height = lerpf(clip.grounded_root_y[a],clip.grounded_root_y[b],fraction) if authoritative_jump else lerpf(clip.root_y[a],clip.root_y[b],fraction)
  var pelvis: Vector3 = rest[0]+Vector3(0,root_height,0)
  skeleton.set_bone_pose_position(0,skeleton.get_bone_pose_position(0).lerp(pelvis,blend))
+
+func remove_heading(rotation: Quaternion) -> Quaternion:
+ # Generated locomotion contains frame-to-frame root yaw even though gameplay
+ # owns travel direction. Strip that yaw so the outer athlete node can face the
+ # authoritative velocity while retaining the clip's lean and body motion.
+ var forward = Basis(rotation) * Vector3.BACK
+ var yaw = atan2(forward.x, forward.z)
+ return (Quaternion(Vector3.UP, -yaw) * rotation).normalized()
 
 func animate(next_action: String, delta: float, phase: float = -1.0, speed: float = 1.0, paused: bool = false) -> void:
  if not library.has(next_action):
@@ -171,7 +181,7 @@ func animate(next_action: String, delta: float, phase: float = -1.0, speed: floa
    cursor = cursor/canonical_event*source_event if cursor <= canonical_event else source_event+(cursor-canonical_event)/(1.0-canonical_event)*(1.0-source_event)
   seconds = cursor*float(clip.frames-1)/float(clip.fps)
  var blend = 1.0 if first_pose else (0.0 if paused else 1.0-exp(-delta*22.0))
- sample(action,seconds,blend,action in ["shoot","dunk","block","layup"])
+ sample(action,seconds,blend,action in ["shoot","dunk","block","layup"], action in ["run", "dribble"])
  if action == "block":
   apply_block_pose(phase if phase >= 0 else action_time / 0.70)
  first_pose = false

@@ -3,6 +3,7 @@ extends Node2D
 const ArenaView = preload("res://scripts/arena_3d.gd")
 var arena: SubViewport
 
+const BASE_WINDOW_SIZE = Vector2i(1280, 800)
 const BG = Color("091321")
 const INK = Color("e9f3ff")
 const MUTED = Color("8195ae")
@@ -47,6 +48,7 @@ var status_label: Label
 var last_lt: Array = [0.0, 0.0, 0.0, 0.0]
 
 func _ready() -> void:
+ configure_macos_window()
  font = ThemeDB.fallback_font
  load_profile()
  setup_input()
@@ -98,6 +100,34 @@ func _ready() -> void:
  if args.has("--autoplay"):
   begin_match({"teams":[0,1], "seconds":15.0, "level":1})
 
+func configure_macos_window() -> void:
+ if OS.get_name() != "macOS" or DisplayServer.get_name() == "headless":
+  return
+ var window = get_window()
+ if not window.dpi_changed.is_connected(apply_macos_display_scale):
+  window.dpi_changed.connect(apply_macos_display_scale)
+ apply_macos_display_scale.call_deferred()
+
+func apply_macos_display_scale() -> void:
+ var usable = DisplayServer.screen_get_usable_rect(DisplayServer.SCREEN_OF_MAIN_WINDOW)
+ var scale = DisplayServer.screen_get_scale(DisplayServer.SCREEN_OF_MAIN_WINDOW)
+ var target_size = scaled_window_size(scale, usable.size)
+ # Use DisplayServer's pixel-level API. Window.size applies an additional
+ # self-fitting division by the backing scale on macOS, halving Retina windows.
+ DisplayServer.window_set_size(target_size)
+ DisplayServer.window_set_position(usable.position + (usable.size - target_size) / 2)
+
+func scaled_window_size(display_scale: float, usable_size: Vector2i) -> Vector2i:
+ var fit_scale = minf(
+  float(usable_size.x) / float(BASE_WINDOW_SIZE.x),
+  float(usable_size.y) / float(BASE_WINDOW_SIZE.y)
+ )
+ var applied_scale = maxf(0.25, minf(maxf(1.0, display_scale), fit_scale))
+ return Vector2i(
+  roundi(BASE_WINDOW_SIZE.x * applied_scale),
+  roundi(BASE_WINDOW_SIZE.y * applied_scale)
+ )
+
 func setup_input() -> void:
  var mapping = {
   "up": [KEY_W, KEY_UP],
@@ -107,7 +137,7 @@ func setup_input() -> void:
   "shoot": [KEY_J, KEY_KP_1],
   "pass": [KEY_K, KEY_KP_2],
   "shove": [KEY_L, KEY_KP_5],
-  "turbo": [KEY_SEMICOLON, KEY_KP_0],
+  "turbo": [KEY_SHIFT, KEY_KP_0],
   "switch": [KEY_F, KEY_KP_3],
   "spin": [KEY_APOSTROPHE, KEY_KP_6]
  }
@@ -135,11 +165,7 @@ func setup_input() -> void:
     key.physical_keycode = mapping[action][p]
     InputMap.action_add_event(name_action, key)
    if p == 0:
-    if action == "turbo":
-     var space_key = InputEventKey.new()
-     space_key.physical_keycode = KEY_SPACE
-     InputMap.action_add_event(name_action, space_key)
-    elif action == "switch":
+    if action == "switch":
      var tab_key = InputEventKey.new()
      tab_key.physical_keycode = KEY_TAB
      InputMap.action_add_event(name_action, tab_key)
@@ -416,7 +442,7 @@ func show_help() -> void:
  panel(60,150,555,540)
  panel(645,150,575,540)
  label_at("PLAYER ONE",88,176,22,GOLD)
- label_at("MOVE     W A S D\nSHOOT / BLOCK     J\nPASS / STEAL     K\nSHOVE (TURBO+STEAL)     L\nTURBO     ;  (or SPACE)\nSPIN / ELBOWS     '  (or P / O / I / H)\nSWITCH ATHLETE     F  (or TAB)",88,214,18,INK)
+ label_at("MOVE     W A S D\nSHOOT / BLOCK     J\nPASS / STEAL     K\nSHOVE (TURBO+STEAL)     L\nTURBO     SHIFT\nSPIN / ELBOWS     '  (or P / O / I / H)\nSWITCH ATHLETE     F  (or TAB)",88,214,18,INK)
  label_at("PLAYER TWO — LOCAL VERSUS",88,430,20,GOLD)
  label_at("MOVE     ARROWS\nSHOOT / BLOCK     NUMPAD 1\nPASS / STEAL     NUMPAD 2\nTURBO     NUMPAD 0    •    SWITCH     NUMPAD 3",88,475,18)
  label_at("GAMEPAD",675,172,21,GOLD)
@@ -768,9 +794,13 @@ func draw_arena() -> void:
    if player.charge <= 0:
     continue
    var point: Vector2 = arena.shot_meter_position(i)+Vector2(0,133)
+   var is_moving = player.get("shot_is_moving", false)
+   var meter_color = Color("ff9933") if is_moving else Color("26e673")
    draw_rect(Rect2(point-Vector2(29,5),Vector2(58,10)),BG)
-   draw_rect(Rect2(point-Vector2(27,3),Vector2(54*minf(player.charge/1.16,1),6)),GOLD)
+   draw_rect(Rect2(point-Vector2(27,3),Vector2(54*minf(player.charge/1.16,1),6)),meter_color)
    draw_line(point+Vector2(0,-6),point+Vector2(0,6),INK,2)
+   var meter_tag = "MOVING" if is_moving else "AIMED"
+   text_at(meter_tag, point + Vector2(0, 16), 11, meter_color, true)
   if show_shot_percentage and game.last_shot_feedback.size() > 0:
    var age = game.elapsed - game.last_shot_feedback.get("time", 0.0)
    if age >= 0.0 and age < 1.35:
@@ -781,8 +811,9 @@ func draw_arena() -> void:
     var pct: float = game.last_shot_feedback.get("percentage", 0.0)
     var quality: String = game.last_shot_feedback.get("quality", "GOOD")
     var is_dunk: bool = game.last_shot_feedback.get("dunk", false)
+    var is_moving: bool = game.last_shot_feedback.get("moving_shot", false)
     var contest: float = game.last_shot_feedback.get("contest_level", 0.0)
-    var badge_text = "%d%% DUNK" % int(pct) if is_dunk else ("%d%% OPEN" % int(pct) if contest < 0.2 else ("%d%% SMOTHERED" % int(pct) if contest > 0.55 else "%d%% %s" % [int(pct), quality]))
+    var badge_text = "%d%% DUNK" % int(pct) if is_dunk else ("%d%% MOVING" % int(pct) if is_moving and contest < 0.2 else ("%d%% OPEN" % int(pct) if contest < 0.2 else ("%d%% SMOTHERED" % int(pct) if contest > 0.55 else "%d%% %s" % [int(pct), quality])))
     var badge_color = Color(0.2, 0.9, 0.45, alpha) if pct >= 70.0 else (Color(1.0, 0.8, 0.2, alpha) if pct >= 50.0 else Color(1.0, 0.4, 0.3, alpha))
     var text_size = font.get_string_size(badge_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13)
     var box_w = text_size.x + 18
@@ -867,7 +898,7 @@ func draw_hud() -> void:
   text_at(game.banner,Vector2(640,197)+offset,30,GOLD,true)
  draw_rect(Rect2(180,696,920,30),Color(0.03,0.06,0.1,0.88))
  draw_rect(Rect2(180,696,920,30),Color("22364c"),false,1.0)
- text_at("J  SHOOT/BLOCK    K  PASS/STEAL    L  SHOVE    ;  TURBO    F  SWITCH    O  SHOT %% (%s)    ESC  MENU" % ("ON" if show_shot_percentage else "OFF"),Vector2(640,716),12,INK,true)
+ text_at("J  SHOOT/BLOCK    K  PASS/STEAL    L  SHOVE    SHIFT  TURBO    F  SWITCH    O  SHOT %% (%s)    ESC  MENU" % ("ON" if show_shot_percentage else "OFF"),Vector2(640,716),12,INK,true)
 
 func set_initials(value: String) -> void:
  initials = value.to_upper().strip_edges().left(12)
@@ -892,7 +923,7 @@ func _process(delta: float) -> void:
    for player in game.players:
     rendered_positions.append(player.pos)
    rendered_ball = game.ball
-  var dt_snap: float = clampf(visual_time - snapshot_received_time, 0.0, 0.25)
+  var dt_snap: float = clampf(visual_time - snapshot_received_time, 0.0, 0.25) * game.gameplay_time_scale()
   var factor = 1.0 - exp(-delta * 26.0)
   for i in range(game.players.size()):
    var p_snap = game.players[i]

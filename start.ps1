@@ -119,7 +119,7 @@ Write-Host "Controls:" -ForegroundColor Cyan
 Write-Host "  Move:      W A S D (or Gamepad Left Stick / D-Pad)"
 Write-Host "  Shoot:     J (or Gamepad X / Y)"
 Write-Host "  Pass:      K (or Gamepad A / B)"
-Write-Host "  Turbo:     Space (or Gamepad RT / RB)"
+Write-Host "  Turbo:     Shift (or Gamepad RT / RB)"
 Write-Host "  Switch:    Tab (or Gamepad LB / LT)"
 Write-Host "  Pause:     Escape (or Gamepad Start)"
 Write-Host ""

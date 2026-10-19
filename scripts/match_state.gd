@@ -3,6 +3,14 @@ extends RefCounted
 
 const COURT = Rect2(115, 265, 1050, 410)
 const HOOPS = [Vector2(165, 465), Vector2(1115, 465)]
+const THREE_POINT_RADIUS = 300.0
+const THREE_POINT_CORNER_OFFSET = 180.0
+const REBOUND_FLIGHT_DURATION = 1.65
+const REBOUND_BOUNCE_DURATION = 0.60
+const REBOUND_GLIDE_DURATION = 0.50
+const POSSESSION_FLASH_DURATION = 0.60
+const BULLET_TIME_DURATION = 0.50
+const BULLET_TIME_SCALE = 0.30
 const SIGNATURE_DUNKS = ["helicopter", "frontflip", "backflip", "spin_360", "between_legs", "behind_back"]
 const QUARTER_SECONDS = 180.0
 const TIP_TOSS = 1.0
@@ -52,8 +60,10 @@ var inbounding_team: int = -1
 var loose_ball_timer: float = 0.0
 var in_cylinder_timer: float = 0.0
 var must_rebound_timer: float = 0.0
+var bullet_time_remaining: float = 0.0
 var tipoff: Dictionary = {}
 var last_shot_feedback: Dictionary = {}
+var inbound_transition: Dictionary = {}
 
 func start(a: int, b: int, seconds: float = QUARTER_SECONDS, level: int = 1) -> void:
  rng.randomize()
@@ -72,11 +82,13 @@ func start(a: int, b: int, seconds: float = QUARTER_SECONDS, level: int = 1) -> 
  loose_ball_timer = 0.0
  in_cylinder_timer = 0.0
  must_rebound_timer = 0.0
+ bullet_time_remaining = 0.0
  teammate_shot_order = -1
  board_breaks = [-1.0,-1.0]
  pending_inbound = -1
  shatter_shooter = -1
  last_shot_feedback = {}
+ inbound_transition = {}
  tournament_mode = false
  no_pushing = false
  fast_passing = false
@@ -95,7 +107,7 @@ func start(a: int, b: int, seconds: float = QUARTER_SECONDS, level: int = 1) -> 
  flight = {}
  for i in range(4):
   var t = i / 2
-  players.append({"pos":Vector2(420 if t == 0 else 860, 400 + (i % 2) * 140), "vel":Vector2.ZERO, "turbo":1.0, "turbo_burnout":0.0, "jump":0.0, "receive_jump":0.0, "stun":0.0, "cooldown":0.0, "charge":0.0, "fake":0.0, "drive":0.0, "swipe":0.0, "swipe_resolved":false, "swipe_shove":false, "rebound_glide":0.0, "shoot_held":false, "face":1 if t == 0 else -1, "spin":0.0, "spin_cooldown":0.0, "elbow":0.0, "steal_immune":0.0, "rim_hang":0.0})
+  players.append({"pos":Vector2(420 if t == 0 else 860, 400 + (i % 2) * 140), "vel":Vector2.ZERO, "turbo":1.0, "turbo_burnout":0.0, "jump":0.0, "receive_jump":0.0, "stun":0.0, "cooldown":0.0, "charge":0.0, "fake":0.0, "drive":0.0, "swipe":0.0, "swipe_resolved":false, "swipe_shove":false, "rebound_glide":0.0, "possession_flash":0.0, "shoot_held":false, "face":1 if t == 0 else -1, "spin":0.0, "spin_cooldown":0.0, "elbow":0.0, "steal_immune":0.0, "rim_hang":0.0, "still_time":1.0, "shot_is_moving":false, "shot_drift_vel":Vector2.ZERO, "last_move_vel":Vector2.ZERO})
   stats.append({"points":0, "attempts":0, "made":0, "dunks":0, "steals":0, "blocks":0, "rebounds":0, "goaltends":0, "assists":0, "injury":0})
  begin_tipoff()
 
@@ -156,6 +168,15 @@ func announce(message: String, kind: String = "action") -> void:
  banner_time = 1.8
  event_id += 1
  event_kind = kind
+
+func gameplay_time_scale() -> float:
+ return BULLET_TIME_SCALE if bullet_time_remaining > 0.0 else 1.0
+
+func acquire_possession(player: int, dramatic: bool = false) -> void:
+ owner = player
+ players[player].possession_flash = POSSESSION_FLASH_DURATION
+ if dramatic:
+  bullet_time_remaining = BULLET_TIME_DURATION
 
 func hoop_for(team: int) -> Vector2:
  var right = team == 0
@@ -329,23 +350,126 @@ func prepare_receivers(delta: float, commands: Dictionary, effective: Dictionary
   start_receive_jump(receiver)
   effective[receiver].move = Vector2.ZERO
 
-func inbound(team: int, after_goal: bool = false) -> void:
+func get_inbound_spots(team: int, after_goal: bool = false) -> Array:
+ var own_hoop = hoop_for(1 - team)
+ var left_side = own_hoop.x < 640
+ var inbound_pos = Vector2(75.0 if left_side else 1205.0, own_hoop.y) if after_goal else (own_hoop + Vector2(85 if left_side else -85, 0))
+ var spots = [Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO]
+ for i in range(4):
+  var side = i / 2
+  var h = hoop_for(1 - side)
+  spots[i] = Vector2(h.x + (190 if h.x < 640 else -190), 390 + (i % 2) * 145)
+ var teammate = (team * 2) + 1
+ spots[teammate] = Vector2(own_hoop.x + (140 if left_side else -140), own_hoop.y + 40)
+ var opp_team = 1 - team
+ spots[opp_team * 2] = Vector2(640 + (-90 if left_side else 90), 380)
+ spots[opp_team * 2 + 1] = Vector2(640 + (-90 if left_side else 90), 520)
+ spots[team * 2] = inbound_pos
+ return spots
+
+func start_goal_inbound(team: int) -> void:
+ if not tipoff.is_empty():
+  tipoff.active = false
+ inbounding_team = team
+ pending_inbound = -1
+ shatter_shooter = -1
+ teammate_shot_order = -1
+ flight = {}
+ shot_clock = 24.0
+ acquire_possession(team * 2)
+ for i in range(4):
+  players[i].charge = 0.0
+  players[i].fake = 0.0
+  players[i].drive = 0.0
+  players[i].swipe = 0.0
+  players[i].swipe_resolved = false
+  players[i].swipe_shove = false
+  players[i].shoot_held = false
+  players[i].spin = 0.0
+  players[i].elbow = 0.0
+  players[i].still_time = 1.0
+  players[i].shot_is_moving = false
+  players[i].shot_drift_vel = Vector2.ZERO
+  players[i].last_move_vel = Vector2.ZERO
+ var spots = get_inbound_spots(team, true)
+ inbound_transition = {
+  "active": true,
+  "team": team,
+  "spots": spots,
+  "timer": 0.0
+ }
+ freeze = 1.0
+
+func tick_inbound_transition(delta: float) -> void:
+ inbound_transition.timer += delta
+ var team: int = inbound_transition.team
+ var spots: Array = inbound_transition.spots
+ var own_hoop = hoop_for(1 - team)
+ var left_side = own_hoop.x < 640
+ var all_settled = true
+ for i in range(4):
+  var p: Dictionary = players[i]
+  p.cooldown = maxf(0.0, p.cooldown - delta)
+  p.stun = maxf(0.0, p.stun - delta)
+  p.rim_hang = 0.0
+  p.receive_jump = 0.0
+  # If in the air, land rapidly
+  if p.jump > 0.0:
+   p.jump = maxf(0.0, p.jump - delta * 4.0)
+   all_settled = false
+  else:
+   p.jump = 0.0
+   var target: Vector2 = spots[i]
+   var diff = target - p.pos
+   var dist = diff.length()
+   # Move 2x as fast so we don't waste the player's time
+   var run_speed = (125.0 + rating(i, 0) * 7.0) * 2.0
+   if dist > 8.0:
+    all_settled = false
+    var dir = diff / dist
+    var step = minf(dist, run_speed * delta)
+    p.pos += dir * step
+    p.vel = dir * run_speed
+    if absf(dir.x) > 0.1:
+     p.face = signf(dir.x)
+   else:
+    p.pos = target
+    p.vel = Vector2.ZERO
+    p.face = 1 if left_side else -1
+
+ if owner >= 0 and owner < 4:
+  ball = players[owner].pos + Vector2(players[owner].face * 14, -7)
+
+ if all_settled or inbound_transition.timer > 2.5:
+  for i in range(4):
+   players[i].pos = spots[i]
+   players[i].vel = Vector2.ZERO
+   players[i].jump = 0.0
+   players[i].face = 1 if left_side else -1
+  if owner >= 0 and owner < 4:
+   ball = players[owner].pos + Vector2(players[owner].face * 14, -7)
+  inbound_transition = {}
+  freeze = 0.45
+
+func inbound(team: int, after_goal: bool = false, animated: bool = false) -> void:
+ if animated:
+  start_goal_inbound(team)
+  return
  if not tipoff.is_empty():
   tipoff.active = false
  inbounding_team = team if after_goal else -1
  pending_inbound = -1
  shatter_shooter = -1
  teammate_shot_order = -1
- owner = team * 2
+ inbound_transition = {}
+ acquire_possession(team * 2)
  flight = {}
  shot_clock = 24.0
  var own_hoop = hoop_for(1 - team)
  var left_side = own_hoop.x < 640
- var inbound_pos = Vector2(75.0 if left_side else 1205.0, own_hoop.y) if after_goal else (own_hoop + Vector2(85 if left_side else -85, 0))
+ var spots = get_inbound_spots(team, after_goal)
  for i in range(4):
-  var side = i / 2
-  var h = hoop_for(1 - side)
-  players[i].pos = Vector2(h.x + (190 if h.x < 640 else -190), 390 + (i % 2) * 145)
+  players[i].pos = spots[i]
   players[i].charge = 0.0
   players[i].fake = 0.0
   players[i].drive = 0.0
@@ -357,15 +481,15 @@ func inbound(team: int, after_goal: bool = false) -> void:
    players[i].jump = 0.0
   players[i].receive_jump = 0.0
   players[i].face = 1 if left_side else -1
+  players[i].still_time = 1.0
+  players[i].shot_is_moving = false
+  players[i].shot_drift_vel = Vector2.ZERO
+  players[i].last_move_vel = Vector2.ZERO
  var teammate = (team * 2) + 1
- players[teammate].pos = Vector2(own_hoop.x + (140 if left_side else -140), own_hoop.y + 40)
  players[teammate].face = 1 if left_side else -1
  var opp_team = 1 - team
- players[opp_team * 2].pos = Vector2(640 + (-90 if left_side else 90), 380)
- players[opp_team * 2 + 1].pos = Vector2(640 + (-90 if left_side else 90), 520)
  players[opp_team * 2].face = -1 if left_side else 1
  players[opp_team * 2 + 1].face = -1 if left_side else 1
- players[owner].pos = inbound_pos
  players[owner].face = 1 if left_side else -1
  ball = players[owner].pos + Vector2(players[owner].face * 14, -7)
  freeze = 1.0
@@ -373,6 +497,12 @@ func inbound(team: int, after_goal: bool = false) -> void:
 func tick(delta: float, commands: Dictionary) -> void:
  if phase != "playing":
   return
+ var real_delta = delta
+ var time_scale = gameplay_time_scale()
+ bullet_time_remaining = maxf(0.0, bullet_time_remaining - real_delta)
+ for player in players:
+  player.possession_flash = maxf(0.0, player.get("possession_flash", 0.0) - real_delta)
+ delta *= time_scale
  elapsed += delta
  banner_time = maxf(0.0, banner_time - delta)
  if assist_window > 0.0:
@@ -386,6 +516,9 @@ func tick(delta: float, commands: Dictionary) -> void:
     announce("TEAM ZONE EXPIRED!", "whistle")
  if tipoff.get("active",false):
   tick_tipoff(delta,commands)
+  return
+ if inbound_transition.get("active", false):
+  tick_inbound_transition(delta)
   return
  if freeze > 0:
   if pending_inbound >= 0:
@@ -522,17 +655,52 @@ func tick(delta: float, commands: Dictionary) -> void:
       players[d].pos = (players[d].pos + push_dir * 38.0).clamp(COURT.position + Vector2(18,18), COURT.end - Vector2(18,18))
       players[d].vel = push_dir * 120.0
     announce("CLEAR OUT!", "shove")
+  var shoot: bool = c.get("shoot", false)
+  var shooting_this_tick = owner == i and shoot and p.pos.x >= COURT.position.x and p.pos.x <= COURT.end.x and not c.get("pass", false) and p.cooldown <= 0.0
+  if shooting_this_tick and (not p.shoot_held or p.charge <= 0.0):
+   var was_moving = p.get("still_time", 1.0) < 0.10 or p.vel.length() > 10.0 or move.length() > 0.05
+   p.shot_is_moving = was_moving
+   if was_moving:
+    var drift = p.vel if p.vel.length() > 10.0 else p.get("last_move_vel", Vector2.ZERO)
+    if drift.length() < 10.0 and move.length() > 0.05:
+     drift = move.normalized() * speed
+    p.shot_drift_vel = drift * 0.70
+    p.vel = move * speed if move.length() > 0.05 else p.shot_drift_vel
+   else:
+    p.shot_is_moving = false
+    p.shot_drift_vel = Vector2.ZERO
+    p.vel = Vector2.ZERO
+  var is_moving = not shooting_this_tick and (move.length() > 0.05 or p.vel.length() > 10.0) and p.charge <= 0.0 and p.jump <= 0.0
+  if is_moving:
+   p.still_time = 0.0
+   if p.vel.length() > 10.0:
+    p.last_move_vel = p.vel
+   elif move.length() > 0.05:
+    p.last_move_vel = move.normalized() * speed
+  elif p.charge <= 0.0 and p.jump <= 0.0:
+   p.still_time += delta
   if p.get("spin", 0.0) > 0.0:
    if move.length() > 0.1:
     p.vel = move.normalized() * (speed * 1.35)
   elif p.get("elbow", 0.0) > 0.0:
    p.vel = Vector2.ZERO
+  elif owner == i and (p.charge > 0.0 or shooting_this_tick):
+   if p.get("shot_is_moving", false):
+    p.vel = move * speed if move.length() > 0.05 else p.get("shot_drift_vel", p.vel)
+   else:
+    p.vel = Vector2.ZERO
   else:
    p.vel = move * speed
   if p.get("rebound_glide", 0.0) > 0.0:
    p.rebound_glide = maxf(0.0, p.rebound_glide - delta)
   elif p.jump > 0.0 and owner != i and p.receive_jump <= 0.0:
-   p.vel = Vector2.ZERO
+   if p.get("shot_is_moving", false) and p.get("shot_drift_vel", Vector2.ZERO).length() > 0:
+    p.vel = p.shot_drift_vel
+   else:
+    p.vel = Vector2.ZERO
+  elif p.jump <= 0.0 and p.charge <= 0.0 and not shooting_this_tick:
+   p.shot_is_moving = false
+   p.shot_drift_vel = Vector2.ZERO
   if p.get("swipe", 0.0) > 0.0:
    p.vel = Vector2.ZERO
   if p.vel.length() > 40 and p.vel.dot((hoop_for(i/2)-p.pos).normalized()) > 20:
@@ -554,7 +722,6 @@ func tick(delta: float, commands: Dictionary) -> void:
    inbounding_team = -1
   if absf(p.vel.x) > 0.1:
    p.face = signf(p.vel.x)
-  var shoot: bool = c.get("shoot", false)
   if owner == i:
    if p.pos.x < COURT.position.x or p.pos.x > COURT.end.x:
     shoot = false
@@ -564,6 +731,10 @@ func tick(delta: float, commands: Dictionary) -> void:
     p.charge = 0.0
     shoot = false
    elif shoot:
+    if p.shot_is_moving:
+     p.vel = move * speed if move.length() > 0.05 else p.shot_drift_vel
+    else:
+     p.vel = Vector2.ZERO
     p.fake = 0.0
     p.charge = minf(1.25, p.charge + delta)
     var finish = finish_kind(i,turbo)
@@ -573,11 +744,15 @@ func tick(delta: float, commands: Dictionary) -> void:
    elif p.shoot_held and p.charge > 0:
     if p.charge < 0.16 and commands.has(i):
      p.fake = 0.38
+     p.shot_is_moving = false
+     p.shot_drift_vel = Vector2.ZERO
      announce("HEAD FAKE!", "fake")
     else:
      var jump_h = sin(clampf(p.charge / 1.16, 0.0, 1.0) * PI) * 1.35
      shoot_ball(i, turbo, false, 1.3 + jump_h)
      p.jump = maxf(0.08, 1.16 - p.charge)
+     if not p.shot_is_moving:
+      p.vel = Vector2.ZERO
     p.charge = 0.0
   else:
    # Off-ball commands target a CPU ball carrier; never override another human.
@@ -604,7 +779,7 @@ func tick(delta: float, commands: Dictionary) -> void:
   if loose_ball_timer <= 0.0 and in_cylinder_timer <= 0.0:
    for i in range(4):
     if players[i].stun <= 0 and players[i].pos.distance_to(ball) < 30:
-     owner = i
+     acquire_possession(i, true)
      shot_clock = 24.0
      stats[i].rebounds += 1
      announce("REBOUND!", "catch")
@@ -675,12 +850,27 @@ func nearest_defender(i: int) -> float:
    distance = minf(distance, players[j].pos.distance_to(players[i].pos))
  return distance
 
+static func three_point_geometry(side: int) -> Dictionary:
+ var hoop: Vector2 = HOOPS[side]
+ var direction = 1.0 if side == 0 else -1.0
+ var arc_angle = asin(THREE_POINT_CORNER_OFFSET / THREE_POINT_RADIUS)
+ var arc_x_offset = sqrt(THREE_POINT_RADIUS * THREE_POINT_RADIUS - THREE_POINT_CORNER_OFFSET * THREE_POINT_CORNER_OFFSET)
+ return {
+  "hoop": hoop,
+  "radius": THREE_POINT_RADIUS,
+  "arc_start": -arc_angle if side == 0 else PI - arc_angle,
+  "arc_end": arc_angle if side == 0 else PI + arc_angle,
+  "arc_join_x": hoop.x + direction * arc_x_offset,
+  "top_y": hoop.y - THREE_POINT_CORNER_OFFSET,
+  "bottom_y": hoop.y + THREE_POINT_CORNER_OFFSET,
+  "baseline_x": COURT.position.x if side == 0 else COURT.end.x,
+ }
+
 func is_three_pointer(point: Vector2, hoop: Vector2) -> bool:
- var dx = absf(point.x - hoop.x)
  var dy = absf(point.y - hoop.y)
- if dy > 140.0:
-  return dx > 255.0
- return point.distance_to(hoop) > 295.0
+ if dy > THREE_POINT_CORNER_OFFSET:
+  return true
+ return point.distance_to(hoop) > THREE_POINT_RADIUS
 
 func calculate_defensive_contest(shooter: int, hoop: Vector2) -> Dictionary:
  var shooter_pos: Vector2 = players[shooter].pos
@@ -723,7 +913,7 @@ func calculate_defensive_contest(shooter: int, hoop: Vector2) -> Dictionary:
   defender_ids.append(d.id)
  return {"level":total_contest,"defenders":defender_ids}
 
-func calculate_shot_percentage(i: int, charge: float, dunk: bool, layup: bool, specialty: bool, alley: bool = false, hook: bool = false, fadeaway: bool = false) -> Dictionary:
+func calculate_shot_percentage(i: int, charge: float, dunk: bool, layup: bool, specialty: bool, alley: bool = false, hook: bool = false, fadeaway: bool = false, moving_shot: Variant = null) -> Dictionary:
  var hoop = hoop_for(i / 2)
  var distance: float = players[i].pos.distance_to(hoop)
  var three_pointer = not dunk and not layup and not hook and is_three_pointer(players[i].pos, hoop)
@@ -740,6 +930,16 @@ func calculate_shot_percentage(i: int, charge: float, dunk: bool, layup: bool, s
  var chance = 0.0
  var timing_contrib = 0.0
  var fire_bonus = 0.0
+ var is_moving_shot = false
+ if moving_shot != null:
+  is_moving_shot = bool(moving_shot)
+ elif fadeaway:
+  is_moving_shot = true
+ elif i >= 0 and i < players.size():
+  var p_shoot: Dictionary = players[i]
+  is_moving_shot = p_shoot.get("shot_is_moving", false) or p_shoot.get("still_time", 1.0) < 0.10 or p_shoot.get("vel", Vector2.ZERO).length() > 10.0
+ var moving_penalty = 0.14
+ var still_bonus = 0.02
  if dunk:
   base = (0.84 if specialty else 0.72) + rating(i, 2) * 0.018
   chance = base - contest_level * 0.14 + rubber_band
@@ -759,7 +959,10 @@ func calculate_shot_percentage(i: int, charge: float, dunk: bool, layup: bool, s
  else:
   base = 0.24 + rating(i, 1) * 0.038
   timing_contrib = timing * 0.28
-  chance = base + timing_contrib - dist_penalty - contest_level * 0.32 + rubber_band
+  if is_moving_shot:
+   chance = base + timing_contrib - dist_penalty - contest_level * 0.32 + rubber_band - moving_penalty
+  else:
+   chance = base + timing_contrib - dist_penalty - contest_level * 0.32 + rubber_band + still_bonus
  if is_player_on_fire(i):
   fire_bonus = 0.30
   chance += fire_bonus
@@ -802,6 +1005,10 @@ func calculate_shot_percentage(i: int, charge: float, dunk: bool, layup: bool, s
   "specialty":specialty,
   "hook":hook,
   "fadeaway":fadeaway,
+  "moving_shot":is_moving_shot,
+  "still_shot":not is_moving_shot,
+  "moving_penalty":moving_penalty if is_moving_shot else 0.0,
+  "still_bonus":still_bonus if not is_moving_shot else 0.0,
   "quality":quality
  }
 
@@ -836,6 +1043,8 @@ func finish_kind(i: int, turbo: bool, alley: bool = false) -> String:
 
 func shoot_ball(i: int, turbo: bool, alley: bool = false, release_height: float = 1.3) -> void:
  teammate_shot_order = -1
+ inbound_transition = {}
+ inbounding_team = -1
  var p: Dictionary = players[i]
  p.fake = 0.0
  var hoop = hoop_for(i / 2)
@@ -852,10 +1061,12 @@ func shoot_ball(i: int, turbo: bool, alley: bool = false, release_height: float 
  var is_bank_angle = distance >= 85.0 and distance <= 270.0 and angle_from_baseline > 0.40 and angle_from_baseline < 1.35
  var bank_shot = is_bank_angle and not dunk and not alley and rng.randf() < 0.28
  var fadeaway = not dunk and not layup and not hook and not alley and p.vel.length() > 20.0 and p.vel.dot(hoop_vec.normalized()) < -15.0
+ var moving_shot = p.get("shot_is_moving", false) if p.has("shot_is_moving") else (p.get("still_time", 1.0) < 0.10 or p.vel.length() > 10.0)
  if fadeaway:
+  moving_shot = true
   p.vel = -(hoop_vec.normalized()) * 55.0
   p.jump = 0.52
- var breakdown = calculate_shot_percentage(i, p.charge, dunk, layup, specialty, alley, hook, fadeaway)
+ var breakdown = calculate_shot_percentage(i, p.charge, dunk, layup, specialty, alley, hook, fadeaway, moving_shot)
  var chance: float = breakdown.chance
  var points = 2 if dunk else (3 if breakdown.three_pointer else 2)
  var burning = is_player_on_fire(i)
@@ -869,6 +1080,16 @@ func shoot_ball(i: int, turbo: bool, alley: bool = false, release_height: float 
  else:
   if not fadeaway:
    p.jump = 0.58 if hook else (0.55 if layup else 0.50)
+   if not dunk and not layup and not hook:
+    if moving_shot:
+     if p.get("shot_drift_vel", Vector2.ZERO).length() > 0:
+      p.vel = p.shot_drift_vel
+     elif p.vel.length() > 10.0:
+      p.shot_drift_vel = p.vel * 0.70
+      p.vel = p.shot_drift_vel
+    else:
+     p.vel = Vector2.ZERO
+     p.shot_drift_vel = Vector2.ZERO
  p.drive = 0.0
  stats[i].attempts += 1
  var will_make = rng.randf() < chance
@@ -883,7 +1104,7 @@ func shoot_ball(i: int, turbo: bool, alley: bool = false, release_height: float 
     clank = true
  var dunk_duration = 0.92 if burning else (0.75 if specialty else 0.60)
  var dunk_arc = 4.2 if burning else (2.6 if specialty else 1.1)
- flight = {"kind":"shot", "start":ball, "end":hoop, "time":0.0, "duration":dunk_duration if dunk else (0.62 if layup else (0.85 if hook else 1.05)), "shooter":i, "points":points, "made":will_make, "dunk":dunk, "layup":layup, "hook":hook, "fadeaway":fadeaway, "super_dunk":specialty or burning, "dunk_style":dunk_style, "finish":finish, "arc_height":(3.6 if turbo else 2.5) if hook else (dunk_arc if dunk else (1.0 if layup else 4.6)), "blocked":false, "shot_breakdown":breakdown, "clank":clank, "bank_shot":bank_shot}
+ flight = {"kind":"shot", "start":ball, "end":hoop, "time":0.0, "duration":dunk_duration if dunk else (0.62 if layup else (0.85 if hook else 1.05)), "shooter":i, "points":points, "made":will_make, "dunk":dunk, "layup":layup, "hook":hook, "fadeaway":fadeaway, "super_dunk":specialty or burning, "dunk_style":dunk_style, "finish":finish, "arc_height":(3.6 if turbo else 2.5) if hook else (dunk_arc if dunk else (1.0 if layup else 4.6)), "blocked":false, "shot_breakdown":breakdown, "clank":clank, "bank_shot":bank_shot, "moving_shot":moving_shot}
  if dunk or layup or hook:
   flight.player_start = p.pos
   flight.player_end = hoop+Vector2(-1 if hoop.x > 640 else 1,0)*(28 if dunk else 50)
@@ -902,7 +1123,9 @@ func shoot_ball(i: int, turbo: bool, alley: bool = false, release_height: float 
   "time": elapsed,
   "points": points,
   "made": will_make,
-  "dunk": dunk
+  "dunk": dunk,
+  "moving_shot": moving_shot,
+  "still_shot": not moving_shot
  }
  var callout = "UP IT GOES"
  if dunk:
@@ -925,6 +1148,8 @@ func shoot_ball(i: int, turbo: bool, alley: bool = false, release_height: float 
   callout = "LAY IT UP!"
  elif bank_shot:
   callout = "OFF THE GLASS!"
+ elif moving_shot:
+  callout = "PERFECT RELEASE!" if breakdown.quality == "PERFECT" else "PULL-UP JUMPER!"
  else:
   callout = "PERFECT RELEASE!" if breakdown.quality == "PERFECT" else ("FROM DOWNTOWN!" if points == 3 else "UP IT GOES")
  announce(callout, "dunk" if dunk else "shot")
@@ -957,13 +1182,13 @@ func defend(i: int, turbo: bool) -> void:
  if must_rebound_timer > 0.0 or (not flight.is_empty() and flight.get("kind", "") == "rebound"):
   players[i].jump = 0.75
   if not flight.is_empty():
-   var intercept_t = clampf((flight.time + 0.35) / maxf(flight.duration, 0.01), 0.0, 1.0)
+   var intercept_t = clampf((flight.time + REBOUND_GLIDE_DURATION) / maxf(flight.duration, 0.01), 0.0, 1.0)
    var predicted_point = flight.start.lerp(flight.end, intercept_t)
    var delta_pos = predicted_point - players[i].pos
    if delta_pos.length() > 0.1:
-    var rebound_vel = delta_pos / 0.35
+    var rebound_vel = delta_pos / REBOUND_GLIDE_DURATION
     players[i].vel = rebound_vel.limit_length(260.0)
-    players[i].rebound_glide = 0.35
+    players[i].rebound_glide = REBOUND_GLIDE_DURATION
   return
  if not flight.is_empty() and flight.get("kind", "") == "shot":
   var shooter: int = flight.shooter
@@ -1048,7 +1273,7 @@ func resolve_steal(i: int, shove: bool) -> void:
    players[victim].fake = 0.0
    players[i].cooldown = 0.75
    stats[i].steals += 1
-   owner = i
+   acquire_possession(i, true)
    shot_clock = 24.0
    announce("STAGGERED!", "steal")
    return
@@ -1060,7 +1285,7 @@ func resolve_steal(i: int, shove: bool) -> void:
   players[victim].fake = 0.0
   players[i].cooldown = 0.80
   stats[i].steals += 1
-  owner = i
+  acquire_possession(i, true)
   shot_clock = 24.0
   announce("SHOVED! NO FOULS!", "steal")
   return
@@ -1074,7 +1299,7 @@ func resolve_steal(i: int, shove: bool) -> void:
   players[victim].charge = 0.0
   players[victim].fake = 0.0
   if clean_steal:
-   owner = i
+   acquire_possession(i, true)
    shot_clock = 24.0
    announce("PICKED THEIR POCKET!", "steal")
   else:
@@ -1099,7 +1324,7 @@ func intercept_pass(i: int) -> void:
   players[i].swipe = 0.25
   announce("TIPPED PASS! LOOSE BALL", "steal")
   return
- owner = i
+ acquire_possession(i, true)
  flight = {}
  ball = players[i].pos
  shot_clock = 24.0
@@ -1136,7 +1361,7 @@ func tick_flight(delta: float) -> void:
     var p_h = 1.2 + sin(clampf((0.75 - p.jump) / 0.75, 0, 1) * PI) * 1.6
     var ball_h = ball_height()
     if p.pos.distance_to(ball) < 55.0 and absf(ball_h - p_h) < 1.4:
-     owner = i
+     acquire_possession(i, true)
      flight = {}
      p.vel = Vector2.ZERO
      p.rebound_glide = 0.0
@@ -1152,7 +1377,7 @@ func tick_flight(delta: float) -> void:
    flight.start = flight.end
    flight.end = (flight.end + Vector2(rng.randf_range(-35.0, 35.0), rng.randf_range(-35.0, 35.0))).clamp(COURT.position + Vector2(25.0, 25.0), COURT.end - Vector2(25.0, 25.0))
    flight.time = 0.0
-   flight.duration = 0.42
+   flight.duration = REBOUND_BOUNCE_DURATION
    flight.bounce_height = 0.75
   else:
    ball = flight.end
@@ -1174,7 +1399,7 @@ func tick_flight(delta: float) -> void:
    flight = {}
    announce("LOB MISSED! LOOSE BALL","miss")
    return
-  owner = receiver
+  acquire_possession(receiver)
   ball = players[owner].pos
   last_passer = flight.get("passer", -1)
   assist_window = 3.5 if last_passer >= 0 else 0.0
@@ -1232,7 +1457,7 @@ func tick_flight(delta: float) -> void:
    freeze = 1.65
   else:
    announce(message,"fire" if ignited else ("dunk" if flight.dunk else "score"))
-   inbound(1-team, true)
+   inbound(1-team, true, true)
  else:
   record_miss(shooter)
   last_passer = -1
@@ -1256,7 +1481,7 @@ func tick_flight(delta: float) -> void:
    in_cylinder_timer = 0.0
    announce("OFF THE GLASS!" if was_bank_shot else "OFF THE RIM!", "miss")
   else:
-   flight = {"kind":"rebound", "start":hoop_for(team), "end":ricochet, "time":0.0, "duration":1.20, "shooter":shooter, "arc_height":arc_h, "bounces":0}
+   flight = {"kind":"rebound", "start":hoop_for(team), "end":ricochet, "time":0.0, "duration":REBOUND_FLIGHT_DURATION, "shooter":shooter, "arc_height":arc_h, "bounces":0}
    owner = -1
    shot_clock = 24.0
    announce("OFF THE GLASS!" if was_bank_shot else ("OFF THE BACK IRON!" if was_clank else "OFF THE RIM!"), "miss")
@@ -1277,7 +1502,7 @@ func next_period() -> void:
  inbound(quarter % 2)
 
 func snapshot() -> Dictionary:
- return {"tipoff":tipoff.duplicate(true), "board_breaks":board_breaks.duplicate(), "pending_inbound":pending_inbound, "shatter_shooter":shatter_shooter, "players":players.duplicate(true), "teams":teams.duplicate(), "score":score.duplicate(), "streak":streak.duplicate(), "player_streak":player_streak.duplicate(), "team_streak":team_streak.duplicate(), "team_fire_timer":team_fire_timer.duplicate(), "fire_player":fire_player, "fire_points":fire_points, "last_passer":last_passer, "assist_window":assist_window, "brick_count":brick_count.duplicate(), "inbounding_team":inbounding_team, "teammate_shot_order":teammate_shot_order, "stats":stats.duplicate(true), "ball":ball, "owner":owner, "flight":flight.duplicate(true), "clock":clock, "shot_clock":shot_clock, "quarter":quarter, "overtime":overtime, "phase":phase, "freeze":freeze, "banner":banner, "banner_time":banner_time, "event_id":event_id, "event_kind":event_kind, "elapsed":elapsed, "big_heads":big_heads, "infinite_turbo":infinite_turbo, "tournament_mode":tournament_mode, "no_pushing":no_pushing, "fast_passing":fast_passing, "maximum_power":maximum_power, "last_shot_feedback":last_shot_feedback.duplicate(true), "loose_ball_timer":loose_ball_timer, "in_cylinder_timer":in_cylinder_timer, "must_rebound_timer":must_rebound_timer}
+ return {"tipoff":tipoff.duplicate(true), "board_breaks":board_breaks.duplicate(), "pending_inbound":pending_inbound, "shatter_shooter":shatter_shooter, "players":players.duplicate(true), "teams":teams.duplicate(), "score":score.duplicate(), "streak":streak.duplicate(), "player_streak":player_streak.duplicate(), "team_streak":team_streak.duplicate(), "team_fire_timer":team_fire_timer.duplicate(), "fire_player":fire_player, "fire_points":fire_points, "last_passer":last_passer, "assist_window":assist_window, "brick_count":brick_count.duplicate(), "inbounding_team":inbounding_team, "teammate_shot_order":teammate_shot_order, "stats":stats.duplicate(true), "ball":ball, "owner":owner, "flight":flight.duplicate(true), "clock":clock, "shot_clock":shot_clock, "quarter":quarter, "overtime":overtime, "phase":phase, "freeze":freeze, "banner":banner, "banner_time":banner_time, "event_id":event_id, "event_kind":event_kind, "elapsed":elapsed, "big_heads":big_heads, "infinite_turbo":infinite_turbo, "tournament_mode":tournament_mode, "no_pushing":no_pushing, "fast_passing":fast_passing, "maximum_power":maximum_power, "last_shot_feedback":last_shot_feedback.duplicate(true), "loose_ball_timer":loose_ball_timer, "in_cylinder_timer":in_cylinder_timer, "must_rebound_timer":must_rebound_timer, "bullet_time_remaining":bullet_time_remaining, "inbound_transition":inbound_transition.duplicate(true)}
 
 func apply_snapshot(data: Dictionary) -> void:
  for key in data:

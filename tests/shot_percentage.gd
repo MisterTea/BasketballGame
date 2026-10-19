@@ -121,13 +121,20 @@ func run() -> void:
 	
 	# 7. True 3-Point Boundary Geometry
 	s = fresh()
-	# Mid-range: distance 200
-	check(not s.is_three_pointer(hoop + Vector2(-200, 0), hoop), "200 units from hoop is a 2-pointer")
-	# Top of key: distance 310
-	check(s.is_three_pointer(hoop + Vector2(-310, 0), hoop), "310 units at top of arc is a 3-pointer")
-	# Corner 3: dy = 160, dx = 265
-	var corner_pos = Vector2(hoop.x - 265, hoop.y - 160)
-	check(s.is_three_pointer(corner_pos, hoop), "baseline corner position (dx=265, dy=160) is accurately recognized as 3-pointer")
+	check(not s.is_three_pointer(hoop + Vector2(-299, 0), hoop), "shot just inside the painted arc is a 2-pointer")
+	check(not s.is_three_pointer(hoop + Vector2(-300, 0), hoop), "shot on the painted arc is a 2-pointer")
+	check(s.is_three_pointer(hoop + Vector2(-301, 0), hoop), "shot just outside the painted arc is a 3-pointer")
+	check(not s.is_three_pointer(hoop + Vector2(-20, -179), hoop), "side shot just inside the straight corner line is a 2-pointer")
+	check(not s.is_three_pointer(hoop + Vector2(-20, -180), hoop), "side shot on the straight corner line is a 2-pointer")
+	check(s.is_three_pointer(hoop + Vector2(-20, -181), hoop), "side shot just outside the straight corner line is a 3-pointer")
+	for side in range(2):
+		var geometry = MatchState.three_point_geometry(side)
+		var side_hoop: Vector2 = geometry.hoop
+		var direction = 1.0 if side == 0 else -1.0
+		var join = Vector2(geometry.arc_join_x, geometry.top_y)
+		check(is_equal_approx(join.distance_to(side_hoop), geometry.radius), "hoop %d painted arc joins its corner line at the shared scoring radius" % side)
+		check(not s.is_three_pointer(join, side_hoop), "hoop %d arc/corner join is a 2-pointer on the line" % side)
+		check(s.is_three_pointer(join + Vector2(-direction, -1), side_hoop), "hoop %d shot outside the arc/corner join is a 3-pointer" % side)
 	
 	# 8. Physics Rim Ricochet
 	s = fresh()
@@ -178,6 +185,100 @@ func run() -> void:
 		var stream: AudioStreamWAV = main_scene.sounds[snd]
 		check(stream.data.size() > 500 and stream.mix_rate == 22050, "sound %s contains valid 22.05kHz 16-bit PCM waveform" % snd)
 	main_scene.free()
-	
+
+	# 12. Moving vs Still Shot Odds and Straight-Up Jump Physics
+	s = fresh()
+	s.players[0].pos = hoop + Vector2(-240, 0)
+	s.players[0].vel = Vector2.ZERO
+	s.players[0].still_time = 1.0
+	var still_eval = s.calculate_shot_percentage(0, 0.58, false, false, false)
+	check(not still_eval.moving_shot and still_eval.still_shot, "player standing still is evaluated as a still shot")
+	check(still_eval.still_bonus > 0.0, "standing still provides accuracy bonus: +%.3f" % still_eval.still_bonus)
+
+	# Active moving shot
+	s.players[0].vel = Vector2(100, 50)
+	s.players[0].still_time = 0.0
+	var moving_eval = s.calculate_shot_percentage(0, 0.58, false, false, false)
+	check(moving_eval.moving_shot and not moving_eval.still_shot, "moving player is evaluated as a moving shot")
+	check(moving_eval.moving_penalty > 0.0, "moving shot incurs moving penalty: -%.3f" % moving_eval.moving_penalty)
+	check(still_eval.percentage > moving_eval.percentage, "still shot percentage (%.1f%%) is significantly higher than moving shot (%.1f%%)" % [still_eval.percentage, moving_eval.percentage])
+
+	# 100ms window test: stopped 50ms ago (< 100ms) -> moving shot
+	s = fresh()
+	s.players[0].pos = hoop + Vector2(-240, 0)
+	s.players[0].vel = Vector2.ZERO
+	s.players[0].still_time = 0.05 # 50ms still
+	var window_50ms = s.calculate_shot_percentage(0, 0.58, false, false, false)
+	check(window_50ms.moving_shot, "player moving in the past 100ms (50ms ago) remains a moving shot with lower odds")
+	check(window_50ms.percentage == moving_eval.percentage, "50ms recent movement incurs moving shot penalty")
+
+	# 100ms window test: stopped 120ms ago (>= 100ms) -> still shot
+	s.players[0].still_time = 0.12 # 120ms still
+	var window_120ms = s.calculate_shot_percentage(0, 0.58, false, false, false)
+	check(not window_120ms.moving_shot and window_120ms.still_shot, "player still for >= 100ms (120ms) is evaluated as a set still shot")
+	check(window_120ms.percentage == still_eval.percentage, "still shot grants higher percentage")
+
+	# Straight-up jump vs moving momentum in tick simulation
+	s = fresh()
+	s.owner = 0
+	s.players[0].pos = hoop + Vector2(-220, 0)
+	s.ball = s.players[0].pos
+	s.players[0].still_time = 1.0 # Stays still before shooting
+	# Charge shot while still
+	s.tick(0.10, {0: {"move": Vector2.ZERO, "shoot": true}})
+	check(s.players[0].vel == Vector2.ZERO, "player who stays still before shooting jumps straight up with zero horizontal velocity")
+	check(not s.players[0].shot_is_moving, "shot initiated while still is marked as not moving")
+
+	# Moving shot preserves horizontal momentum
+	s = fresh()
+	s.owner = 0
+	s.players[0].pos = hoop + Vector2(-220, 0)
+	s.ball = s.players[0].pos
+	s.players[0].vel = Vector2(150, 0)
+	s.players[0].still_time = 0.0
+	s.tick(0.10, {0: {"move": Vector2.RIGHT, "shoot": true}})
+	check(s.players[0].shot_is_moving, "shot initiated while moving is marked as moving shot")
+	check(s.players[0].vel.length() > 50.0, "moving shot preserves momentum drift during jump")
+
+	# 13. Post-Goal Inbound Transition (No Teleportation, Air Landing, 2x Running Speed)
+	s = fresh()
+	var hoop_goal = s.hoop_for(0)
+	s.players[0].pos = hoop_goal + Vector2(-30, 0)
+	s.players[0].jump = 0.50 # Shooter airborne
+	s.players[2].pos = hoop_goal + Vector2(-50, 0)
+	s.players[2].jump = 0.40 # Defender airborne contesting
+	s.flight = {
+		"kind": "shot", "start": hoop_goal + Vector2(-60, 0), "end": hoop_goal,
+		"time": 1.0, "duration": 1.0, "shooter": 0, "points": 2,
+		"made": true, "dunk": false, "blocked": false
+	}
+	var p0_pre_pos = s.players[0].pos
+	var p2_pre_pos = s.players[2].pos
+	s.tick_flight(0.016) # Goal scored
+	check(s.inbound_transition.get("active", false), "scoring a goal starts the smooth inbound transition instead of teleporting")
+	check(s.players[0].pos.distance_to(p0_pre_pos) < 5.0, "airborne shooter has not teleported across court")
+	check(s.players[2].pos.distance_to(p2_pre_pos) < 5.0, "airborne defender has not teleported across court")
+
+	# Tick transition: airborne players land safely
+	var initial_jump = s.players[0].jump
+	s.tick(0.05, {})
+	check(s.players[0].jump < initial_jump, "airborne player lands towards the floor during transition")
+
+	# Advance transition until landed: players run at 2x normal speed
+	while s.players[2].jump > 0.0:
+		s.tick(0.02, {})
+	check(s.players[2].jump == 0.0, "players safely touch ground before running")
+	var normal_speed = 125.0 + s.rating(2, 0) * 7.0
+	s.tick(0.05, {})
+	check(is_equal_approx(s.players[2].vel.length(), normal_speed * 2.0), "players move 2x as fast (%.1f px/s) to their assigned spots" % s.players[2].vel.length())
+
+	# Fast forward transition until all players arrive at assigned spots
+	var timeout = 0.0
+	while s.inbound_transition.get("active", false) and timeout < 3.0:
+		s.tick(0.05, {})
+		timeout += 0.05
+	check(not s.inbound_transition.get("active", false), "inbound transition completes cleanly")
+	check(s.players[2].pos.x < MatchState.COURT.position.x or s.players[2].pos.x > MatchState.COURT.end.x, "inbounder reaches baseline assigned spot")
+
 	print("SHOT PERCENTAGE TESTS: %d checks, %s" % [checks, "PASS" if failures == 0 else "FAIL (%d errors)" % failures])
 	quit(0 if failures == 0 else 1)

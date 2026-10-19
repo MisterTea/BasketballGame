@@ -12,6 +12,8 @@ godot --path E:/github/jam_game
 
 A Windows convenience launcher is included: `./play.ps1 -Godot 'C:/path/to/godot.exe'`. No exported executable or Godot engine binary is checked into Git.
 
+On macOS, the window automatically follows the current display's backing scale: 2560 × 1600 on a 2× Retina display and 1280 × 800 on a 1× display. Moving the game between displays updates the window size, with automatic fitting when the usable desktop is smaller than the preferred size.
+
 ## 3D arena
 
 The court is a rectangular 28 × 15 mesh with a repeating, staggered hardwood plank texture, painted keys, regulation-style markings, and a closer sideline perspective camera that pans smoothly with possession. Off-screen athlete arrows preserve court awareness; results restore a full-court overview. Both baskets have modeled poles, padded bases, bracing, transparent framed backboards, orange rims, and tapered string nets.
@@ -55,13 +57,13 @@ Eight fictional teams feature sixteen athletes with different speed, shooting, d
 | Steal (swipe defense) | K | Numpad 2 | B (or A) |
 | Shove (turbo knockdown) | L (or Turbo + Steal) | Numpad + (or Turbo + Steal) | B with Turbo held |
 | Block / rebound (defense) | J | Numpad 1 | Y (or X) |
-| Boost (turbo) | ; (or Space) | Numpad 0 | RT (Right Trigger) or RB |
+| Boost (turbo) | Shift | Numpad 0 | RT (Right Trigger) or RB |
 | Switch athlete (offline) | F (or Tab) | Numpad 3 | LB or LT |
 | Pause / resume | Escape | Escape | Start or Back |
 | Menu navigation | Mouse / Arrow keys | Arrow keys | D-pad / Left stick, A to select, B to cancel |
 | Toggle sound | M | M | Keyboard M |
 
-Keyboard controls are mapped to comfortable stationary home-row finger placements: the left hand controls movement on `WASD` and switching on `F`, while the right hand controls shooting/blocking on `J`, passing/stealing on `K`, shoving on `L`, and turbo on `;` (with `Space` and `Tab` preserved as familiar alternates).
+Keyboard controls use `WASD` for movement, `Shift` for turbo, and `F` for switching, while the right hand controls shooting/blocking on `J`, passing/stealing on `K`, and shoving on `L`. `Tab` remains an alternate switch key.
 
 Gamepad support features standard arcade gamepad controls: four face buttons on the right thumb (X shoots/dunks/fakes, A passes/lobs, B steals/shoves, Y blocks/rebounds), two pairs of shoulder buttons with Boost on the Right Trigger (RT) or RB so players can comfortably hold boost while performing other actions with their thumb, and athlete switching on the Left Bumper (LB) or Left Trigger (LT). Full controller menu navigation and pause handling are supported via D-pad, stick, A, B, and Start.
 
