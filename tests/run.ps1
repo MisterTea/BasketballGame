@@ -9,6 +9,8 @@ if ($LASTEXITCODE -ne 0) { throw "Simulation tests failed" }
 if ($LASTEXITCODE -ne 0) { throw "Tip-off tests failed" }
 & $Godot --headless --path $projectRoot --script res://tests/arcade_rules.gd
 if ($LASTEXITCODE -ne 0) { throw "Arcade rules tests failed" }
+& $Godot --headless --path $projectRoot --script res://tests/shot_percentage.gd
+if ($LASTEXITCODE -ne 0) { throw "Shot percentage tests failed" }
 & $Godot --headless --path $projectRoot --script res://tests/finishing.gd
 if ($LASTEXITCODE -ne 0) { throw "Finishing and passing tests failed" }
 & $Godot --headless --path $projectRoot --script res://tests/alley_oop.gd
@@ -32,7 +34,7 @@ foreach ($scenario in @(@{ Script = "network_peer"; Peers = 4 }, @{ Script = "ne
   }
   foreach ($process in $processes) {
    if (-not $process.WaitForExit(20000)) { throw "Network peer timed out" }
-   if ($process.ExitCode -ne 0) { throw ("Network peer failed: inspect tests/" + $scenario.Script + "-*.log") }
+   if ($null -ne $process.ExitCode -and $process.ExitCode -ne 0) { throw ("Network peer failed: inspect tests/" + $scenario.Script + "-*.log") }
   }
   Get-Content (Join-Path $projectRoot ("tests/" + $scenario.Script + "-*.log"))
   $errors = Get-Content (Join-Path $projectRoot ("tests/" + $scenario.Script + "-*-error.log")) -Raw

@@ -21,6 +21,7 @@ var level = 1
 var big_heads = false
 var infinite_turbo = false
 var tournament_round = 0
+var show_shot_percentage = true
 var tournament_wins = 0
 var initials = "ACE"
 var address = "127.0.0.1"
@@ -402,6 +403,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
  if event is InputEventKey and event.pressed and not event.echo:
   if event.keycode == KEY_M:
    muted = not muted
+  if event.keycode == KEY_O:
+   show_shot_percentage = not show_shot_percentage
   if event.keycode == KEY_ESCAPE and screen == "game":
    if net.online:
     if ui.get_child_count() == 0:
@@ -568,6 +571,25 @@ func draw_arena() -> void:
    draw_rect(Rect2(point-Vector2(29,5),Vector2(58,10)),BG)
    draw_rect(Rect2(point-Vector2(27,3),Vector2(54*minf(player.charge/1.16,1),6)),GOLD)
    draw_line(point+Vector2(0,-6),point+Vector2(0,6),INK,2)
+  if show_shot_percentage and game.last_shot_feedback.size() > 0:
+   var age = game.elapsed - game.last_shot_feedback.get("time", 0.0)
+   if age >= 0.0 and age < 1.35:
+    var shooter_idx: int = game.last_shot_feedback.get("shooter", 0)
+    var badge_pos: Vector2 = arena.shot_badge_position(shooter_idx) + Vector2(0, 133)
+    badge_pos.y -= age * 18.0
+    var alpha = clampf(1.0 - (age - 0.95) / 0.40, 0.0, 1.0) if age > 0.95 else 1.0
+    var pct: float = game.last_shot_feedback.get("percentage", 0.0)
+    var quality: String = game.last_shot_feedback.get("quality", "GOOD")
+    var is_dunk: bool = game.last_shot_feedback.get("dunk", false)
+    var contest: float = game.last_shot_feedback.get("contest_level", 0.0)
+    var badge_text = "%d%% DUNK" % int(pct) if is_dunk else ("%d%% OPEN" % int(pct) if contest < 0.2 else ("%d%% SMOTHERED" % int(pct) if contest > 0.55 else "%d%% %s" % [int(pct), quality]))
+    var badge_color = Color(0.2, 0.9, 0.45, alpha) if pct >= 70.0 else (Color(1.0, 0.8, 0.2, alpha) if pct >= 50.0 else Color(1.0, 0.4, 0.3, alpha))
+    var text_size = font.get_string_size(badge_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 13)
+    var box_w = text_size.x + 18
+    var box_rect = Rect2(badge_pos - Vector2(box_w * 0.5, 12), Vector2(box_w, 22))
+    draw_rect(box_rect, Color(0.04, 0.08, 0.14, 0.88 * alpha))
+    draw_rect(box_rect, badge_color, false, 1.5)
+    text_at(badge_text, badge_pos + Vector2(0, 5), 13, badge_color, true)
 
 func draw_hud() -> void:
  draw_rect(Rect2(0,0,1280,133),Color("0d1b2c"))
@@ -584,10 +606,23 @@ func draw_hud() -> void:
   else:
    for pip in range(3):
     draw_circle(Vector2(x+27+pip*18,100),5,color if pip < game.streak[side] else Color("334255"))
- text_at("OT %d" % game.overtime if game.overtime > 0 else "QUARTER %d" % game.quarter,Vector2(640,31),14,MUTED,true)
- var remaining = int(ceil(game.clock))
- text_at("%d:%02d" % [remaining/60,remaining%60],Vector2(640,83),44,INK,true)
- text_at("SHOT  %02d" % int(ceil(game.shot_clock)),Vector2(640,114),17,Color("ff7554") if game.shot_clock < 5 else GOLD,true)
+ draw_rect(Rect2(515,12,250,110),Color("08111c"))
+ draw_rect(Rect2(515,12,250,110),Color("22364c"),false,1.5)
+ var q_text = ("OVERTIME %d" % game.overtime) if game.overtime > 0 else ("QUARTER %d" % game.quarter)
+ text_at(q_text,Vector2(640,31),13,GOLD,true)
+ if game.clock < 10.0:
+  var sec = int(game.clock)
+  var tenths = int(fmod(game.clock * 10.0, 10.0))
+  text_at("%02d.%d" % [sec, tenths],Vector2(640,78),42,Color("ff4c3b"),true)
+ else:
+  var remaining = int(ceil(game.clock))
+  text_at("%d:%02d" % [remaining/60,remaining%60],Vector2(640,78),42,INK,true)
+ if game.shot_clock < 5.0:
+  var sc_sec = int(game.shot_clock)
+  var sc_tenths = int(fmod(game.shot_clock * 10.0, 10.0))
+  text_at("SHOT  %d.%d" % [sc_sec, sc_tenths],Vector2(640,107),16,Color("ff4433"),true)
+ else:
+  text_at("SHOT  %02d" % int(ceil(game.shot_clock)),Vector2(640,107),16,GOLD,true)
  if game.tipoff.get("active",false):
   draw_rect(Rect2(445,225,390,58),Color(0.03,0.06,0.1,0.88))
   text_at("SHOOT TO JUMP AS THE BALL RISES",Vector2(640,246),15,INK,true)
@@ -597,16 +632,38 @@ func draw_hud() -> void:
   var mark = 470+340*(MatchState.TIP_IDEAL_JUMP-MatchState.TIP_TOSS)/(MatchState.TIP_DECISION-MatchState.TIP_TOSS)
   draw_line(Vector2(mark,256),Vector2(mark,271),INK,3)
  for i in range(4):
-  var x = 70+i*307
-  text_at("%s  ·  %s" % [Teams.DATA[game.teams[i/2]].players[i%2],"ON FIRE!" if game.is_player_on_fire(i) else "HEATING UP" if game.player_streak[i] == 2 else "TURBO"],Vector2(x,776),12,GOLD if game.player_streak[i] >= 2 else MUTED)
-  draw_rect(Rect2(x,785,210,5),Color("263d52"))
-  draw_rect(Rect2(x,785,210*game.players[i].turbo,5),Teams.color_for(game.teams[i/2]))
+  var x = 50 + i * 298
+  var team_idx = game.teams[i / 2]
+  var team_color = Teams.color_for(team_idx)
+  var is_burning = game.is_player_on_fire(i)
+  var is_heating = game.player_streak[i] == 2
+  var p_name = Teams.DATA[team_idx].players[i % 2]
+  var bg_col = Color(0.24, 0.08, 0.04, 0.90) if is_burning else (Color(0.16, 0.12, 0.06, 0.88) if is_heating else Color(0.06, 0.10, 0.16, 0.88))
+  var border_col = Color("ff772c") if is_burning else (GOLD if is_heating else Color("22364c"))
+  var plate_rect = Rect2(x, 756, 284, 36)
+  draw_rect(plate_rect, bg_col)
+  draw_rect(plate_rect, border_col, false, 1.5)
+  var status_text = "★ ON FIRE! ★" if is_burning else ("🔥 HEATING UP" if is_heating else "P%d" % (i + 1))
+  var status_col = GOLD if (is_burning or is_heating) else team_color
+  text_at(status_text, Vector2(x + 10, 771), 11, status_col)
+  text_at(p_name, Vector2(x + 95, 771), 12, INK)
+  var turbo_bg = Rect2(x + 10, 778, 264, 8)
+  draw_rect(turbo_bg, Color("14202e"))
+  var turbo_w = 264.0 * game.players[i].turbo
+  if turbo_w > 0:
+   var turbo_fill_color = Color("ff5522") if is_burning else (GOLD if game.players[i].turbo < 0.25 else team_color)
+   draw_rect(Rect2(x + 10, 778, turbo_w, 8), turbo_fill_color)
+   for tick in range(1, 10):
+    var tx = x + 10 + tick * 26.4
+    if tx < x + 10 + turbo_w:
+     draw_line(Vector2(tx, 778), Vector2(tx, 786), Color(0.05, 0.08, 0.12, 0.6), 1.0)
  if game.banner_time > 0:
   var offset = Vector2(sin(visual_time*60)*shake*18,0)
   draw_rect(Rect2(Vector2(280,155)+offset,Vector2(720,62)),Color(0.03,0.06,0.1,0.88))
   text_at(game.banner,Vector2(640,197)+offset,30,GOLD,true)
- draw_rect(Rect2(250,692,780,32),Color(0.03,0.06,0.1,0.88))
- text_at("J  SHOOT / JUMP / BLOCK    K  PASS / STEAL    SPACE  TURBO    TAB  SWITCH    ESC  MENU",Vector2(640,714),13,INK,true)
+ draw_rect(Rect2(180,696,920,30),Color(0.03,0.06,0.1,0.88))
+ draw_rect(Rect2(180,696,920,30),Color("22364c"),false,1.0)
+ text_at("J  SHOOT / JUMP / BLOCK    K  PASS / STEAL    SPACE  TURBO    TAB  SWITCH    O  SHOT %% (%s)    ESC  MENU" % ("ON" if show_shot_percentage else "OFF"),Vector2(640,716),12,INK,true)
 
 func set_initials(value: String) -> void:
  initials = value.to_upper().strip_edges().left(12)

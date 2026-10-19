@@ -619,7 +619,7 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
    actor.control.text = "LOB!"
   for flame in range(5):
    var ember: MeshInstance3D = actor.fire[flame]
-   ember.visible = state.is_player_on_fire(i)
+   ember.visible = state.is_player_on_fire(i) or (state.player_streak[i] == 2 and flame < 2)
    var angle = time*3+flame*TAU/5
    ember.position = Vector3(cos(angle)*0.43,0.7+fmod(time*1.8+flame*0.37,1.6)+jump,sin(angle)*0.43)
    ember.scale.y = 0.6+sin(time*13+flame)*0.25
@@ -643,3 +643,7 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
 func shot_meter_position(index: int) -> Vector2:
  var actor: Dictionary = athletes[index]
  return camera.unproject_position(actor.root.position+Vector3(0,actor.body.position.y+3.0,0))
+
+func shot_badge_position(index: int) -> Vector2:
+ var actor: Dictionary = athletes[index]
+ return camera.unproject_position(actor.root.position+Vector3(0,actor.body.position.y+3.3,0))

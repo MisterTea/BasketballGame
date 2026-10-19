@@ -10,3 +10,9 @@ tests/*.png.import
 
 __pycache__/
 *.pyc
+
+base/
+nvram/
+snap/
+cfg/
+sta/

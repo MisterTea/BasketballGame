@@ -38,6 +38,7 @@ var board_breaks: Array = [-1.0,-1.0]
 var pending_inbound = -1
 var shatter_shooter = -1
 var tipoff: Dictionary = {}
+var last_shot_feedback: Dictionary = {}
 
 func start(a: int, b: int, seconds: float = QUARTER_SECONDS, level: int = 1) -> void:
  rng.randomize()
@@ -50,6 +51,7 @@ func start(a: int, b: int, seconds: float = QUARTER_SECONDS, level: int = 1) -> 
  board_breaks = [-1.0,-1.0]
  pending_inbound = -1
  shatter_shooter = -1
+ last_shot_feedback = {}
  stats = []
  players = []
  difficulty = level
@@ -467,6 +469,127 @@ func nearest_defender(i: int) -> float:
    distance = minf(distance, players[j].pos.distance_to(players[i].pos))
  return distance
 
+func is_three_pointer(point: Vector2, hoop: Vector2) -> bool:
+ var dx = absf(point.x - hoop.x)
+ var dy = absf(point.y - hoop.y)
+ if dy > 140.0:
+  return dx > 255.0
+ return point.distance_to(hoop) > 295.0
+
+func calculate_defensive_contest(shooter: int, hoop: Vector2) -> Dictionary:
+ var shooter_pos: Vector2 = players[shooter].pos
+ var shot_vec = hoop - shooter_pos
+ var shot_dist = shot_vec.length()
+ if shot_dist < 0.001:
+  return {"level":0.0,"defenders":[]}
+ var shot_dir = shot_vec / shot_dist
+ var primary_contest = 0.0
+ var secondary_contest = 0.0
+ var contesting: Array = []
+ for j in range(4):
+  if j / 2 == shooter / 2:
+   continue
+  var p_def: Dictionary = players[j]
+  if p_def.get("stun",0.0) > 0.0:
+   continue
+  var def_vec = p_def.pos - shooter_pos
+  var def_dist = def_vec.length()
+  if def_dist > 145.0 or def_dist < 0.001:
+   continue
+  var def_dir = def_vec / def_dist
+  var alignment = def_dir.dot(shot_dir)
+  if alignment < -0.15:
+   continue
+  var cone = clampf((alignment + 0.15) / 1.15, 0.0, 1.0)
+  var prox = clampf((145.0 - def_dist) / 145.0, 0.0, 1.0)
+  var vertical_mult = 1.5 if p_def.get("jump",0.0) > 0.0 else (1.2 if p_def.get("swipe",0.0) > 0.0 else 0.85)
+  var def_skill = 0.75 + rating(j, 3) * 0.035
+  var contest_val = cone * prox * vertical_mult * def_skill
+  contesting.append({"id":j,"val":contest_val})
+ contesting.sort_custom(func(a, b): return a.val > b.val)
+ if contesting.size() > 0:
+  primary_contest = contesting[0].val
+ if contesting.size() > 1:
+  secondary_contest = contesting[1].val * 0.45
+ var total_contest = clampf(primary_contest + secondary_contest, 0.0, 1.0)
+ var defender_ids: Array = []
+ for d in contesting:
+  defender_ids.append(d.id)
+ return {"level":total_contest,"defenders":defender_ids}
+
+func calculate_shot_percentage(i: int, charge: float, dunk: bool, layup: bool, specialty: bool, alley: bool = false) -> Dictionary:
+ var hoop = hoop_for(i / 2)
+ var distance: float = players[i].pos.distance_to(hoop)
+ var three_pointer = not dunk and not layup and is_three_pointer(players[i].pos, hoop)
+ var delta_time = charge - 0.58
+ var timing = exp(-(delta_time * delta_time) / (2.0 * 0.18 * 0.18))
+ var contest_data = calculate_defensive_contest(i, hoop)
+ var contest_level: float = contest_data.level
+ var dist_penalty = pow(distance / 750.0, 1.32) * 0.28
+ var my_team = i / 2
+ var opp_team = 1 - my_team
+ var score_diff = score[opp_team] - score[my_team]
+ var rubber_band = clampf((float(score_diff) / 22.0) * 0.08, -0.08, 0.08)
+ var base = 0.0
+ var chance = 0.0
+ var timing_contrib = 0.0
+ var fire_bonus = 0.0
+ if dunk:
+  base = (0.84 if specialty else 0.72) + rating(i, 2) * 0.018
+  chance = base - contest_level * 0.14 + rubber_band
+ elif layup:
+  base = 0.66 + rating(i, 1) * 0.024
+  timing_contrib = timing * 0.10
+  chance = base + timing_contrib - contest_level * 0.20 + rubber_band
+ else:
+  base = 0.24 + rating(i, 1) * 0.038
+  timing_contrib = timing * 0.28
+  chance = base + timing_contrib - dist_penalty - contest_level * 0.32 + rubber_band
+ if is_player_on_fire(i):
+  fire_bonus = 0.30
+  chance += fire_bonus
+  var fire_floor = 0.95 if dunk else (0.88 if layup else 0.82)
+  chance = maxf(chance, fire_floor)
+ elif player_streak[i] == 2:
+  fire_bonus = 0.08
+  chance += fire_bonus
+ var final_chance = clampf(chance, 0.05, 0.99)
+ var percentage = roundf(final_chance * 1000.0) / 10.0
+ var quality = "PERFECT" if timing > 0.93 else ("GREAT" if timing > 0.75 else ("GOOD" if timing > 0.50 else ("EARLY" if charge < 0.58 else "LATE")))
+ return {
+  "chance":final_chance,
+  "percentage":percentage,
+  "base":base,
+  "timing":timing,
+  "timing_contrib":timing_contrib,
+  "dist_penalty":dist_penalty,
+  "contest_penalty":contest_level * (0.14 if dunk else (0.20 if layup else 0.32)),
+  "contest_level":contest_level,
+  "defenders":contest_data.defenders,
+  "rubber_band":rubber_band,
+  "fire_bonus":fire_bonus,
+  "three_pointer":three_pointer,
+  "dunk":dunk,
+  "layup":layup,
+  "specialty":specialty,
+  "quality":quality
+ }
+
+func calculate_rim_ricochet(start_pos: Vector2, hoop: Vector2) -> Vector2:
+ var to_hoop = hoop - start_pos
+ var dir = to_hoop.normalized() if to_hoop.length() > 0.01 else Vector2.RIGHT
+ var side = dir.orthogonal()
+ var hit_type = rng.randi_range(0, 2)
+ var bounce_vec = Vector2.ZERO
+ if hit_type == 0:
+  bounce_vec = -dir * rng.randf_range(40.0, 130.0) + side * rng.randf_range(-45.0, 45.0)
+ elif hit_type == 1:
+  bounce_vec = dir * rng.randf_range(35.0, 115.0) + side * rng.randf_range(-40.0, 40.0)
+ else:
+  var side_dir = 1.0 if rng.randf() > 0.5 else -1.0
+  bounce_vec = side * (side_dir * rng.randf_range(50.0, 130.0)) + dir * rng.randf_range(-25.0, 35.0)
+ return (hoop + bounce_vec).clamp(COURT.position + Vector2(25.0, 25.0), COURT.end - Vector2(25.0, 25.0))
+
 func finish_kind(i: int, turbo: bool, alley: bool = false) -> String:
  if alley:
   return "alley_oop"
@@ -494,16 +617,9 @@ func shoot_ball(i: int, turbo: bool, alley: bool = false, release_height: float 
  var layup = finish == "layup"
  var launch_height = receive_height(i) if alley else 0.0
  p.receive_jump = 0.0
- var timing = maxf(0.0, 1.0 - absf(p.charge - 0.58) / 0.58)
- var contest = clampf((95 - nearest_defender(i)) / 95.0, 0.0, 1.0)
- var chance = 0.24 + rating(i, 1) * 0.038 + timing * 0.27 - distance * 0.0006 - contest * 0.22
- if dunk:
-  chance = (0.82 if specialty else 0.70) + rating(i, 2) * 0.015 - contest * 0.12
- elif layup:
-  chance = 0.65+rating(i,1)*0.025+timing*0.08-contest*0.18
- if is_player_on_fire(i):
-  chance += 0.30
- var points = 3 if distance > 300 else 2
+ var breakdown = calculate_shot_percentage(i, p.charge, dunk, layup, specialty, alley)
+ var chance: float = breakdown.chance
+ var points = 2 if dunk else (3 if breakdown.three_pointer else 2)
  if dunk:
   points = 2
   p.jump = 0.85 if specialty else 0.70
@@ -511,19 +627,29 @@ func shoot_ball(i: int, turbo: bool, alley: bool = false, release_height: float 
   p.jump = 0.55 if layup else 0.50
  p.drive = 0.0
  stats[i].attempts += 1
- flight = {"kind":"shot", "start":ball, "end":hoop, "time":0.0, "duration":0.75 if specialty else 0.60 if dunk else 0.62 if layup else 1.05, "shooter":i, "points":points, "made":rng.randf() < clampf(chance, 0.05, 0.99), "dunk":dunk, "layup":layup, "super_dunk":specialty, "finish":finish, "arc_height":1.7 if specialty else 1.1 if dunk else 1.0 if layup else 4.6, "blocked":false}
+ var will_make = rng.randf() < chance
+ flight = {"kind":"shot", "start":ball, "end":hoop, "time":0.0, "duration":0.75 if specialty else 0.60 if dunk else 0.62 if layup else 1.05, "shooter":i, "points":points, "made":will_make, "dunk":dunk, "layup":layup, "super_dunk":specialty, "finish":finish, "arc_height":1.7 if specialty else 1.1 if dunk else 1.0 if layup else 4.6, "blocked":false, "shot_breakdown":breakdown}
  if dunk or layup:
   flight.player_start = p.pos
   flight.player_end = hoop+Vector2(-1 if hoop.x > 640 else 1,0)*(28 if dunk else 50)
   flight.player_launch_height = launch_height
  flight.release_height = release_height
- # One decision per defender per shot prevents perfect frame-by-frame reactions.
  flight.cpu_block_allowed = []
  for defender in range(4):
   flight.cpu_block_allowed.append(rng.randf() < 0.15+0.10*clampi(difficulty,0,2))
  owner = -1
  p.cooldown = 0.65
- announce("SUPER JAM!" if specialty else "SLAM DUNK!" if dunk else "LAY IT UP!" if layup else ("PERFECT RELEASE!" if timing > 0.94 else "FROM DOWNTOWN!" if points == 3 else "UP IT GOES"), "dunk" if dunk else "shot")
+ last_shot_feedback = {
+  "shooter": i,
+  "percentage": breakdown.percentage,
+  "quality": breakdown.quality,
+  "contest_level": breakdown.contest_level,
+  "time": elapsed,
+  "points": points,
+  "made": will_make,
+  "dunk": dunk
+ }
+ announce("SUPER JAM!" if specialty else "SLAM DUNK!" if dunk else "LAY IT UP!" if layup else ("PERFECT RELEASE!" if breakdown.quality == "PERFECT" else "FROM DOWNTOWN!" if points == 3 else "UP IT GOES"), "dunk" if dunk else "shot")
 
 func pass_ball(i: int, turbo: bool) -> void:
  teammate_shot_order = -1
@@ -645,7 +771,7 @@ func tick_flight(delta: float) -> void:
   var was_on_fire = is_player_on_fire(shooter)
   var shattered = award_basket(shooter,flight.points,flight.dunk,true,flight.get("super_dunk",false))
   var name_text: String = Teams.DATA[teams[team]].players[shooter%2]
-  var message = "HE'S ON FIRE! " + name_text if is_player_on_fire(shooter) and not was_on_fire else ("HE'S HEATING UP! " + name_text if player_streak[shooter] == 2 else "BOOMSHAKA!" if flight.dunk else "THREE POINTER!" if flight.points == 3 else "NOTHING BUT NET!")
+  var message = "HE'S ON FIRE! " + name_text if is_player_on_fire(shooter) and not was_on_fire else ("HE'S HEATING UP! " + name_text if player_streak[shooter] == 2 else "BOOMSHAKALAKA!" if flight.get("super_dunk",false) else "SLAM DUNK!" if flight.dunk else "FROM DOWNTOWN!" if flight.points == 3 else "NOTHING BUT NET!")
   if shattered:
    announce("BOOM! BACKBOARD SHATTERED!","shatter")
    flight = {}
@@ -660,7 +786,7 @@ func tick_flight(delta: float) -> void:
    inbound(1-team)
  else:
   record_miss(shooter)
-  ball = (flight.end + Vector2(rng.randf_range(-135,135), rng.randf_range(-100,100))).clamp(COURT.position + Vector2(30,30), COURT.end - Vector2(30,30))
+  ball = calculate_rim_ricochet(flight.start, flight.end)
   flight = {}
   owner = -1
   shot_clock = 24.0
@@ -682,7 +808,7 @@ func next_period() -> void:
  inbound(quarter % 2)
 
 func snapshot() -> Dictionary:
- return {"tipoff":tipoff.duplicate(true), "board_breaks":board_breaks.duplicate(), "pending_inbound":pending_inbound, "shatter_shooter":shatter_shooter, "players":players.duplicate(true), "teams":teams.duplicate(), "score":score.duplicate(), "streak":streak.duplicate(), "player_streak":player_streak.duplicate(), "fire_player":fire_player, "teammate_shot_order":teammate_shot_order, "stats":stats.duplicate(true), "ball":ball, "owner":owner, "flight":flight.duplicate(true), "clock":clock, "shot_clock":shot_clock, "quarter":quarter, "overtime":overtime, "phase":phase, "freeze":freeze, "banner":banner, "banner_time":banner_time, "event_id":event_id, "event_kind":event_kind, "elapsed":elapsed, "big_heads":big_heads, "infinite_turbo":infinite_turbo}
+ return {"tipoff":tipoff.duplicate(true), "board_breaks":board_breaks.duplicate(), "pending_inbound":pending_inbound, "shatter_shooter":shatter_shooter, "players":players.duplicate(true), "teams":teams.duplicate(), "score":score.duplicate(), "streak":streak.duplicate(), "player_streak":player_streak.duplicate(), "fire_player":fire_player, "teammate_shot_order":teammate_shot_order, "stats":stats.duplicate(true), "ball":ball, "owner":owner, "flight":flight.duplicate(true), "clock":clock, "shot_clock":shot_clock, "quarter":quarter, "overtime":overtime, "phase":phase, "freeze":freeze, "banner":banner, "banner_time":banner_time, "event_id":event_id, "event_kind":event_kind, "elapsed":elapsed, "big_heads":big_heads, "infinite_turbo":infinite_turbo, "last_shot_feedback":last_shot_feedback.duplicate(true)}
 
 func apply_snapshot(data: Dictionary) -> void:
  for key in data:
