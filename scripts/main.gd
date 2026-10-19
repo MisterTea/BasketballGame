@@ -44,6 +44,7 @@ var sound_players: Array = []
 var sound_player_idx: int = 0
 var sound_player: AudioStreamPlayer
 var status_label: Label
+var last_lt: Array = [0.0, 0.0, 0.0, 0.0]
 
 func _ready() -> void:
  font = ThemeDB.fallback_font
@@ -98,20 +99,89 @@ func _ready() -> void:
   begin_match({"teams":[0,1], "seconds":15.0, "level":1})
 
 func setup_input() -> void:
- var mapping = {"up":[KEY_W,KEY_UP], "down":[KEY_S,KEY_DOWN], "left":[KEY_A,KEY_LEFT], "right":[KEY_D,KEY_RIGHT], "shoot":[KEY_J,KEY_KP_1], "pass":[KEY_K,KEY_KP_2], "turbo":[KEY_SPACE,KEY_KP_0], "switch":[KEY_TAB,KEY_KP_3]}
+ var mapping = {
+  "up": [KEY_W, KEY_UP],
+  "down": [KEY_S, KEY_DOWN],
+  "left": [KEY_A, KEY_LEFT],
+  "right": [KEY_D, KEY_RIGHT],
+  "shoot": [KEY_J, KEY_KP_1],
+  "pass": [KEY_K, KEY_KP_2],
+  "shove": [KEY_L, KEY_KP_5],
+  "turbo": [KEY_SEMICOLON, KEY_KP_0],
+  "switch": [KEY_F, KEY_KP_3],
+  "spin": [KEY_APOSTROPHE, KEY_KP_6]
+ }
+ var dpad_buttons = {
+  "up": JOY_BUTTON_DPAD_UP,
+  "down": JOY_BUTTON_DPAD_DOWN,
+  "left": JOY_BUTTON_DPAD_LEFT,
+  "right": JOY_BUTTON_DPAD_RIGHT
+ }
+ var action_buttons = {
+  "shoot": [JOY_BUTTON_X, JOY_BUTTON_Y],
+  "pass": [JOY_BUTTON_A, JOY_BUTTON_B],
+  "turbo": [JOY_BUTTON_RIGHT_SHOULDER],
+  "switch": [JOY_BUTTON_LEFT_SHOULDER],
+  "shove": [JOY_BUTTON_Y, JOY_BUTTON_B, JOY_BUTTON_RIGHT_STICK],
+  "spin": [JOY_BUTTON_B, JOY_BUTTON_Y, JOY_BUTTON_RIGHT_STICK, JOY_BUTTON_LEFT_STICK]
+ }
  for action in mapping:
-  for p in range(2):
-   var name_action = "p%d_%s" % [p,action]
-   InputMap.add_action(name_action)
-   var key = InputEventKey.new()
-   key.physical_keycode = mapping[action][p]
-   InputMap.action_add_event(name_action,key)
-   var buttons = {"shoot":JOY_BUTTON_A,"pass":JOY_BUTTON_X,"turbo":JOY_BUTTON_RIGHT_SHOULDER,"switch":JOY_BUTTON_LEFT_SHOULDER}
-   if buttons.has(action):
+  for p in range(4):
+   var name_action = "p%d_%s" % [p, action]
+   if not InputMap.has_action(name_action):
+    InputMap.add_action(name_action)
+   if p < mapping[action].size():
+    var key = InputEventKey.new()
+    key.physical_keycode = mapping[action][p]
+    InputMap.action_add_event(name_action, key)
+   if p == 0:
+    if action == "turbo":
+     var space_key = InputEventKey.new()
+     space_key.physical_keycode = KEY_SPACE
+     InputMap.action_add_event(name_action, space_key)
+    elif action == "switch":
+     var tab_key = InputEventKey.new()
+     tab_key.physical_keycode = KEY_TAB
+     InputMap.action_add_event(name_action, tab_key)
+    elif action == "spin":
+     for alt_key in [KEY_P, KEY_O, KEY_I, KEY_H, KEY_U, KEY_KP_ENTER]:
+      var k = InputEventKey.new()
+      k.physical_keycode = alt_key
+      InputMap.action_add_event(name_action, k)
+   if dpad_buttons.has(action):
     var button = InputEventJoypadButton.new()
     button.device = p
-    button.button_index = buttons[action]
-    InputMap.action_add_event(name_action,button)
+    button.button_index = dpad_buttons[action]
+    InputMap.action_add_event(name_action, button)
+   if action_buttons.has(action):
+    for btn_index in action_buttons[action]:
+     var button = InputEventJoypadButton.new()
+     button.device = p
+     button.button_index = btn_index
+     InputMap.action_add_event(name_action, button)
+   if action == "turbo":
+    var motion = InputEventJoypadMotion.new()
+    motion.device = p
+    motion.axis = JOY_AXIS_TRIGGER_RIGHT
+    motion.axis_value = 1.0
+    InputMap.action_add_event(name_action, motion)
+   elif action == "switch":
+    var motion = InputEventJoypadMotion.new()
+    motion.device = p
+    motion.axis = JOY_AXIS_TRIGGER_LEFT
+    motion.axis_value = 1.0
+    InputMap.action_add_event(name_action, motion)
+ if not InputMap.action_get_events("ui_accept").any(func(e): return e is InputEventJoypadButton and e.button_index == JOY_BUTTON_A):
+  var btn_a = InputEventJoypadButton.new()
+  btn_a.device = -1
+  btn_a.button_index = JOY_BUTTON_A
+  InputMap.action_add_event("ui_accept", btn_a)
+ if not InputMap.action_get_events("ui_cancel").any(func(e): return e is InputEventJoypadButton and e.button_index == JOY_BUTTON_B):
+  var btn_b = InputEventJoypadButton.new()
+  btn_b.device = -1
+  btn_b.button_index = JOY_BUTTON_B
+  InputMap.action_add_event("ui_cancel", btn_b)
+
 
 func clear_ui() -> void:
  for child in ui.get_children():
@@ -177,10 +247,10 @@ func edit(text: String, placeholder: String, x: float, y: float, w: float, chang
  ui.add_child(field)
  return field
 
-func header(kicker: String, title: String) -> void:
+func header(kicker: String, title: String) -> Button:
  label_at(kicker,60,28,15,GOLD)
  label_at(title,58,48,42)
- button("← MENU",1080,40,140,show_menu)
+ return button("← MENU",1080,40,140,show_menu)
 
 func show_menu() -> void:
  if net.online:
@@ -193,12 +263,13 @@ func show_menu() -> void:
  label_at("RIM",76,98,100)
  label_at("RUMBLE",76,192,100,GOLD)
  label_at("BIG AIR. HOT HANDS. ZERO MERCY.",83,310,20,MUTED)
- button("QUICK PLAY   →",82,376,440,func(): mode = "solo"; local_two = false; show_selection(),true,58)
+ var qp_btn = button("QUICK PLAY   →",82,376,440,func(): mode = "solo"; local_two = false; show_selection(),true,58)
  button("LOCAL VERSUS",82,448,212,func(): mode = "local"; local_two = true; show_selection())
  button("ARCADE LADDER",308,448,214,func(): mode = "ladder"; local_two = false; tournament_round = 0; tournament_wins = 0; show_selection())
  button("NETWORK PLAY",82,510,440,show_network)
  button("HOW TO PLAY",82,574,212,show_help)
  button("OPTIONS",308,574,214,show_options)
+ qp_btn.grab_focus()
  label_at("%s   •   %d W / %d L   •   BEST %d   •   %d TITLES" % [initials,profile.wins,profile.losses,profile.best,profile.championships],83,660,16,MUTED)
  label_at("ORIGINAL ARCADE BASKETBALL  /  GODOT 4",83,724,12,MUTED)
  label_at("THE COURT IS CALLING.",702,583,25)
@@ -242,10 +313,11 @@ func show_selection() -> void:
  draw_team_cards(false)
  label_at("%s  vs  %s" % [Teams.DATA[picks[0]].city,Teams.DATA[picks[1]].city],60,670,22)
  label_at("%d SECOND QUARTERS  •  %s" % [int(seconds),["EASY","NORMAL","HARD"][level]],60,710,16,MUTED)
- button("TIP OFF   →",940,680,280,func():
+ var tip_btn = button("TIP OFF   →",940,680,280,func():
   if mode == "ladder":
    picks[1] = ladder_opponent()
   begin_match({"teams":picks,"seconds":seconds,"level":level}),true,60)
+ tip_btn.grab_focus()
 
 func draw_team_cards(networked: bool) -> void:
  for i in range(Teams.DATA.size()):
@@ -340,18 +412,19 @@ func show_options() -> void:
 func show_help() -> void:
  screen = "help"
  clear_ui()
- header("THREE BUTTONS. ENDLESS HIGHLIGHTS.","HOW TO PLAY")
+ var back_btn = header("ARCADE CONTROLS. ENDLESS HIGHLIGHTS.","HOW TO PLAY")
  panel(60,150,555,540)
  panel(645,150,575,540)
  label_at("PLAYER ONE",88,176,22,GOLD)
- label_at("MOVE     W A S D\nSHOOT / BLOCK     J\nPASS / STEAL     K\nTURBO     SPACE\nSWITCH ATHLETE     TAB",88,226,21,INK)
+ label_at("MOVE     W A S D\nSHOOT / BLOCK     J\nPASS / STEAL     K\nSHOVE (TURBO+STEAL)     L\nTURBO     ;  (or SPACE)\nSPIN / ELBOWS     '  (or P / O / I / H)\nSWITCH ATHLETE     F  (or TAB)",88,214,18,INK)
  label_at("PLAYER TWO — LOCAL VERSUS",88,430,20,GOLD)
  label_at("MOVE     ARROWS\nSHOOT / BLOCK     NUMPAD 1\nPASS / STEAL     NUMPAD 2\nTURBO     NUMPAD 0    •    SWITCH     NUMPAD 3",88,475,18)
- label_at("GAMEPAD",675,176,22,GOLD)
- label_at("Left stick moves • A: shoot / jump / block\nX to pass / steal • RB or RT for turbo\nLB to switch your active athlete",675,222,19,INK,510)
+ label_at("GAMEPAD",675,172,21,GOLD)
+ label_at("Left stick or D-pad moves  •  Start: Pause\nRT (Right Trigger) or RB: Boost / Turbo\n4 Face Buttons (Right Thumb):\n  X: Shoot / Layup / Dunk / Fake  •  Y: Block / Rebound / Shove\n  A: Pass / Dish / Alley-Oop Lob  •  B: Steal / Shove / Spin\n  Right / Left Stick (RS/LS): Spin Move / Elbow Clearout\nLB or LT: Switch athlete",675,202,15,INK,515)
  label_at("MAKE THE HIGHLIGHT REEL",675,330,22,GOLD)
  label_at("Tap SHOOT to fake; release jump shots at the gold mark.\nRun + short SHOOT hold: layup. Hold longer close for a dunk.\nAdd TURBO for a super dunk; PASS mid-dunk to dish.\nAlley-oop: receiver SHOOT, passer TURBO + PASS.\nDefense: SHOOT blocks; PASS steals or intercepts.\nTURBO + PASS shoves. CPU teammate has the ball?\nSHOOT jumps + starts CPU shot; quick TURBO + PASS lobs.\nThree unanswered baskets by one athlete ignite FIRE.\nFire survives misses; an opponent basket ends it.\nQ4 / overtime: specialty dunks can shatter a backboard.\nTip-off: tap SHOOT as the tossed ball rises.\nESC: pause offline / leave menu online. M: mute.",675,378,16,INK,510)
  label_at("Network players use player-one controls. Missing teammates are controlled by the CPU.",60,723,16,MUTED)
+ back_btn.grab_focus()
 
 func show_results() -> void:
  if screen == "results":
@@ -375,14 +448,14 @@ func show_results() -> void:
  label_at("%s   %d  —  %d   %s" % [Teams.DATA[picks[0]].name,game.score[0],game.score[1],Teams.DATA[picks[1]].name],60,137,34,GOLD)
  panel(60,214,1160,360)
  label_at("ATHLETE",88,235,17,MUTED)
- var stat_columns = [580,670,780,890,980,1070,1150]
- for column in range(7):
-  label_at(["PTS","FG","DUNKS","STL","BLK","REB","GT"][column],stat_columns[column],235,17,MUTED)
+ var stat_columns = [530,610,705,790,875,960,1045,1130]
+ for column in range(8):
+  label_at(["PTS","FG","DUNKS","AST","STL","BLK","REB","GT"][column],stat_columns[column],235,17,MUTED)
  for i in range(4):
   var s: Dictionary = game.stats[i]
   label_at(Teams.DATA[picks[i/2]].players[i%2],88,290+i*60,22,Teams.color_for(picks[i/2]))
-  var values = [str(s.points),"%d/%d" % [s.made,s.attempts],str(s.dunks),str(s.steals),str(s.blocks),str(s.rebounds),str(s.goaltends)]
-  for column in range(7):
+  var values = [str(s.points),"%d/%d" % [s.made,s.attempts],str(s.dunks),str(s.get("assists", 0)),str(s.steals),str(s.blocks),str(s.rebounds),str(s.goaltends)]
+  for column in range(8):
    label_at(values[column],stat_columns[column],292+i*60,20)
  if mode == "ladder" and won and tournament_round < 6 and not net.online:
   label_at("ARCADE LADDER   •   %d / 7 TEAMS DEFEATED" % tournament_wins,60,625,20,GOLD)
@@ -408,40 +481,80 @@ func show_disconnected() -> void:
  label_at(status,365,345,18,INK,545)
  button("RETURN TO MENU",365,423,545,show_menu,true)
 
-func _unhandled_key_input(event: InputEvent) -> void:
+func toggle_pause() -> void:
+ if screen != "game":
+  return
+ if net.online:
+  if ui.get_child_count() == 0:
+   panel(390,300,500,170)
+   label_at("NETWORK MATCH CONTINUES",420,322,22,GOLD)
+   var keep_btn = button("KEEP PLAYING",420,391,205,clear_ui)
+   button("LEAVE MATCH",640,391,220,show_menu)
+   keep_btn.grab_focus()
+  else:
+   clear_ui()
+ else:
+  paused = not paused
+  clear_ui()
+  if paused:
+   panel(390,280,500,225)
+   label_at("TIME OUT",420,305,32,GOLD)
+   var resume_btn = button("RESUME",420,375,440,func(): paused = false; clear_ui(),true)
+   button("END GAME",420,436,440,show_menu)
+   resume_btn.grab_focus()
+
+func _unhandled_input(event: InputEvent) -> void:
  if event is InputEventKey and event.pressed and not event.echo:
   if event.keycode == KEY_M:
    muted = not muted
   if event.keycode == KEY_O:
    show_shot_percentage = not show_shot_percentage
   if event.keycode == KEY_ESCAPE and screen == "game":
-   if net.online:
-    if ui.get_child_count() == 0:
-     panel(390,300,500,170)
-     label_at("NETWORK MATCH CONTINUES",420,322,22,GOLD)
-     button("KEEP PLAYING",420,391,205,clear_ui)
-     button("LEAVE MATCH",640,391,220,show_menu)
-    else:
-     clear_ui()
-   else:
-    paused = not paused
-    clear_ui()
-    if paused:
-     panel(390,280,500,225)
-     label_at("TIME OUT",420,305,32,GOLD)
-     button("RESUME",420,375,440,func(): paused = false; clear_ui(),true)
-     button("END GAME",420,436,440,show_menu)
+   toggle_pause()
+ elif event is InputEventJoypadButton and event.pressed:
+  if event.button_index == JOY_BUTTON_START:
+   if screen == "game":
+    toggle_pause()
+   elif screen == "selection":
+    if mode == "ladder":
+     picks[1] = ladder_opponent()
+    begin_match({"teams":picks,"seconds":seconds,"level":level})
+   elif screen == "results":
+    if mode == "ladder" and tournament_round < 6 and game.score[0] > game.score[1]:
+     tournament_round += 1
+     picks[1] = ladder_opponent()
+     begin_match({"teams":picks,"seconds":seconds,"level":mini(2,level+tournament_round/3)})
+    elif not net.online or net.hosting:
+     begin_match({"teams":picks,"seconds":seconds,"level":level})
+  elif event.button_index == JOY_BUTTON_BACK:
+   if screen == "game" and paused:
+    toggle_pause()
+   elif screen in ["selection", "options", "help", "network", "results"]:
+    show_menu()
+  elif event.button_index == JOY_BUTTON_B and screen == "game" and paused:
+   toggle_pause()
 
 func read_command(index: int) -> Dictionary:
  var prefix = "p%d_" % index
  var move = Input.get_vector(prefix+"left",prefix+"right",prefix+"up",prefix+"down")
  var turbo = Input.is_action_pressed(prefix+"turbo")
- if Input.get_connected_joypads().has(index):
-  var stick = Vector2(Input.get_joy_axis(index,JOY_AXIS_LEFT_X),Input.get_joy_axis(index,JOY_AXIS_LEFT_Y))
+ var shove = Input.is_action_just_pressed(prefix+"shove")
+ var pass_pressed = Input.is_action_just_pressed(prefix+"pass")
+ var spin = Input.is_action_just_pressed(prefix+"spin")
+ if shove:
+  turbo = true
+  pass_pressed = true
+ var joypads = Input.get_connected_joypads()
+ var joy_id = joypads[index] if index < joypads.size() else index
+ if joypads.has(joy_id):
+  var stick = Vector2(Input.get_joy_axis(joy_id,JOY_AXIS_LEFT_X),Input.get_joy_axis(joy_id,JOY_AXIS_LEFT_Y))
   if stick.length() > 0.18:
    move = stick.limit_length()
-  turbo = turbo or Input.get_joy_axis(index,JOY_AXIS_TRIGGER_RIGHT) > 0.3
- return {"move":move,"shoot":Input.is_action_pressed(prefix+"shoot"),"jump_press":Input.is_action_just_pressed(prefix+"shoot"),"pass":Input.is_action_just_pressed(prefix+"pass"),"turbo":turbo}
+  if Input.get_joy_axis(joy_id,JOY_AXIS_TRIGGER_RIGHT) > 0.2:
+   turbo = true
+  if Input.is_joy_button_pressed(joy_id, JOY_BUTTON_RIGHT_STICK) or Input.is_joy_button_pressed(joy_id, JOY_BUTTON_LEFT_STICK):
+   spin = true
+ return {"move":move,"shoot":Input.is_action_pressed(prefix+"shoot"),"jump_press":Input.is_action_just_pressed(prefix+"shoot"),"pass":pass_pressed,"turbo":turbo,"shove":shove,"spin":spin}
 
 func _physics_process(delta: float) -> void:
  visual_time += delta
@@ -461,16 +574,23 @@ func _physics_process(delta: float) -> void:
    var count = 2 if local_two else 1
    if not OS.get_cmdline_user_args().has("--autoplay"):
     for p in range(count):
-     if Input.is_action_just_pressed("p%d_switch" % p):
+     var joypads = Input.get_connected_joypads()
+     var joy_id = joypads[p] if p < joypads.size() else p
+     var lt_pressed = false
+     if joypads.has(joy_id):
+      var lt_val = Input.get_joy_axis(joy_id, JOY_AXIS_TRIGGER_LEFT)
+      lt_pressed = lt_val > 0.3 and last_lt[p] <= 0.3
+      last_lt[p] = lt_val
+     if Input.is_action_just_pressed("p%d_switch" % p) or lt_pressed:
       controlled[p] = (controlled[p]/2)*2 + (1-controlled[p]%2)
      commands[controlled[p]] = read_command(p)
    game.tick(delta,commands)
-  var active_ctl = controlled[0] if not net.online else 0
-  var p0_cmd = read_command(active_ctl)
+  var p0_cmd = read_command(0)
   turbo_sound_cooldown = maxf(0.0, turbo_sound_cooldown - delta)
   if p0_cmd.turbo and p0_cmd.move.length() > 0.25 and turbo_sound_cooldown <= 0.0:
    play_sound("turbo")
    turbo_sound_cooldown = 1.3
+
   if game.event_id != last_event:
    last_event = game.event_id
    if game.event_kind in ["score","dunk","shatter","fire"]:
@@ -681,7 +801,9 @@ func draw_hud() -> void:
   text_at(Teams.DATA[game.teams[side]].city,Vector2(x+20,42),14,MUTED)
   text_at(Teams.DATA[game.teams[side]].name,Vector2(x+20,75),25,color)
   text_at("%02d" % game.score[side],Vector2(x+265,93),53,INK)
-  if game.on_fire(side):
+  if game.team_fire_timer[side] > 0.0:
+   text_at("TEAM ZONE: %02d" % int(ceil(game.team_fire_timer[side])),Vector2(x+20,105),15,Color("ff8822"))
+  elif game.on_fire(side):
    text_at("FIRE: "+str(Teams.DATA[game.teams[side]].players[game.fire_player%2]),Vector2(x+20,105),15,GOLD)
   else:
    for pip in range(3):
@@ -697,7 +819,9 @@ func draw_hud() -> void:
  else:
   var remaining = int(ceil(game.clock))
   text_at("%d:%02d" % [remaining/60,remaining%60],Vector2(640,78),42,INK,true)
- if game.shot_clock < 5.0:
+ if game.clock < 24.0:
+  text_at("SHOT  --",Vector2(640,107),16,Color(0.55,0.6,0.68,0.7),true)
+ elif game.shot_clock < 5.0:
   var sc_sec = int(game.shot_clock)
   var sc_tenths = int(fmod(game.shot_clock * 10.0, 10.0))
   text_at("SHOT  %d.%d" % [sc_sec, sc_tenths],Vector2(640,107),16,Color("ff4433"),true)
@@ -743,7 +867,7 @@ func draw_hud() -> void:
   text_at(game.banner,Vector2(640,197)+offset,30,GOLD,true)
  draw_rect(Rect2(180,696,920,30),Color(0.03,0.06,0.1,0.88))
  draw_rect(Rect2(180,696,920,30),Color("22364c"),false,1.0)
- text_at("J  SHOOT / JUMP / BLOCK    K  PASS / STEAL    SPACE  TURBO    TAB  SWITCH    O  SHOT %% (%s)    ESC  MENU" % ("ON" if show_shot_percentage else "OFF"),Vector2(640,716),12,INK,true)
+ text_at("J  SHOOT/BLOCK    K  PASS/STEAL    L  SHOVE    ;  TURBO    F  SWITCH    O  SHOT %% (%s)    ESC  MENU" % ("ON" if show_shot_percentage else "OFF"),Vector2(640,716),12,INK,true)
 
 func set_initials(value: String) -> void:
  initials = value.to_upper().strip_edges().left(12)

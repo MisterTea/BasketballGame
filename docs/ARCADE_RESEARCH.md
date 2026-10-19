@@ -60,3 +60,17 @@ Next fidelity work: observe actual cabinet possession/camera, tip-off and shot t
 `tests/finishing.gd` checks 26 new cases, including 500 paired stationary-lane trials: 115/500 normal passes and 66/500 turbo passes were intercepted under identical positions and seeds. This measures the controlled fixture, not general match interception rates. The real network action test also executes a running layup and a reliable remote swipe. GPU captures verify the generated layup and interception poses.
 
 ![Locally generated layup in gameplay](layup.png)
+
+## Mechanics Update — 2026-10-18
+
+Reviewed footage and arcade mechanics for:
+1. **Rebound Ball Physics:** Missed shots ricochet off the rim with a parabolic vertical arc (>3.5m peak elevation) toward a court ricochet point, allowing jumping players to snatch the rebound in mid-air or players on the floor to recover the ball after floor bounces.
+2. **Keyboard Controls:** Standardized home-row stationary hand placement: left hand on `WASD` + `F` (switch player), right hand on `J` (Shoot/Block), `K` (Pass/Steal), `L` (Shove = Turbo + Steal), and `;` (Turbo), with `Space` and `Tab` preserved as alternates.
+3. **Steal & Loose Ball Mechanic:** Normal steals trigger a 0.45s swiping action with resolution at the forward reach point. Successful steals can either cleanly transfer possession or poke the ball loose. Loose balls bounce free with an initial delay (`loose_ball_timer = 0.45s`) before any player can scramble and recover possession. Shove (`L`) provides an immediate knockdown turnover.
+4. **Jump Shot Charging & Apex Release:** During shot charging, the shooter leaps into the air with the ball rising with their jump. The apex of the jump aligns exactly with the gold release mark (0.58s), rewarding apex release with maximum shot accuracy and granting remaining airtime for the descent to the floor.
+5. **Steal Swipe Duration & Animation:** Attempting a steal is not instantaneous; it plays a 0.45s swiping animation, resolving contact at the forward reach point (~0.22s in).
+6. **Off-Court Inbounds:** After a goal, the inbounding player stands off-court behind the baseline (`X < COURT.position.x` or `X > COURT.end.x`), unable to shoot. The player must pass the ball in to start play. Movement is clamped behind the baseline until the inbound pass is thrown.
+7. **Block Pose & Leverage Squat:** Defending block jumps trigger an initial crouch squat (pelvis dip and knee flexion during windup) for leverage, followed by an explosive straight-up leap with both arms raised overhead (+90° shoulder transforms). Lateral drift is locked (`p.vel = Vector2.ZERO`).
+
+`tests/arcade_mechanics_update.gd` adds 35 automated checks covering all 7 mechanics updates.
+

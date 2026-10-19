@@ -553,7 +553,7 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   var actor: Dictionary = athletes[i]
   var point: Vector2 = positions[i] if positions.size() == 4 else p.pos
   actor.root.position = court_point(point)
-  var jump = sin(clampf(p.jump/0.85,0,1)*PI)*2.65
+  var jump = 0.0
   if not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.shooter == i and state.flight.has("player_start"):
    var progress = clampf(state.flight.time/state.flight.duration,0,1)
    var launch: float = state.flight.get("player_launch_height",0.0)
@@ -561,6 +561,15 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
    jump = lerpf(launch,0,progress)+sin(progress*PI)*(peak-launch*0.5)
   elif p.receive_jump > 0:
    jump = state.receive_height(i)
+  elif p.charge > 0:
+   jump = sin(clampf(p.charge / 1.16, 0.0, 1.0) * PI) * 1.35
+  elif p.jump > 0:
+   var t = 1.0 - clampf(p.jump / 0.70, 0.0, 1.0)
+   if t <= 0.20:
+    jump = -sin(t / 0.20 * PI) * 0.18
+   else:
+    var jp = (t - 0.20) / 0.80
+    jump = sin(jp * PI) * 2.85
   var tip_jump = -1.0
   if not state.tipoff.is_empty() and i%2 == 0 and state.tipoff.jumps[i/2] >= 0:
    var age: float = state.elapsed-state.tipoff.started_at-state.tipoff.jumps[i/2]
@@ -571,6 +580,10 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   var running = clampf(p.vel.length()/230.0,0,1)
   var target_angle = atan2(p.vel.x,p.vel.y) if p.vel.length() > 8 else (PI/2 if p.face > 0 else -PI/2)
   actor.body.rotation.y = lerp_angle(actor.body.rotation.y,target_angle,1.0-exp(-delta*15))
+  if p.get("spin", 0.0) > 0.0:
+   actor.body.rotation.y = target_angle + (1.0 - p.spin / 0.45) * TAU
+  elif p.get("elbow", 0.0) > 0.0:
+   actor.body.rotation.y = target_angle + sin((1.0 - p.elbow / 0.50) * TAU * 2.0) * 0.9
   var is_dunking = not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.dunk and state.flight.shooter == i
   if is_dunking:
    var dunk_style = state.flight.get("dunk_style", "standard")
@@ -624,7 +637,7 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
    var progress = 1.0-clampf(p.receive_jump/0.7,0,1)
    phase = progress*0.64 if progress <= 0.5 else 0.32+(progress-0.5)*1.36
   elif not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.shooter == i:
-   next_action = "dunk" if state.flight.dunk else "layup" if state.flight.get("layup",false) else "shoot"
+   next_action = "dunk" if state.flight.dunk else "layup" if (state.flight.get("layup",false) or state.flight.get("hook",false)) else "shoot"
    phase = clampf(state.flight.time/state.flight.duration,0,1) if state.flight.dunk else 0.45+0.55*clampf(state.flight.time/state.flight.duration,0,1)
    if state.flight.get("finish","") == "alley_oop":
     phase = 0.55+0.45*clampf(state.flight.time/state.flight.duration,0,1)
@@ -636,13 +649,13 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
    phase = 0.42*sin((1.0-clampf(p.fake/0.38,0,1))*PI)
   elif p.get("swipe",0.0) > 0:
    next_action = "steal"
-   phase = 1.0-clampf(p.swipe/0.25,0,1)
+   phase = 1.0-clampf(p.swipe/0.45,0,1)
   elif not state.flight.is_empty() and state.flight.kind == "pass" and not state.flight.get("tip",false) and (int(state.flight.target)/2)*2+(1-int(state.flight.target)%2) == i:
    next_action = "pass"
    phase = clampf(state.flight.time/state.flight.duration,0,1)
   elif p.jump > 0:
    next_action = "block"
-   phase = 1.0-clampf(p.jump/0.62,0,1)
+   phase = 1.0-clampf(p.jump/0.70,0,1)
   elif p.cooldown > 0.2 and state.owner >= 0 and state.owner/2 != i/2:
    next_action = "steal"
    phase = 1.0-clampf(p.cooldown/0.65,0,1)

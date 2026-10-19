@@ -16,3 +16,5 @@ nvram/
 snap/
 cfg/
 sta/
+
+tests/video_samples/

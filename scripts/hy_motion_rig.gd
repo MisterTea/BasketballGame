@@ -172,4 +172,29 @@ func animate(next_action: String, delta: float, phase: float = -1.0, speed: floa
   seconds = cursor*float(clip.frames-1)/float(clip.fps)
  var blend = 1.0 if first_pose else (0.0 if paused else 1.0-exp(-delta*22.0))
  sample(action,seconds,blend,action in ["shoot","dunk","block","layup"])
+ if action == "block":
+  apply_block_pose(phase if phase >= 0 else action_time / 0.70)
  first_pose = false
+
+func apply_block_pose(progress: float) -> void:
+ var p = clampf(progress, 0.0, 1.0)
+ if p < 0.22:
+  var squat = sin(p / 0.22 * PI)
+  var pelvis_pos = skeleton.get_bone_pose_position(0)
+  pelvis_pos.y -= 0.16 * squat
+  skeleton.set_bone_pose_position(0, pelvis_pos)
+  var knee_q = Quaternion(Vector3.RIGHT, -0.55 * squat)
+  skeleton.set_bone_pose_rotation(4, skeleton.get_bone_pose_rotation(4) * knee_q)
+  skeleton.set_bone_pose_rotation(5, skeleton.get_bone_pose_rotation(5) * knee_q)
+ else:
+  var jump_p = (p - 0.22) / 0.78
+  var arm_rise = clampf(jump_p / 0.20, 0.0, 1.0) * (1.0 - clampf((jump_p - 0.75) / 0.25, 0.0, 1.0))
+  if arm_rise > 0.001:
+   var q_sh_l = Quaternion(Vector3.FORWARD, 1.45 * arm_rise)
+   var q_sh_r = Quaternion(Vector3.FORWARD, -1.45 * arm_rise)
+   skeleton.set_bone_pose_rotation(16, q_sh_l * skeleton.get_bone_pose_rotation(16))
+   skeleton.set_bone_pose_rotation(17, q_sh_r * skeleton.get_bone_pose_rotation(17))
+   var q_el_l = Quaternion(Vector3.UP, -0.25 * arm_rise)
+   var q_el_r = Quaternion(Vector3.UP, 0.25 * arm_rise)
+   skeleton.set_bone_pose_rotation(18, q_el_l * skeleton.get_bone_pose_rotation(18))
+   skeleton.set_bone_pose_rotation(19, q_el_r * skeleton.get_bone_pose_rotation(19))

@@ -49,19 +49,27 @@ Eight fictional teams feature sixteen athletes with different speed, shooting, d
 
 | Action | Player 1 / any network player | Player 2, local versus | Gamepad |
 | --- | --- | --- | --- |
-| Move | WASD | Arrow keys | Left stick |
-| Shoot / block | J | Numpad 1 | A |
-| Pass / steal | K | Numpad 2 | X |
-| Turbo | Space | Numpad 0 | RB or RT |
-| Switch athlete (offline) | Tab | Numpad 3 | LB |
-| Pause (offline) / leave overlay (online) | Escape | Escape | Keyboard Escape |
+| Move | WASD | Arrow keys | Left stick or D-pad |
+| Shoot / layup / dunk / head fake | J | Numpad 1 | X (or Y) |
+| Pass / dish / alley-oop lob | K | Numpad 2 | A (or B) |
+| Steal (swipe defense) | K | Numpad 2 | B (or A) |
+| Shove (turbo knockdown) | L (or Turbo + Steal) | Numpad + (or Turbo + Steal) | B with Turbo held |
+| Block / rebound (defense) | J | Numpad 1 | Y (or X) |
+| Boost (turbo) | ; (or Space) | Numpad 0 | RT (Right Trigger) or RB |
+| Switch athlete (offline) | F (or Tab) | Numpad 3 | LB or LT |
+| Pause / resume | Escape | Escape | Start or Back |
+| Menu navigation | Mouse / Arrow keys | Arrow keys | D-pad / Left stick, A to select, B to cancel |
 | Toggle sound | M | M | Keyboard M |
 
-At the opening toss, tap Shoot as the ball rises, near the timing mark. The better-timed center tips to their partner; a human with a CPU center can order its jump. Both clocks start after the tip is judged. Early held input does not auto-jump, and only the first valid press counts. The timing window is an original prototype rule awaiting footage comparison.
+Keyboard controls are mapped to comfortable stationary home-row finger placements: the left hand controls movement on `WASD` and switching on `F`, while the right hand controls shooting/blocking on `J`, passing/stealing on `K`, shoving on `L`, and turbo on `;` (with `Space` and `Tab` preserved as familiar alternates).
 
-Tap Shoot for a head-fake. For jump shots, hold and release near the shot meter's gold mark (about 0.58 seconds). Running toward the rim and holding Shoot launches a regular dunk close to the basket; add Turbo for a higher specialty dunk. A short running hold and release without Turbo attempts a layup. Standing shots remain jumpers. Finishers glide from their launch point toward the rim; they no longer teleport forward.
+Gamepad support features standard arcade gamepad controls: four face buttons on the right thumb (X shoots/dunks/fakes, A passes/lobs, B steals/shoves, Y blocks/rebounds), two pairs of shoulder buttons with Boost on the Right Trigger (RT) or RB so players can comfortably hold boost while performing other actions with their thumb, and athlete switching on the Left Bumper (LB) or Left Trigger (LT). Full controller menu navigation and pause handling are supported via D-pad, stick, A, B, and Start.
 
-Press Pass during a dunk to dish to your teammate; blocked dunks cannot be rescued. Turbo + Pass travels faster, or throws an alley-oop to a teammate near the rim. Defenders can pick off passes in their lane; Pass also attempts an active swipe. Faster travel reduces the time exposed to an interception. Shoot blocks on defense; Turbo + Pass shoves the ball carrier. Missed shots become loose rebounds. When your CPU teammate owns the ball, Pass requests a pass back and Shoot orders their shot. Another human keeps control of their own actions.
+At the opening toss, tap Shoot as the ball rises, near the timing mark. The better-timed center tips to their partner; a human with a CPU center can order its jump. Both clocks start after the tip is judged. Early held input does not auto-jump, and only the first valid press counts.
+
+Tap Shoot for a head-fake. For jump shots, hold Shoot as the athlete elevates into the air while the shot meter fills; the apex of the jump coincides with the gold mark at 0.58 seconds, rewarding release at peak elevation with the highest shot accuracy and a graceful landing descent. Running toward the rim and holding Shoot launches a regular dunk close to the basket; add Turbo for a higher specialty dunk. A short running hold and release without Turbo attempts a layup. Standing shots remain jumpers. Finishers glide from their launch point toward the rim; they no longer teleport forward.
+
+Press Pass during a dunk to dish to your teammate; blocked dunks cannot be rescued. Turbo + Pass travels faster, or throws an alley-oop to a teammate near the rim. Defenders can pick off passes in their lane. Steal attempts trigger a full swiping animation with reach delay (~0.45s). When a steal connects, the ball may be cleanly pocketed or poked loose; loose balls bounce free and cannot be instantly recovered right away, creating scrambles on the hardwood. Shoving (`L` or Turbo + Steal) forcibly knocks down opponents to force turnovers. When jumping for a block, defenders drop into a crouch squat for leverage before leaping straight up with both arms raised overhead. Missed shots ricochet off the rim in a high parabolic rebound arc (>3.5m) that can be snatched out of the air mid-jump or rebounded off floor bounces. After a goal, the inbounding athlete stands off-court behind the baseline, unable to shoot, and must pass the ball in to start the action. When your CPU teammate owns the ball, Pass requests a pass back and Shoot orders their shot. Another human keeps control of their own actions.
 
 Three consecutive unanswered baskets by one athlete ignite Fire for that athlete, improving shots and granting unlimited turbo. Fire survives misses and teammate baskets; an opponent's natural basket ends it. Before ignition, a miss or another scorer's basket resets the heating sequence. Descending released jump-shot contact near the rim awards goaltending points; the burning defender can legally block that shot. Held dunks can be legally rejected near the rim by any defender. Goaltending points do not change heat. These edge rules remain subject to original-cabinet footage verification. There are two- and three-point baskets, a 24-second shot clock, four three-minute quarters by default, a halftime side switch, shots allowed to finish after the buzzer, and repeated overtime for ties. Postgame statistics include points, field goals, dunks, steals, blocks, rebounds, and goaltends (GT). No fouls or free throws.
 
