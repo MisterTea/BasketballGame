@@ -125,6 +125,56 @@ func run() -> void:
  state.players[0].shot_is_moving = false
  arena.present(state, [], state.ball, [0], 0.1, false)
  check(arena.athletes[0].aim_indicator.visible and arena.athletes[0].aim_label.visible, "aimed shot charge preserves visual aimed indicator")
+ state.owner = 0
+ state.flight = {}
+ state.players[0].charge = 0.0
+ state.players[0].jump = 0.40
+ arena.present(state, [], state.ball, [0], 0.016, false)
+ var bone_l: Transform3D = arena.athletes[0].skeleton.global_transform * arena.athletes[0].skeleton.get_bone_global_pose(20)
+ var bone_r: Transform3D = arena.athletes[0].skeleton.global_transform * arena.athletes[0].skeleton.get_bone_global_pose(21)
+ var hands_mid = (bone_l.origin + bone_r.origin) * 0.5
+ check(state.ball_height() > 1.5 and arena.basketball.global_position.y > 1.5, "ball elevates in authoritative and presentation layers while player has ball in air")
+ check(arena.basketball.global_position.distance_to(hands_mid) < 0.25, "ball remains in player hands while in the air")
+ var mesh_stays_above_floor = true
+ for test_jump in [0.70, 0.65, 0.55, 0.45, 0.35, 0.20, 0.10, 0.05, 0.01]:
+  state.players[0].jump = test_jump
+  arena.present(state, [], state.ball, [0], 0.016, false)
+  var lowest_y = 100.0
+  for bone in [7, 8, 10, 11]:
+   var trans: Transform3D = arena.athletes[0].skeleton.global_transform * arena.athletes[0].skeleton.get_bone_global_pose(bone)
+   lowest_y = minf(lowest_y, trans.origin.y)
+  var bottom = lowest_y - 0.045
+  if bottom < -0.005:
+   mesh_stays_above_floor = false
+ check(mesh_stays_above_floor, "athlete mesh never penetrates through floor during jump stages")
+ state.players[0].jump = 0.0
+
+ # Net impact swirl presentation tests
+ check(arena.baskets.size() == 2 and arena.baskets[0].has("net") and arena.baskets[1].has("net"), "modeled baskets contain structured dynamic net data")
+ var net1: Dictionary = arena.baskets[1].net
+ check(net1.rings.size() == 4 and net1.strands.size() == 12, "net contains 4 horizontal rings and 12 vertical diamond strands")
+ var rest_bottom_y = net1.rings[3].position.y
+ var rest_bottom_scale = net1.rings[3].scale.x
+ check(absf((net1.center.y - 0.62) - rest_bottom_y) < 0.02 and absf(rest_bottom_scale - 1.0) < 0.01, "net rests hanging down at default length and diameter")
+ arena.trigger_net_swish(1, Vector3.RIGHT)
+ state.event_id = 99
+ state.event_kind = "score"
+ state.inbound_transition = {"active": true}
+ before = state.snapshot()
+ arena.present(state, [], state.ball, [0], 0.25, false)
+ var peak_bottom_y = net1.rings[3].position.y
+ var peak_bottom_scale = net1.rings[3].scale.x
+ check(peak_bottom_y > rest_bottom_y + 0.25, "impact of made shot causes the bottom of the net to swirl upwards towards the rim")
+ check(peak_bottom_scale > 1.45, "bottom and mid rings of the net flare outwards to wrap around the ball")
+ check(net1.rings[3].quaternion != Quaternion.IDENTITY, "net bottom tilts in direction of ball momentum")
+ check(arena.basketball.position.y > 2.2 and arena.basketball.position.y < 3.15, "basketball passes down through the swirling net on made basket")
+ check(state.snapshot() == before, "dynamic net swish presentation never mutates authoritative game state")
+ arena.present(state, [], state.ball, [0], 0.90, false)
+ var settled_bottom_y = net1.rings[3].position.y
+ var settled_bottom_scale = net1.rings[3].scale.x
+ check(absf(settled_bottom_y - rest_bottom_y) < 0.02 and absf(settled_bottom_scale - rest_bottom_scale) < 0.02, "net cleanly returns to resting geometry after swish settling oscillations")
+ state.inbound_transition = {}
+
  state.phase = "finished"
  arena.present(state,[],state.ball,[0],0.1,true)
  var framed = true

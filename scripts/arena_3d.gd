@@ -20,6 +20,7 @@ var camera_initialized = false
 var camera_focus = 0.0
 var baskets: Array = []
 var possession_flash_material: StandardMaterial3D
+var last_event_id: int = -1
 
 func _ready() -> void:
  size = Vector2i(1280,600)
@@ -305,24 +306,39 @@ func build_basket(side: int) -> void:
   box(target_marks,Vector3(0.026,0.51,0.035),Vector3(target_x,3.35,center.z+z),net_material)
  for y in [3.095,3.605]:
   box(target_marks,Vector3(0.026,0.035,0.715),Vector3(target_x,y,center.z),net_material)
- build_glass_shards(group,Vector3(board_x,3.54,center.z),side,target_marks)
  rod(group,Vector3(board_x,3.05,center.z),center,0.045,orange)
  ring(group,0.43,0.035,center,orange,36).name = "OrangeRim"
+ var net_rings: Array = []
+ var base_ring_radii = [0.43, lerpf(0.43,0.27,1.0/3.0), lerpf(0.43,0.27,2.0/3.0), 0.27]
  for layer in range(4):
   var t = float(layer)/3.0
-  ring(group,lerpf(0.43,0.27,t),0.009,center-Vector3(0,t*0.62,0),net_material,24)
+  var r_node = ring(group,base_ring_radii[layer],0.009,center-Vector3(0,t*0.62,0),net_material,24)
+  net_rings.append(r_node)
+ var net_strands: Array = []
  for strand in range(12):
   var angle = TAU*strand/12.0
   var top = center+Vector3(cos(angle)*0.43,0,sin(angle)*0.43)
   var mid = center+Vector3(cos(angle+0.15)*0.34,-0.31,sin(angle+0.15)*0.34)
   var bottom = center+Vector3(cos(angle)*0.27,-0.62,sin(angle)*0.27)
-  rod(group,top,mid,0.009,net_material,4)
-  rod(group,mid,bottom,0.009,net_material,4)
   var cross_mid = center+Vector3(cos(angle-0.15)*0.34,-0.31,sin(angle-0.15)*0.34)
-  rod(group,top,cross_mid,0.009,net_material,4)
-  rod(group,cross_mid,bottom,0.009,net_material,4)
+  var r1 = rod(group,top,mid,0.009,net_material,4)
+  var r2 = rod(group,mid,bottom,0.009,net_material,4)
+  var r3 = rod(group,top,cross_mid,0.009,net_material,4)
+  var r4 = rod(group,cross_mid,bottom,0.009,net_material,4)
+  net_strands.append({"angle": angle, "r1": r1, "r2": r2, "r3": r3, "r4": r4})
+ var net_dict = {
+  "center": center,
+  "side": side,
+  "rings": net_rings,
+  "base_radii": base_ring_radii,
+  "strands": net_strands,
+  "swish_time": 10.0,
+  "swish_dir": Vector3.ZERO,
+  "is_dirty": false
+ }
+ build_glass_shards(group,Vector3(board_x,3.54,center.z),side,target_marks,net_dict)
 
-func build_glass_shards(group: Node3D, center: Vector3, side: int, target_marks: Node3D) -> void:
+func build_glass_shards(group: Node3D, center: Vector3, side: int, target_marks: Node3D, net_dict: Dictionary = {}) -> void:
  var pieces = Node3D.new()
  pieces.name = "GlassShards"
  group.add_child(pieces)
@@ -350,7 +366,125 @@ func build_glass_shards(group: Node3D, center: Vector3, side: int, target_marks:
     var piece = mesh(pieces,shape,center+origin,shard_mat)
     piece.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
     shards.append({"mesh":piece,"origin":center+origin,"velocity":Vector3(-side*random.randf_range(1.4,4.5),random.randf_range(1.0,4.0),origin.z*3.0+random.randf_range(-2.0,2.0)),"spin":Vector3(random.randf_range(-8,8),random.randf_range(-8,8),random.randf_range(-8,8))})
- baskets.append({"glass":group.get_node("GlassBackboard"),"target":target_marks,"pieces":pieces,"shards":shards})
+ baskets.append({"glass":group.get_node("GlassBackboard"),"target":target_marks,"pieces":pieces,"shards":shards,"net":net_dict})
+
+func update_rod(object: MeshInstance3D, a: Vector3, b: Vector3) -> void:
+ var diff = b - a
+ var dist = diff.length()
+ if dist < 0.0001:
+  object.visible = false
+  return
+ object.visible = true
+ object.position = (a + b) * 0.5
+ var dir = diff / dist
+ var cyl = object.mesh as CylinderMesh
+ if cyl != null and cyl.height > 0.0001:
+  object.scale = Vector3(1.0, dist / cyl.height, 1.0)
+ if absf(dir.dot(Vector3.UP)) > 0.999:
+  object.quaternion = Quaternion.IDENTITY if dir.y > 0 else Quaternion(Vector3.RIGHT, PI)
+ else:
+  object.quaternion = Quaternion(Vector3.UP, dir)
+
+func get_net_swirl_amount(u: float) -> float:
+ if u <= 0.0:
+  return 0.0
+ elif u < 0.28:
+  return sin((u / 0.28) * (PI * 0.5))
+ elif u < 0.52:
+  var p = (u - 0.28) / 0.24
+  return cos(p * (PI * 0.5))
+ elif u < 1.0:
+  var p = (u - 0.52) / 0.48
+  return -0.32 * sin(p * PI * 3.0) * exp(-p * 5.0)
+ else:
+  return 0.0
+
+func trigger_net_swish(b_idx: int, dir: Vector3) -> void:
+ if b_idx < 0 or b_idx >= baskets.size():
+  return
+ var net_data: Dictionary = baskets[b_idx].get("net", {})
+ if net_data.is_empty():
+  return
+ net_data.swish_time = 0.0
+ net_data.swish_dir = dir
+
+func update_net(net_data: Dictionary, delta: float, paused: bool) -> void:
+ if net_data.is_empty():
+  return
+ if not paused and net_data.swish_time < 1.5:
+  net_data.swish_time += delta
+ if net_data.swish_time >= 1.0:
+  if net_data.get("is_dirty", false):
+   net_data.is_dirty = false
+   _apply_net_pose(net_data, 0.0, Vector3.ZERO)
+  return
+ net_data.is_dirty = true
+ var u = clampf(net_data.swish_time / 0.85, 0.0, 1.0)
+ var swirl = get_net_swirl_amount(u)
+ _apply_net_pose(net_data, swirl, net_data.swish_dir)
+
+func _apply_net_pose(net_data: Dictionary, swirl: float, dir: Vector3) -> void:
+ var center: Vector3 = net_data.center
+ var side: int = net_data.side
+ var swirl_pos = maxf(0.0, swirl)
+ if dir.length() < 0.01:
+  dir = Vector3(side, 0, 0)
+ dir = dir.normalized()
+
+ var shift_mid = dir * (0.08 * swirl_pos)
+ var r_mid = 0.34 + 0.12 * swirl_pos
+ var y_mid = -0.31 + 0.08 * swirl
+ var d_theta_mid = 0.18 * swirl
+
+ var shift_bot = dir * (0.16 * swirl_pos)
+ var r_bot = 0.27 + 0.24 * swirl_pos
+ var y_bot = -0.62 + 0.38 * swirl
+ var d_theta_bot = 0.48 * swirl
+
+ var rings: Array = net_data.rings
+ var base_radii: Array = net_data.base_radii
+
+ rings[0].position = center
+ rings[0].scale = Vector3.ONE
+ rings[0].quaternion = Quaternion.IDENTITY
+
+ var r1 = lerpf(0.43, 0.27, 1.0/3.0) + 0.06 * swirl_pos
+ rings[1].position = center + dir * (0.03 * swirl_pos) + Vector3(0, -0.207 - 0.02 * swirl_pos, 0)
+ var sc1 = r1 / base_radii[1]
+ rings[1].scale = Vector3(sc1, 1.0, sc1)
+ rings[1].quaternion = Quaternion.IDENTITY
+
+ var r2 = lerpf(0.43, 0.27, 2.0/3.0) + 0.16 * swirl_pos
+ rings[2].position = center + shift_mid + Vector3(0, -0.413 + 0.14 * swirl, 0)
+ var sc2 = r2 / base_radii[2]
+ rings[2].scale = Vector3(sc2, 1.0, sc2)
+ rings[2].quaternion = Quaternion.IDENTITY
+
+ var sc3 = r_bot / base_radii[3]
+ rings[3].position = center + shift_bot + Vector3(0, y_bot, 0)
+ rings[3].scale = Vector3(sc3, 1.0, sc3)
+ var ring_normal = (Vector3.UP + dir * (0.60 * swirl_pos)).normalized()
+ rings[3].quaternion = Quaternion(Vector3.UP, ring_normal)
+
+ for strand in net_data.strands:
+  var angle: float = strand.angle
+  var top = center + Vector3(cos(angle) * 0.43, 0.0, sin(angle) * 0.43)
+  var a_mid = angle + 0.15 + d_theta_mid
+  var mid = center + shift_mid + Vector3(cos(a_mid) * r_mid, y_mid, sin(a_mid) * r_mid)
+  var a_cross = angle - 0.15 + d_theta_mid
+  var cross_mid = center + shift_mid + Vector3(cos(a_cross) * r_mid, y_mid, sin(a_cross) * r_mid)
+
+  var dir_dot = Vector3(cos(angle), 0, sin(angle)).dot(dir)
+  var directional_bias = maxf(0.0, dir_dot)
+  var strand_r_bot = r_bot + 0.06 * directional_bias * swirl_pos
+  var strand_y_bot = y_bot + 0.05 * directional_bias * swirl
+  var a_bot = angle + d_theta_bot
+  var bottom = center + shift_bot + Vector3(cos(a_bot) * strand_r_bot, strand_y_bot, sin(a_bot) * strand_r_bot)
+
+  update_rod(strand.r1, top, mid)
+  update_rod(strand.r2, mid, bottom)
+  update_rod(strand.r3, top, cross_mid)
+  update_rod(strand.r4, cross_mid, bottom)
 
 func update_backboards(state: MatchState) -> void:
  for side in range(2):
@@ -598,6 +732,11 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
    var launch: float = state.flight.get("player_launch_height",0.0)
    var peak = 4.2 if state.is_player_on_fire(i) else (2.85 if state.flight.get("super_dunk",false) else 1.8 if state.flight.dunk else 1.15)
    jump = lerpf(launch,0,progress)+sin(progress*PI)*(peak-launch*0.5)
+  elif not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.shooter == i:
+   if p.jump > 0.0:
+    jump = sin(clampf((1.16 - p.jump) / 1.16, 0.0, 1.0) * PI) * 1.35
+   else:
+    jump = 0.0
   elif p.receive_jump > 0:
    jump = state.receive_height(i)
   elif p.charge > 0:
@@ -605,7 +744,7 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   elif p.jump > 0:
    var t = 1.0 - clampf(p.jump / 0.70, 0.0, 1.0)
    if t <= 0.20:
-    jump = -sin(t / 0.20 * PI) * 0.18
+    jump = 0.0
    else:
     var jp = (t - 0.20) / 0.80
     jump = sin(jp * PI) * 2.85
@@ -718,13 +857,20 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
     var root_forward = Basis(actor.skeleton.get_bone_pose_rotation(0)) * Vector3.BACK
     var root_yaw = atan2(root_forward.x,root_forward.z)
     actor.body.rotation.y = ball_angle-root_yaw
+  var lowest_foot = 100.0
+  for bone in [7, 8, 10, 11]:
+   var foot_trans: Transform3D = actor.skeleton.global_transform * actor.skeleton.get_bone_global_pose(bone)
+   lowest_foot = minf(lowest_foot, foot_trans.origin.y)
+  var sneaker_bottom = lowest_foot - 0.045
+  if sneaker_bottom < 0.0:
+   actor.body.position.y += -sneaker_bottom
   actor.marker.visible = controlled_slots.has(i)
   actor.control.text = ("P1" if i < 2 else "P2") if controlled_slots.has(i) else ""
-  actor.control.position.y = 2.72+jump
-  actor.label.position.y = 2.35+jump
+  actor.control.position.y = 2.72+actor.body.position.y
+  actor.label.position.y = 2.35+actor.body.position.y
   if p.receive_jump > 0 or (not state.flight.is_empty() and state.flight.get("finish","") == "alley_oop" and state.flight.shooter == i):
-   actor.label.position.y = 3.1+jump
-   actor.control.position.y = 3.45+jump
+   actor.label.position.y = 3.1+actor.body.position.y
+   actor.control.position.y = 3.45+actor.body.position.y
   var label_offset = (-0.7 if i == 0 else 0.7 if i == 2 else 0.0) if state.tipoff.get("active",false) else 0.0
   actor.label.position.x = label_offset
   actor.control.position.x = label_offset
@@ -776,6 +922,16 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
    ember.scale.y = 0.6+sin(time*13+flame)*0.25
  var ball_height = state.ball_height()
  basketball.position = court_point(ball,ball_height)
+ if state.flight.is_empty() and state.owner >= 0:
+  var carrier = athletes[state.owner]
+  var p_carrier: Dictionary = state.players[state.owner]
+  var in_air = carrier.body.position.y > 0.08 or p_carrier.get("jump", 0.0) > 0.0 or p_carrier.get("receive_jump", 0.0) > 0.0 or p_carrier.get("charge", 0.0) > 0.0
+  if in_air:
+   var hand_l: Transform3D = carrier.skeleton.global_transform * carrier.skeleton.get_bone_global_pose(20)
+   var hand_r: Transform3D = carrier.skeleton.global_transform * carrier.skeleton.get_bone_global_pose(21)
+   var hands_mid = (hand_l.origin + hand_r.origin) * 0.5
+   var forward_dir = -carrier.body.global_transform.basis.z
+   basketball.global_position = hands_mid + forward_dir * 0.12
  if not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.dunk:
   var dunk_style = state.flight.get("dunk_style", "standard")
   var dunk_p = clampf(state.flight.time / state.flight.duration, 0.0, 1.0)
@@ -790,6 +946,42 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
    var angle = dunk_p * TAU * 3.0
    basketball.position += Vector3(cos(angle) * 0.42, 0.12, sin(angle) * 0.42)
  basketball.rotation = Vector3(time*3.2,0,time*2.1)
+ # Trigger net swish on made shots reaching rim
+ if not state.flight.is_empty() and state.flight.kind == "shot":
+  var progress = clampf(state.flight.time / state.flight.duration, 0.0, 1.0)
+  if progress >= 0.94 and state.flight.get("made", true):
+   var b_idx = 0 if state.flight.end.x < 640 else 1
+   if b_idx < baskets.size() and baskets[b_idx].get("net", {}).get("swish_time", 10.0) > 0.5:
+    var shot_dir = (state.flight.end - state.flight.start).normalized()
+    var incoming_dir = Vector3(shot_dir.x * COURT_SCALE.x, 0, shot_dir.y * COURT_SCALE.y).normalized()
+    trigger_net_swish(b_idx, incoming_dir)
+
+ # Trigger net swish on scoring events (dunks, layups, baskets)
+ if state.event_id != last_event_id:
+  last_event_id = state.event_id
+  if state.event_kind in ["score", "dunk", "fire", "shatter"]:
+   var scoring_team = 1 - state.inbounding_team if state.inbounding_team >= 0 else (0 if state.score[0] > 0 else 1)
+   var hoop = state.hoop_for(scoring_team)
+   var b_idx = 0 if hoop.x < 640 else 1
+   if b_idx < baskets.size() and baskets[b_idx].get("net", {}).get("swish_time", 10.0) > 0.25:
+    var incoming_dir = Vector3(1.0 if hoop.x < 640 else -1.0, 0, 0)
+    trigger_net_swish(b_idx, incoming_dir)
+
+ for b_idx in range(baskets.size()):
+  var net_data: Dictionary = baskets[b_idx].get("net", {})
+  if not net_data.is_empty():
+   update_net(net_data, motion_delta, paused)
+
+ # Visually pass ball down through swirling net upon made basket
+ for b_idx in range(baskets.size()):
+  var net_data: Dictionary = baskets[b_idx].get("net", {})
+  if not net_data.is_empty() and net_data.swish_time < 0.35:
+   if state.inbound_transition.get("active", false) or state.pending_inbound >= 0 or (state.flight.is_empty() and state.owner >= 0 and state.players[state.owner].pos.distance_to(state.hoop_for(1 - b_idx)) > 140.0):
+    var drop_p = clampf(net_data.swish_time / 0.35, 0.0, 1.0)
+    var ball_drop_y = lerpf(3.12, 2.25, drop_p)
+    var drop_dir = net_data.swish_dir if net_data.swish_dir.length() > 0.01 else Vector3(net_data.side, 0, 0)
+    basketball.position = net_data.center + Vector3(0, ball_drop_y - 3.05, 0) + drop_dir * (sin(drop_p * PI) * 0.08)
+    break
  update_backboards(state)
  update_camera(state,ball,motion_delta,paused)
  var in_flight = not state.flight.is_empty()

@@ -146,6 +146,65 @@ func run() -> void:
 	state.defend(2, false)
 	check(state.players[2].jump >= 0.70, "Defender jumps for rebound during must_rebound window")
 
+	# AI jumps for rebounds in mid-air
+	var ai_reb_state = MatchState.new()
+	ai_reb_state.start(0, 1)
+	ai_reb_state.tipoff = {}
+	ai_reb_state.freeze = 0
+	ai_reb_state.owner = -1
+	ai_reb_state.in_cylinder_timer = 0.0
+	ai_reb_state.flight = {
+		"kind": "rebound",
+		"start": Vector2(900, 465),
+		"end": Vector2(750, 465),
+		"time": 0.20,
+		"duration": MatchState.REBOUND_FLIGHT_DURATION,
+		"shooter": 0,
+		"arc_height": 2.2,
+		"bounces": 0
+	}
+	ai_reb_state.ball = ai_reb_state.flight_position()
+	ai_reb_state.players[2].pos = Vector2(760, 465)
+	ai_reb_state.players[2].jump = 0.0
+	ai_reb_state.players[2].cooldown = 0.0
+	var ai_cmd = ai_reb_state.ai(2)
+	check(ai_cmd.get("shoot", false) == true, "AI commands jump/shoot when in position for rebound")
+	ai_reb_state.tick(0.016, {})
+	check(ai_reb_state.players[2].jump >= 0.70, "AI player jumps for rebound")
+	check(ai_reb_state.players[2].rebound_glide > 0.0, "AI player enters rebound glide")
+	for _frame in range(30):
+		if ai_reb_state.flight.is_empty():
+			break
+		ai_reb_state.tick(0.016, {})
+	check(ai_reb_state.owner == 2 and ai_reb_state.flight.is_empty(), "AI player snatches rebound mid-air")
+	check(ai_reb_state.stats[2].rebounds == 1, "AI player credited with rebound stat")
+
+	# AI jumps for loose ball in the air
+	var ai_loose_state = MatchState.new()
+	ai_loose_state.start(0, 1)
+	ai_loose_state.tipoff = {}
+	ai_loose_state.freeze = 0
+	ai_loose_state.owner = -1
+	ai_loose_state.flight = {
+		"kind": "loose",
+		"start": Vector2(600, 400),
+		"end": Vector2(650, 400),
+		"time": 0.15,
+		"duration": 0.50,
+		"arc_height": 1.2
+	}
+	ai_loose_state.ball = ai_loose_state.flight_position()
+	ai_loose_state.players[1].pos = Vector2(640, 400)
+	ai_loose_state.players[1].jump = 0.0
+	ai_loose_state.players[1].cooldown = 0.0
+	var loose_cmd = ai_loose_state.ai(1)
+	check(loose_cmd.get("shoot", false) == true, "AI commands jump to catch loose ball in the air")
+	for _frame in range(30):
+		if ai_loose_state.flight.is_empty():
+			break
+		ai_loose_state.tick(0.016, {})
+	check(ai_loose_state.owner == 1 and ai_loose_state.flight.is_empty(), "AI player catches airborne loose ball mid-air")
+
 	# ==========================================
 	# 5. MECHANIC 5: TURBO EXHAUSTION BURNOUT
 	# ==========================================
