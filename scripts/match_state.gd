@@ -16,6 +16,13 @@ const QUARTER_SECONDS = 180.0
 const TIP_TOSS = 1.0
 const TIP_IDEAL_JUMP = 1.42
 const TIP_DECISION = 2.05
+# Authentic NBA Jam arcade tables
+# Defensive steal ability table (PLYR2.ASM:3134 stl1) scaled to 0-1 probability
+const STL1 = [0.120, 0.1275, 0.135, 0.14625, 0.150, 0.15375, 0.16125, 0.18375, 0.195, 0.21375, 0.225]
+# Clean steal vs loose ball deflection table (PLYR2.ASM:3144 stl2)
+const STL2 = [0.160, 0.170, 0.180, 0.195, 0.200, 0.205, 0.215, 0.225, 0.230, 0.235, 0.250]
+# Interception bonus percentage for losing team (PLYR2.ASM:3496 int_t)
+const INT_T = [0, 3, 5, 6, 8, 9, 10, 11, 12, 12, 12, 13, 14, 15, 17, 19]
 var rng = RandomNumberGenerator.new()
 var players: Array = []
 var teams: Array = [0, 1]
@@ -107,7 +114,7 @@ func start(a: int, b: int, seconds: float = QUARTER_SECONDS, level: int = 1) -> 
  flight = {}
  for i in range(4):
   var t = i / 2
-  players.append({"pos":Vector2(420 if t == 0 else 860, 400 + (i % 2) * 140), "vel":Vector2.ZERO, "turbo":1.0, "turbo_burnout":0.0, "jump":0.0, "receive_jump":0.0, "stun":0.0, "cooldown":0.0, "charge":0.0, "fake":0.0, "drive":0.0, "swipe":0.0, "swipe_resolved":false, "swipe_shove":false, "rebound_glide":0.0, "possession_flash":0.0, "shoot_held":false, "face":1 if t == 0 else -1, "spin":0.0, "spin_cooldown":0.0, "elbow":0.0, "steal_immune":0.0, "rim_hang":0.0, "still_time":1.0, "shot_is_moving":false, "shot_drift_vel":Vector2.ZERO, "last_move_vel":Vector2.ZERO})
+  players.append({"pos":Vector2(420 if t == 0 else 860, 400 + (i % 2) * 140), "vel":Vector2.ZERO, "turbo":1.0, "turbo_burnout":0.0, "jump":0.0, "receive_jump":0.0, "stun":0.0, "cooldown":0.0, "charge":0.0, "fake":0.0, "drive":0.0, "swipe":0.0, "swipe_resolved":false, "swipe_shove":false, "rebound_glide":0.0, "possession_flash":0.0, "shoot_held":false, "face":1 if t == 0 else -1, "spin":0.0, "spin_cooldown":0.0, "elbow":0.0, "steal_immune":0.0, "rim_hang":0.0, "still_time":1.0, "shot_is_moving":false, "shot_drift_vel":Vector2.ZERO, "last_move_vel":Vector2.ZERO, "pickup_delay":0.0})
   stats.append({"points":0, "attempts":0, "made":0, "dunks":0, "steals":0, "blocks":0, "rebounds":0, "goaltends":0, "assists":0, "injury":0})
  begin_tipoff()
 
@@ -415,6 +422,7 @@ func tick_inbound_transition(delta: float) -> void:
   var p: Dictionary = players[i]
   p.cooldown = maxf(0.0, p.cooldown - delta)
   p.stun = maxf(0.0, p.stun - delta)
+  p.pickup_delay = maxf(0.0, p.get("pickup_delay", 0.0) - delta)
   p.rim_hang = 0.0
   p.receive_jump = 0.0
   # If in the air, land rapidly
@@ -592,6 +600,7 @@ func tick(delta: float, commands: Dictionary) -> void:
   var p: Dictionary = players[i]
   p.cooldown = maxf(0.0, p.cooldown - delta)
   p.stun = maxf(0.0, p.stun - delta)
+  p.pickup_delay = maxf(0.0, p.get("pickup_delay", 0.0) - delta)
   p.rim_hang = maxf(0.0, p.get("rim_hang", 0.0) - delta)
   if p.rim_hang <= 0.0:
    p.jump = maxf(0.0, p.jump - delta)
@@ -617,6 +626,12 @@ func tick(delta: float, commands: Dictionary) -> void:
   move = move.limit_length()
   var turbo: bool = c.get("turbo", false) and (p.turbo > 0.001 or infinite_turbo or is_player_on_fire(i))
   var speed = 125.0 + rating(i, 0) * 7.0
+  if owner == i:
+   speed *= 0.885
+  elif owner >= 0 and owner / 2 == i / 2:
+   speed *= 0.95
+  if clock < 50.0 and score[1 - i / 2] > score[i / 2]:
+   speed *= 1.08
   if p.turbo_burnout > 0.0:
    speed *= 0.85
    p.turbo = 0.0
@@ -782,7 +797,7 @@ func tick(delta: float, commands: Dictionary) -> void:
  else:
   if loose_ball_timer <= 0.0 and in_cylinder_timer <= 0.0:
    for i in range(4):
-    if players[i].stun <= 0 and players[i].pos.distance_to(ball) < 30:
+    if players[i].stun <= 0 and players[i].get("pickup_delay", 0.0) <= 0.0 and players[i].pos.distance_to(ball) < 30:
      acquire_possession(i, true)
      shot_clock = 24.0
      stats[i].rebounds += 1
@@ -863,21 +878,25 @@ func ai(i: int) -> Dictionary:
   var deficit = score[opp_team] - score[team]
   var help_defense = players[partner].stun > 0.0 or shot_clock < 5.0 or clock < 8.0 or (quarter >= 4 and deficit > 0)
   var mark = owner if (i % 2 == owner % 2 or help_defense) else (1 - team) * 2 + (1 - (owner % 2))
-  target = players[mark].pos.lerp(hoop_for(1-team), 0.12)
+  var nasty = (quarter >= 4 and deficit > 0) or clock < 15.0 or shot_clock < 5.0 or (deficit >= 6 and rng.randf() < 0.35)
+  if nasty:
+   target = players[mark].pos
+  else:
+   target = players[mark].pos.lerp(hoop_for(1 - team), 0.18)
   var dist_to_mark = p.pos.distance_to(players[mark].pos)
   var dist_to_owner = p.pos.distance_to(players[owner].pos)
 
-  # Turbo aggressively to the player / mark on defense
+  # Turbo aggressively to the player / mark on defense (DRONE.ASM:1450)
   var has_turbo_fuel = p.get("turbo", 1.0) > 0.15 and p.get("turbo_burnout", 0.0) <= 0.0
-  if has_turbo_fuel and (difficulty >= 1 or (quarter >= 4 and deficit > 0)):
+  if has_turbo_fuel and (difficulty >= 1 or nasty or (quarter >= 4 and deficit > 0)):
    if dist_to_mark > 35.0 or dist_to_owner <= 75.0:
     turbo = true
 
-  # Aggressive defensive shoving and stealing
+  # Aggressive defensive shoving and stealing (DRONE.ASM:1475-1540)
   var can_shove = (p.get("turbo", 1.0) >= 0.14 or is_player_on_fire(i) or infinite_turbo) and p.cooldown <= 0.0
-  var shove_rate = 0.04 + difficulty * 0.03
-  if quarter >= 4 and deficit > 0:
-   shove_rate += clampf(float(deficit) * 0.02, 0.0, 0.20)
+  var shove_rate = 0.08 + difficulty * 0.04
+  if nasty or (quarter >= 4 and deficit > 0):
+   shove_rate += clampf(float(maxi(0, deficit)) * 0.02 + 0.06, 0.0, 0.25)
 
   # 1. Shoving the ball carrier (the player)
   if dist_to_owner <= 68.0 and players[owner].stun <= 0.0 and players[owner].get("steal_immune", 0.0) <= 0.0:
@@ -887,15 +906,16 @@ func ai(i: int) -> Dictionary:
     if dist_to_owner > 25.0:
      target = players[owner].pos
    elif p.cooldown <= 0.0:
-    var steal_prob = 0.020 + difficulty * 0.015
+    var steal_prob = 0.030 + difficulty * 0.015
     if rng.randf() < steal_prob:
      pass_action = true
 
-  # 2. Shoving the player's teammate
+  # 2. Shoving the player's teammate (off-ball defense)
   var teammate_id = (1 - team) * 2 + (1 - (owner % 2))
   var dist_to_teammate = p.pos.distance_to(players[teammate_id].pos)
   if not pass_action and dist_to_teammate <= 68.0 and players[teammate_id].stun <= 0.0:
-   if can_shove and (difficulty >= 1 or rng.randf() < 0.50) and rng.randf() < shove_rate:
+   var offball_shove_rate = 0.20 + difficulty * 0.08
+   if can_shove and (difficulty >= 1 or rng.randf() < 0.50) and rng.randf() < offball_shove_rate:
     turbo = true
     pass_action = true
     if dist_to_teammate > 25.0:
@@ -1307,9 +1327,28 @@ func steal(i: int, shove: bool) -> void:
  players[i].swipe_resolved = false
  players[i].swipe_shove = shove
  players[i].vel = Vector2.ZERO
+ if owner >= 0:
+  var to_target = players[owner].pos - players[i].pos
+  if absf(to_target.x) > 0.1:
+   players[i].face = 1 if to_target.x >= 0 else -1
+ elif not flight.is_empty():
+  var to_target = flight_position() - players[i].pos
+  if absf(to_target.x) > 0.1:
+   players[i].face = 1 if to_target.x >= 0 else -1
  if not flight.is_empty() and flight.kind == "pass" and not flight.get("tip",false) and int(flight.target)/2 != i/2:
-  if players[i].pos.distance_to(flight_position()) < (68 if shove else 56) and ball_height() <= 2.5 and rng.randf() < 0.45+rating(i,3)*0.04:
-   intercept_pass(i)
+  if players[i].pos.distance_to(flight_position()) < (68 if shove else 56) and ball_height() <= 2.5:
+   var pass_ticks = int(flight.time * 60.0)
+   var base_pct = 1.0 + absf(pass_ticks - 3) * 0.5
+   var def_team = i / 2
+   var off_team = int(flight.target) / 2
+   var pts_down = clampi(score[off_team] - score[def_team], 0, 15)
+   var ptsdown_bonus = INT_T[pts_down]
+   if tournament_mode:
+    ptsdown_bonus = 0
+   var alley_bonus = 25.0 if flight.get("alley", false) else 0.0
+   var intercept_chance = clampf(0.25 + rating(i, 3) * 0.03 + (ptsdown_bonus + alley_bonus) * 0.008, 0.20, 0.75)
+   if rng.randf() < intercept_chance:
+    intercept_pass(i)
   return
  if shove:
   resolve_steal(i, true)
@@ -1330,12 +1369,16 @@ func resolve_steal(i: int, shove: bool) -> void:
    if dist_owner <= 68.0 and (victim < 0 or dist_owner <= min_dist + 15.0):
     victim = owner
  else:
-  if owner >= 0 and owner / 2 != team and players[i].pos.distance_to(players[owner].pos) <= 50.0:
-   victim = owner
+  if owner >= 0 and owner / 2 != team:
+   var ball_pos = players[owner].pos + Vector2(players[owner].face * 18.0, 0.0)
+   var dist_to_ball = players[i].pos.distance_to(ball_pos)
+   var dist_to_owner = players[i].pos.distance_to(players[owner].pos)
+   if dist_to_ball <= 46.0 or dist_to_owner <= 46.0:
+    victim = owner
 
  if victim < 0:
   return
- if players[victim].get("steal_immune", 0.0) > 0.0:
+ if not shove and players[victim].get("steal_immune", 0.0) > 0.0:
   return
  players[i].swipe_resolved = true
  if shove:
@@ -1344,6 +1387,7 @@ func resolve_steal(i: int, shove: bool) -> void:
   var power_diff = pusher_power - victim_power
   if power_diff < -2.5 and rng.randf() < 0.50:
    players[victim].stun = 0.35
+   players[victim].pickup_delay = 0.35
    var stagger_dir = (players[victim].pos - players[i].pos).normalized() * 14.0
    players[victim].pos = (players[victim].pos + stagger_dir).clamp(COURT.position + Vector2(18,18), COURT.end - Vector2(18,18))
    players[victim].charge = 0.0
@@ -1358,6 +1402,7 @@ func resolve_steal(i: int, shove: bool) -> void:
     announce("STAGGERED!", "shove")
    return
   players[victim].stun = 0.95
+  players[victim].pickup_delay = 0.67
   stats[victim].injury += 1
   var knock_dir = (players[victim].pos - players[i].pos).normalized() * 28.0
   players[victim].pos = (players[victim].pos + knock_dir).clamp(COURT.position + Vector2(18,18), COURT.end - Vector2(18,18))
@@ -1372,28 +1417,31 @@ func resolve_steal(i: int, shove: bool) -> void:
   else:
    announce("SHOVED! NO FOULS!", "shove")
   return
- var clutch_steal_bonus = 0.12 if (clock <= 10.0 and rating(i, 3) >= 5.0) else 0.0
- var steal_chance = 0.18 + rating(i, 3) * 0.015 + clutch_steal_bonus
+ var stl_stat = clampi(int(rating(i, 3)), 0, 10)
+ var clutch_steal_bonus = 0.03 if (clock <= 10.0 and rating(i, 3) >= 5.0) else 0.0
+ var steal_chance = STL1[stl_stat] + clutch_steal_bonus
  if rng.randf() < steal_chance:
-  var clean_chance = 0.18 + rating(i, 3) * 0.012
-  var clean_steal = rng.randf() < clean_chance
+  var clean_steal = rng.randf() < STL2[stl_stat]
   stats[i].steals += 1
   players[i].cooldown = 0.75
   players[victim].charge = 0.0
   players[victim].fake = 0.0
   if clean_steal:
    acquire_possession(i, true)
+   players[i].steal_immune = 0.65
    shot_clock = 24.0
    announce("PICKED THEIR POCKET!", "steal")
   else:
    owner = -1
    shot_clock = 24.0
-   loose_ball_timer = 0.50
+   loose_ball_timer = 0.65
+   players[i].pickup_delay = 0.50
+   players[victim].pickup_delay = 0.50
    var loose_dir = (players[victim].pos - players[i].pos).normalized()
    if loose_dir.length() < 0.1:
     loose_dir = Vector2.RIGHT * players[i].face
-   var loose_dest = (ball + loose_dir * rng.randf_range(50.0, 95.0) + Vector2(rng.randf_range(-25.0, 25.0), rng.randf_range(-25.0, 25.0))).clamp(COURT.position + Vector2(25.0, 25.0), COURT.end - Vector2(25.0, 25.0))
-   flight = {"kind":"loose", "start":ball, "end":loose_dest, "time":0.0, "duration":0.40, "arc_height":0.95}
+   var loose_dest = (ball + loose_dir * rng.randf_range(60.0, 110.0) + Vector2(rng.randf_range(-30.0, 30.0), rng.randf_range(-30.0, 30.0))).clamp(COURT.position + Vector2(25.0, 25.0), COURT.end - Vector2(25.0, 25.0))
+   flight = {"kind":"loose", "start":ball, "end":loose_dest, "time":0.0, "duration":0.45, "arc_height":1.2}
    announce("LOOSE BALL!", "steal")
 
 func intercept_pass(i: int) -> void:
@@ -1402,9 +1450,10 @@ func intercept_pass(i: int) -> void:
   owner = -1
   var tip_dest = (ball + Vector2(rng.randf_range(-60.0, 60.0), rng.randf_range(-40.0, 40.0))).clamp(COURT.position + Vector2(25.0, 25.0), COURT.end - Vector2(25.0, 25.0))
   flight = {"kind":"loose", "start":ball, "end":tip_dest, "time":0.0, "duration":0.65, "arc_height":4.8, "tip":true}
-  loose_ball_timer = 0.40
+  loose_ball_timer = 0.60
   players[i].cooldown = 0.5
   players[i].swipe = 0.25
+  players[i].pickup_delay = 0.40
   announce("TIPPED PASS! LOOSE BALL", "steal")
   return
  acquire_possession(i, true)
@@ -1425,44 +1474,48 @@ func tick_flight(delta: float) -> void:
   for i in range(4):
    if i/2 == int(flight.target)/2 or players[i].stun > 0 or players[i].cooldown > 0:
     continue
-   var rate = 2.5+rating(i,3)*0.25
+   var pass_ticks = int(flight.time * 60.0)
+   var base_pct = 1.0 + absf(pass_ticks - 3) * 0.5
    var def_team = i / 2
    var off_team = int(flight.target) / 2
-   var pts_down = score[off_team] - score[def_team]
-   if pts_down > 0:
-    var int_bonus = clampf(float(pts_down) * 0.015, 0.0, 0.19)
-    rate += int_bonus * 10.0
-   if flight.get("alley", false):
-    rate += 2.5
+   var pts_down = clampi(score[off_team] - score[def_team], 0, 15)
+   var ptsdown_bonus = INT_T[pts_down]
+   if tournament_mode:
+    ptsdown_bonus = 0
+   var alley_bonus = 25.0 if flight.get("alley", false) else 0.0
+   var rate = (base_pct + ptsdown_bonus + alley_bonus + rating(i, 3) * 2.5) * 0.15
    if players[i].pos.distance_to(ball) < 42 and rng.randf() < 1.0-exp(-rate*delta):
     intercept_pass(i)
     return
  elif flight.kind == "rebound" or flight.kind == "loose":
-  var candidates: Array = []
-  for i in range(4):
-   var p: Dictionary = players[i]
-   if p.stun <= 0 and p.jump > 0:
-    var p_h = 1.2 + sin(clampf((0.75 - p.jump) / 0.75, 0, 1) * PI) * 1.6
-    var ball_h = ball_height()
-    var d = p.pos.distance_to(ball)
-    if d < 55.0 and absf(ball_h - p_h) < 1.4:
-     candidates.append({"id": i, "score": d + absf(ball_h - p_h) * 15.0})
-  if candidates.size() > 0:
-   candidates.sort_custom(func(a, b): return a.score < b.score)
-   var winner = candidates[0].id
-   var is_rebound = flight.kind == "rebound"
-   var p_win: Dictionary = players[winner]
-   acquire_possession(winner, true)
-   flight = {}
-   p_win.vel = Vector2.ZERO
-   p_win.rebound_glide = 0.0
-   shot_clock = 24.0
-   if is_rebound:
-    stats[winner].rebounds += 1
-    announce("REBOUND!", "catch")
-   else:
-    announce("LOOSE BALL!", "catch")
-   return
+  if flight.kind == "loose" and loose_ball_timer > 0.0:
+   pass
+  else:
+   var candidates: Array = []
+   for i in range(4):
+    var p: Dictionary = players[i]
+    if p.stun <= 0 and p.jump > 0 and p.get("pickup_delay", 0.0) <= 0.0:
+     var p_h = 1.2 + sin(clampf((0.75 - p.jump) / 0.75, 0, 1) * PI) * 1.6
+     var ball_h = ball_height()
+     var d = p.pos.distance_to(ball)
+     if d < 55.0 and absf(ball_h - p_h) < 1.4:
+      candidates.append({"id": i, "score": d + absf(ball_h - p_h) * 15.0})
+   if candidates.size() > 0:
+    candidates.sort_custom(func(a, b): return a.score < b.score)
+    var winner = candidates[0].id
+    var is_rebound = flight.kind == "rebound"
+    var p_win: Dictionary = players[winner]
+    acquire_possession(winner, true)
+    flight = {}
+    p_win.vel = Vector2.ZERO
+    p_win.rebound_glide = 0.0
+    shot_clock = 24.0
+    if is_rebound:
+     stats[winner].rebounds += 1
+     announce("REBOUND!", "catch")
+    else:
+     announce("LOOSE BALL!", "catch")
+    return
  if t < 1:
   return
  if flight.kind == "rebound":
@@ -1491,6 +1544,8 @@ func tick_flight(delta: float) -> void:
   if (alley or double_dunk) and not catchable:
    owner = -1
    flight = {}
+   loose_ball_timer = 0.45
+   players[receiver].pickup_delay = 0.45
    announce("LOB MISSED! LOOSE BALL","miss")
    return
   acquire_possession(receiver)

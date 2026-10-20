@@ -155,6 +155,60 @@ func run() -> void:
 	check(loose_seen, "steals sometimes poke the ball loose instead of automatic instant transfer")
 	check(clean_seen, "steals can also produce a clean pick")
 
+	# Verify knocked away ball gives shtdly pickup lockout to victim and stealer (PLYR2.ASM:3079-3080)
+	state.owner = 0
+	state.players[0].pos = Vector2(500, 450)
+	state.players[0].stun = 0
+	state.players[2].pos = Vector2(530, 450)
+	state.ball = state.players[0].pos
+	# Seed where poke away occurs
+	state.rng.seed = 42
+	for _attempt in range(50):
+		state.owner = 0
+		state.resolve_steal(2, false)
+		if state.owner == -1:
+			break
+	check(state.loose_ball_timer >= 0.50, "knocked away ball sets un-grabbable loose_ball_timer >= 0.50s")
+	check(state.players[0].pickup_delay >= 0.40 and state.players[2].pickup_delay >= 0.40, "knocked away ball locks out victim and stealer with pickup_delay")
+
+	# Verify airborne player cannot snatch a loose ball while loose_ball_timer > 0
+	state.owner = -1
+	state.flight = {
+		"kind": "loose",
+		"start": Vector2(500, 450),
+		"end": Vector2(540, 450),
+		"time": 0.05,
+		"duration": 0.45,
+		"arc_height": 1.2
+	}
+	state.loose_ball_timer = 0.50
+	state.ball = state.flight_position()
+	state.players[1].pos = state.ball
+	state.players[1].jump = 0.50
+	state.players[1].pickup_delay = 0.0
+	state.tick_flight(0.016)
+	check(state.owner == -1, "airborne player cannot snatch loose ball while loose_ball_timer > 0")
+
+	# Verify player with pickup_delay cannot recover ball even if loose_ball_timer is 0
+	state.flight = {}
+	state.loose_ball_timer = 0.0
+	state.ball = Vector2(500, 450)
+	state.players[0].pos = Vector2(500, 450)
+	state.players[1].pos = Vector2(100, 100)
+	state.players[2].pos = Vector2(100, 100)
+	state.players[3].pos = Vector2(100, 100)
+	state.players[0].pickup_delay = 0.30
+	state.tick(0.05, {0: {"move": Vector2.ZERO, "shoot": false, "pass": false, "turbo": false}})
+	check(state.owner == -1, "player with active pickup_delay cannot scoop loose ball")
+
+	# Verify shove sets victim pickup_delay (PLYR2.ASM:5900)
+	state.owner = 0
+	state.players[0].pos = Vector2(500, 450)
+	state.players[2].pos = Vector2(530, 450)
+	state.players[0].pickup_delay = 0.0
+	state.resolve_steal(2, true)
+	check(state.players[0].pickup_delay >= 0.30, "shove sets victim pickup_delay (30-40 ticks in PLYR2.ASM)")
+
 	# Verify loose ball pickup delay
 	state.bullet_time_remaining = 0.0
 	state.owner = -1
@@ -163,6 +217,7 @@ func run() -> void:
 	state.ball = Vector2(500, 450)
 	state.players[0].pos = Vector2(500, 450)
 	state.players[0].stun = 0
+	state.players[0].pickup_delay = 0.0
 	state.tick(0.10, {0: {"move": Vector2.ZERO, "shoot": false, "pass": false, "turbo": false}})
 	check(state.owner == -1, "loose ball cannot be grabbed right away while loose_ball_timer > 0")
 

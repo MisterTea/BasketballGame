@@ -23,6 +23,15 @@ $watchdogJob = Start-Job -ScriptBlock {
     }
 } -ArgumentList $parentPid, 600
 
+function Start-GodotProcess {
+    param([string[]]$ArgsList)
+    $psi = [System.Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = $Godot
+    $psi.Arguments = ($ArgsList | ForEach-Object { if ($_ -match '\s') { "`"$_`"" } else { $_ } }) -join ' '
+    $psi.UseShellExecute = $false
+    return [System.Diagnostics.Process]::Start($psi)
+}
+
 function Run-GodotTest {
     param(
         [string]$ScriptPath,
@@ -33,7 +42,7 @@ function Run-GodotTest {
         $Description = $ScriptPath
     }
     $argsList = @('--headless', '--path', $projectRoot, '--script', $ScriptPath)
-    $proc = Start-Process -FilePath $Godot -ArgumentList $argsList -PassThru -NoNewWindow
+    $proc = Start-GodotProcess $argsList
     if (-not $proc.WaitForExit($TimeoutSeconds * 1000)) {
         try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
         throw "[TEST FAILED: WATCHDOG TIMEOUT] Test '$Description' timed out after $TimeoutSeconds seconds without exiting."
@@ -45,7 +54,7 @@ function Run-GodotTest {
 
 try {
     # 1. Editor Import (allow 90s for asset scanning)
-    $importProc = Start-Process -FilePath $Godot -ArgumentList @('--headless', '--path', $projectRoot, '--editor', '--quit') -PassThru -NoNewWindow
+    $importProc = Start-GodotProcess @('--headless', '--path', $projectRoot, '--editor', '--quit')
     if (-not $importProc.WaitForExit(90000)) {
         try { Stop-Process -Id $importProc.Id -Force -ErrorAction SilentlyContinue } catch {}
         throw "[TIMEOUT ERROR] Editor asset import timed out after 90 seconds."
