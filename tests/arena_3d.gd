@@ -175,6 +175,77 @@ func run() -> void:
  check(absf(settled_bottom_y - rest_bottom_y) < 0.02 and absf(settled_bottom_scale - rest_bottom_scale) < 0.02, "net cleanly returns to resting geometry after swish settling oscillations")
  state.inbound_transition = {}
 
+ # Dunk camera vertical tracking, dynamic zoom, and shake presentation tests
+ state.phase = "playing"
+ arena.reset_camera()
+ arena.present(state, [], state.ball, [0], 0.1, false)
+ var rest_cam_y = arena.camera.position.y
+ var rest_cam_fov = arena.camera.fov
+ check(is_equal_approx(rest_cam_y, arena.BASE_CAM_Y) and is_equal_approx(rest_cam_fov, arena.BASE_FOV), "baseline camera sits at arcade zoom and elevation")
+ state.flight = {
+  "kind": "shot",
+  "shooter": 0,
+  "time": 0.40,
+  "duration": 0.80,
+  "dunk": true,
+  "arc_height": 2.6,
+  "super_dunk": true,
+  "dunk_style": "helicopter",
+  "start": Vector2(800, 465),
+  "end": Vector2(1115, 465),
+  "made": true
+ }
+ arena.present(state, [], state.ball, [0], 0.1, false)
+ check(arena.camera.position.y > rest_cam_y + 0.35, "camera ascends vertically to frame high vertical dunk")
+ check(arena.camera.fov < rest_cam_fov - 0.5, "camera zooms in dynamically as dunk approaches apex")
+ state.flight.time = 0.76
+ arena.present(state, [], state.ball, [0], 0.05, false)
+ check(arena.dunk_shake_timer > 0.0, "dunk slamming into rim triggers camera shake timer")
+ check(arena.camera.position != Vector3(arena.camera_focus, arena.BASE_CAM_Y + arena.dunk_cam_lift, arena.BASE_CAM_Z - minf(1.8, arena.dunk_cam_lift * 0.35)), "camera shake imparts 3D displacement")
+ state.flight = {}
+ arena.present(state, [], state.ball, [0], 1.2, false)
+ check(absf(arena.camera.fov - arena.BASE_FOV) < 0.05 and absf(arena.camera.position.y - arena.BASE_CAM_Y) < 0.05 and arena.dunk_shake_timer == 0.0, "camera cleanly recovers base framing and shake decays to zero")
+
+ # Dunk hand attachment and rim delivery presentation tests
+ var dunk_styles_tested = ["frontflip", "backflip", "helicopter", "standard"]
+ var all_dunks_stay_in_hands = true
+ for style in dunk_styles_tested:
+  state.flight = {
+   "kind": "shot",
+   "start": Vector2(600, 465),
+   "end": Vector2(1000, 465),
+   "time": 0.0,
+   "duration": 1.2,
+   "shooter": 0,
+   "points": 2,
+   "made": true,
+   "dunk": true,
+   "super_dunk": false,
+   "dunk_style": style,
+   "finish": "dunk",
+   "arc_height": 2.0,
+   "player_start": Vector2(600, 465),
+   "player_end": Vector2(970, 465),
+   "player_launch_height": 0.0
+  }
+  state.owner = -1
+  for test_p in [0.20, 0.45, 0.70, 0.85]:
+   state.flight.time = test_p * state.flight.duration
+   state.players[0].pos = state.finisher_position(state.flight.time)
+   arena.present(state, [], state.flight_position(), [0], 0.016, false)
+   var b_l: Transform3D = arena.athletes[0].skeleton.global_transform * arena.athletes[0].skeleton.get_bone_global_pose(20)
+   var b_r: Transform3D = arena.athletes[0].skeleton.global_transform * arena.athletes[0].skeleton.get_bone_global_pose(21)
+   var mid = (b_l.origin + b_r.origin) * 0.5
+   if arena.basketball.global_position.distance_to(mid) > 0.25:
+    all_dunks_stay_in_hands = false
+ check(all_dunks_stay_in_hands, "basketball remains attached to player hands during somersault, flip, spin, and standard dunks")
+ state.flight.time = 0.94 * state.flight.duration
+ state.players[0].pos = state.finisher_position(state.flight.time)
+ arena.present(state, [], state.flight_position(), [0], 0.016, false)
+ var rim_pos = arena.court_point(state.flight.end, 3.05 - arena.rim_dips[1])
+ check(arena.basketball.global_position.distance_to(rim_pos) < 0.05, "basketball reaches and delivers directly through rim at dunk impact")
+ state.flight = {}
+
  state.phase = "finished"
  arena.present(state,[],state.ball,[0],0.1,true)
  var framed = true

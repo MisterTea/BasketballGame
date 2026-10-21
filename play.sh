@@ -3,7 +3,21 @@
 set -eu
 
 project_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-godot=${1:-}
+godot=""
+quickplay=0
+
+for arg in "$@"; do
+    case "$arg" in
+        --quickplay|--quick-play|-q|--qp|-QuickPlay|-quickplay)
+            quickplay=1
+            ;;
+        *)
+            if [ -z "$godot" ] && [ -e "$arg" ]; then
+                godot="$arg"
+            fi
+            ;;
+    esac
+done
 
 if [ -z "$godot" ] && [ -x /Applications/Godot.app/Contents/MacOS/Godot ]; then
     godot=/Applications/Godot.app/Contents/MacOS/Godot
@@ -26,5 +40,10 @@ fi
 echo "Building latest project code..."
 "$godot" --headless --editor --path "$project_dir" --quit
 
-echo "Starting Basketball Game..."
-exec "$godot" --path "$project_dir"
+if [ "$quickplay" -eq 1 ]; then
+    echo "Starting Basketball Game in Quick Play..."
+    exec "$godot" --path "$project_dir" -- --quickplay
+else
+    echo "Starting Basketball Game..."
+    exec "$godot" --path "$project_dir"
+fi

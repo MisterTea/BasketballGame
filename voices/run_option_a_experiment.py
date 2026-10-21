@@ -51,7 +51,7 @@ def extract_pitch(audio, sr):
 
 def main():
     sound_dir = r"E:\github\jam_game\base\NBA Jam - Tournament Edition Sounds"
-    out_dir = r"E:\github\jam_game\base\cloned_announcer_voxcpm\option_a_split"
+    out_dir = r"E:\github\jam_game\voices\cloned_announcer_voxcpm\option_a_split"
     os.makedirs(out_dir, exist_ok=True)
 
     print("=== Step 1: Building Separate Held-Out Reference Profiles ===")
@@ -80,7 +80,7 @@ def main():
     _, pbp_ref_f0 = build_profile(pbp_heldout_files, sound_dir, pbp_ref_path)
 
     # Load baseline CFG 2.7 results for direct comparison
-    baseline_json_p = r"E:\github\jam_game\base\cloned_announcer_voxcpm\cfg27\cfg27_pitch_results.json"
+    baseline_json_p = r"E:\github\jam_game\voices\cloned_announcer_voxcpm\cfg27\cfg27_pitch_results.json"
     baseline_lookup = {}
     if os.path.exists(baseline_json_p):
         with open(baseline_json_p, "r", encoding="utf-8") as f:

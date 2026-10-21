@@ -16,6 +16,8 @@ var action = ""
 var action_time = 0.0
 var first_pose = true
 var avatar_scale = 1.16
+var base_rotations: Array = []
+var base_pelvis_y: float = 0.0
 
 static func load_library() -> void:
  if definition.is_empty():
@@ -141,18 +143,27 @@ func sample(clip_name: String, seconds: float, blend: float = 1.0, authoritative
  var a = int(floor(cursor))
  var b = (a+1)%length if clip.loop else mini(a+1,length-1)
  var fraction = cursor-float(a)
+ if base_rotations.size() < 22:
+  base_rotations.resize(22)
+  for i in range(22):
+   base_rotations[i] = clip.rotations[a][i]
  for i in range(22):
   var qa: Quaternion = clip.rotations[a][i]
   var qb: Quaternion = clip.rotations[b][i]
   var rotation = qa.slerp(qb,fraction)
   if blend < 1:
-   rotation = skeleton.get_bone_pose_rotation(i).slerp(rotation,blend)
+   rotation = base_rotations[i].slerp(rotation,blend)
   if i == 0 and filter_heading and clip_name in ["run", "dribble"]:
    rotation = remove_heading(rotation)
+  base_rotations[i] = rotation
   skeleton.set_bone_pose_rotation(i,rotation)
  var root_height = lerpf(clip.grounded_root_y[a],clip.grounded_root_y[b],fraction) if authoritative_jump else lerpf(clip.root_y[a],clip.root_y[b],fraction)
- var pelvis: Vector3 = rest[0]+Vector3(0,root_height,0)
- skeleton.set_bone_pose_position(0,skeleton.get_bone_pose_position(0).lerp(pelvis,blend))
+ if blend < 1 and not first_pose:
+  base_pelvis_y = lerpf(base_pelvis_y, root_height, blend)
+ else:
+  base_pelvis_y = root_height
+ var pelvis: Vector3 = rest[0]+Vector3(0,base_pelvis_y,0)
+ skeleton.set_bone_pose_position(0,pelvis)
 
 func remove_heading(rotation: Quaternion) -> Quaternion:
  # Generated locomotion contains frame-to-frame root yaw even though gameplay
@@ -162,28 +173,41 @@ func remove_heading(rotation: Quaternion) -> Quaternion:
  var yaw = atan2(forward.x, forward.z)
  return (Quaternion(Vector3.UP, -yaw) * rotation).normalized()
 
-func animate(next_action: String, delta: float, phase: float = -1.0, speed: float = 1.0, paused: bool = false) -> void:
- if not library.has(next_action):
+func animate(next_action: String, delta: float, phase: float = -1.0, speed: float = 1.0, paused: bool = false, extra: String = "") -> void:
+ var clip_to_sample = next_action
+ if next_action == "shove":
+  clip_to_sample = "idle"
+ elif not library.has(clip_to_sample):
+  clip_to_sample = "idle"
   next_action = "idle"
  if action != next_action:
   action = next_action
   action_time = 0.0
  elif not paused:
   action_time += delta*speed
- var clip: Dictionary = library[action]
+ var clip: Dictionary = library[clip_to_sample]
  var seconds = action_time
  if phase >= 0:
   var cursor = clampf(phase,0,1)
   # Align the model's actual peak hand pose to the arcade's event timing.
-  if action in ["shoot","pass","dunk","block","layup"]:
-   var canonical_event = 0.55 if action == "dunk" else (0.32 if action == "block" else 0.45)
+  if clip_to_sample in ["shoot","pass","dunk","block","layup"]:
+   var canonical_event = 0.55 if clip_to_sample == "dunk" else (0.32 if clip_to_sample == "block" else 0.45)
    var source_event = clampf(float(clip.get("event_phase",canonical_event)),0.05,0.95)
    cursor = cursor/canonical_event*source_event if cursor <= canonical_event else source_event+(cursor-canonical_event)/(1.0-canonical_event)*(1.0-source_event)
   seconds = cursor*float(clip.frames-1)/float(clip.fps)
  var blend = 1.0 if first_pose else (0.0 if paused else 1.0-exp(-delta*22.0))
- sample(action,seconds,blend,action in ["shoot","dunk","block","layup"], action in ["run", "dribble"])
+ sample(clip_to_sample,seconds,blend,clip_to_sample in ["shoot","dunk","block","layup"], clip_to_sample in ["run", "dribble"])
  if action == "block":
   apply_block_pose(phase if phase >= 0 else action_time / 0.70)
+ elif action == "shove":
+  apply_shove_pose(phase if phase >= 0 else action_time / 0.45)
+ elif action == "stun":
+  if extra == "flyback":
+   apply_flyback_pose(phase if phase >= 0 else action_time / 0.95)
+  elif extra == "stumble":
+   apply_stumble_pose(phase if phase >= 0 else action_time / 0.40)
+ elif action == "dunk":
+  apply_dunk_pose(extra, phase if phase >= 0 else action_time / 1.20)
  first_pose = false
 
 func apply_block_pose(progress: float) -> void:
@@ -194,17 +218,134 @@ func apply_block_pose(progress: float) -> void:
   pelvis_pos.y -= 0.16 * squat
   skeleton.set_bone_pose_position(0, pelvis_pos)
   var knee_q = Quaternion(Vector3.RIGHT, -0.55 * squat)
-  skeleton.set_bone_pose_rotation(4, skeleton.get_bone_pose_rotation(4) * knee_q)
-  skeleton.set_bone_pose_rotation(5, skeleton.get_bone_pose_rotation(5) * knee_q)
+  skeleton.set_bone_pose_rotation(4, base_rotations[4] * knee_q)
+  skeleton.set_bone_pose_rotation(5, base_rotations[5] * knee_q)
  else:
   var jump_p = (p - 0.22) / 0.78
   var arm_rise = clampf(jump_p / 0.20, 0.0, 1.0) * (1.0 - clampf((jump_p - 0.75) / 0.25, 0.0, 1.0))
   if arm_rise > 0.001:
    var q_sh_l = Quaternion(Vector3.FORWARD, 1.45 * arm_rise)
    var q_sh_r = Quaternion(Vector3.FORWARD, -1.45 * arm_rise)
-   skeleton.set_bone_pose_rotation(16, q_sh_l * skeleton.get_bone_pose_rotation(16))
-   skeleton.set_bone_pose_rotation(17, q_sh_r * skeleton.get_bone_pose_rotation(17))
+   skeleton.set_bone_pose_rotation(16, q_sh_l * base_rotations[16])
+   skeleton.set_bone_pose_rotation(17, q_sh_r * base_rotations[17])
    var q_el_l = Quaternion(Vector3.UP, -0.25 * arm_rise)
    var q_el_r = Quaternion(Vector3.UP, 0.25 * arm_rise)
-   skeleton.set_bone_pose_rotation(18, q_el_l * skeleton.get_bone_pose_rotation(18))
-   skeleton.set_bone_pose_rotation(19, q_el_r * skeleton.get_bone_pose_rotation(19))
+   skeleton.set_bone_pose_rotation(18, q_el_l * base_rotations[18])
+   skeleton.set_bone_pose_rotation(19, q_el_r * base_rotations[19])
+
+func apply_shove_pose(progress: float) -> void:
+ var p = clampf(progress, 0.0, 1.0)
+ var thrust = sin(p * PI)
+ var q_sh_l = Quaternion(Vector3.RIGHT, deg_to_rad(-75.0 * thrust)) * Quaternion(Vector3.FORWARD, deg_to_rad(12.0 * thrust))
+ var q_sh_r = Quaternion(Vector3.RIGHT, deg_to_rad(-75.0 * thrust)) * Quaternion(Vector3.FORWARD, deg_to_rad(-12.0 * thrust))
+ skeleton.set_bone_pose_rotation(16, q_sh_l * base_rotations[16])
+ skeleton.set_bone_pose_rotation(17, q_sh_r * base_rotations[17])
+ var q_el_l = Quaternion(Vector3.UP, deg_to_rad(-15.0 * thrust))
+ var q_el_r = Quaternion(Vector3.UP, deg_to_rad(15.0 * thrust))
+ skeleton.set_bone_pose_rotation(18, q_el_l * base_rotations[18])
+ skeleton.set_bone_pose_rotation(19, q_el_r * base_rotations[19])
+
+func apply_flyback_pose(progress: float) -> void:
+ var p = clampf(progress, 0.0, 1.0)
+ if p < 0.35:
+  var air_t = sin(p / 0.35 * PI)
+  var q_sh_l = Quaternion(Vector3.FORWARD, 1.10 * air_t) * Quaternion(Vector3.RIGHT, -0.75 * air_t)
+  var q_sh_r = Quaternion(Vector3.FORWARD, -1.10 * air_t) * Quaternion(Vector3.RIGHT, -0.75 * air_t)
+  skeleton.set_bone_pose_rotation(16, q_sh_l * base_rotations[16])
+  skeleton.set_bone_pose_rotation(17, q_sh_r * base_rotations[17])
+  var q_knee = Quaternion(Vector3.RIGHT, -0.65 * air_t)
+  skeleton.set_bone_pose_rotation(4, base_rotations[4] * q_knee)
+  skeleton.set_bone_pose_rotation(5, base_rotations[5] * q_knee)
+  var q_spine = Quaternion(Vector3.RIGHT, deg_to_rad(-25.0 * air_t))
+  skeleton.set_bone_pose_rotation(3, base_rotations[3] * q_spine)
+  skeleton.set_bone_pose_rotation(6, base_rotations[6] * q_spine)
+ elif p < 0.68:
+  var q_sh_l = Quaternion(Vector3.UP, 0.85) * Quaternion(Vector3.FORWARD, 0.35)
+  var q_sh_r = Quaternion(Vector3.UP, -0.85) * Quaternion(Vector3.FORWARD, -0.35)
+  skeleton.set_bone_pose_rotation(16, q_sh_l * base_rotations[16])
+  skeleton.set_bone_pose_rotation(17, q_sh_r * base_rotations[17])
+  var q_knee = Quaternion(Vector3.RIGHT, -0.22)
+  skeleton.set_bone_pose_rotation(4, base_rotations[4] * q_knee)
+  skeleton.set_bone_pose_rotation(5, base_rotations[5] * q_knee)
+  var q_spine = Quaternion(Vector3.RIGHT, deg_to_rad(-18.0))
+  skeleton.set_bone_pose_rotation(3, base_rotations[3] * q_spine)
+  skeleton.set_bone_pose_rotation(6, base_rotations[6] * q_spine)
+ else:
+  var rec_t = (p - 0.68) / 0.32
+  var roll = sin(rec_t * PI)
+  var q_sh_l = Quaternion(Vector3.UP, 0.85 * (1.0 - rec_t)) * Quaternion(Vector3.FORWARD, 0.35 * (1.0 - rec_t) - 0.50 * roll)
+  var q_sh_r = Quaternion(Vector3.UP, -0.85 * (1.0 - rec_t)) * Quaternion(Vector3.FORWARD, -0.35 * (1.0 - rec_t))
+  skeleton.set_bone_pose_rotation(16, q_sh_l * base_rotations[16])
+  skeleton.set_bone_pose_rotation(17, q_sh_r * base_rotations[17])
+  var q_knee = Quaternion(Vector3.RIGHT, -0.22 * (1.0 - rec_t) - 0.55 * roll)
+  skeleton.set_bone_pose_rotation(4, base_rotations[4] * q_knee)
+  skeleton.set_bone_pose_rotation(5, base_rotations[5] * q_knee)
+  var q_spine = Quaternion(Vector3.FORWARD, deg_to_rad(20.0 * roll)) * Quaternion(Vector3.RIGHT, deg_to_rad(-18.0 * (1.0 - rec_t)))
+  skeleton.set_bone_pose_rotation(3, base_rotations[3] * q_spine)
+  skeleton.set_bone_pose_rotation(6, base_rotations[6] * q_spine)
+
+func apply_stumble_pose(progress: float) -> void:
+ var p = clampf(progress, 0.0, 1.0)
+ var flail = sin(p * PI)
+ var q_sh_l = Quaternion(Vector3.FORWARD, 0.60 * flail) * Quaternion(Vector3.UP, 0.35 * flail)
+ var q_sh_r = Quaternion(Vector3.FORWARD, -0.60 * flail) * Quaternion(Vector3.UP, -0.35 * flail)
+ skeleton.set_bone_pose_rotation(16, q_sh_l * base_rotations[16])
+ skeleton.set_bone_pose_rotation(17, q_sh_r * base_rotations[17])
+ var q_el_l = Quaternion(Vector3.UP, -0.30 * flail)
+ var q_el_r = Quaternion(Vector3.UP, 0.30 * flail)
+ skeleton.set_bone_pose_rotation(18, q_el_l * base_rotations[18])
+ skeleton.set_bone_pose_rotation(19, q_el_r * base_rotations[19])
+
+func apply_dunk_pose(style: String, progress: float) -> void:
+ var p = clampf(progress, 0.0, 1.0)
+ match style:
+  "between_legs":
+   if p > 0.15 and p < 0.72:
+    var dip = sin(clampf((p - 0.15) / 0.57, 0.0, 1.0) * PI)
+    skeleton.set_bone_pose_rotation(0, remove_heading(base_rotations[0]))
+    # High left knee and tucked hip to open path under thigh
+    var q_hip_l = Quaternion(Vector3.RIGHT, deg_to_rad(85.0 * dip)) * Quaternion(Vector3.FORWARD, deg_to_rad(-16.0 * dip))
+    skeleton.set_bone_pose_rotation(1, base_rotations[1] * q_hip_l)
+    var q_knee_l = Quaternion(Vector3.RIGHT, deg_to_rad(-95.0 * dip))
+    skeleton.set_bone_pose_rotation(4, base_rotations[4] * q_knee_l)
+    var q_hip_r = Quaternion(Vector3.RIGHT, deg_to_rad(-15.0 * dip))
+    skeleton.set_bone_pose_rotation(2, base_rotations[2] * q_hip_r)
+    # Torso lean forward
+    var q_spine = Quaternion(Vector3.RIGHT, deg_to_rad(32.0 * dip))
+    skeleton.set_bone_pose_rotation(3, base_rotations[3] * q_spine)
+    skeleton.set_bone_pose_rotation(6, base_rotations[6] * q_spine)
+    skeleton.set_bone_pose_rotation(9, base_rotations[9] * q_spine)
+    # Bring shoulders and arms down low where knees are
+    var target_sh_l = Quaternion(Vector3.FORWARD, deg_to_rad(82.0)) * Quaternion(Vector3.RIGHT, deg_to_rad(35.0))
+    var target_sh_r = Quaternion(Vector3.FORWARD, deg_to_rad(-82.0)) * Quaternion(Vector3.RIGHT, deg_to_rad(35.0))
+    skeleton.set_bone_pose_rotation(16, base_rotations[16].slerp(target_sh_l, dip))
+    skeleton.set_bone_pose_rotation(17, base_rotations[17].slerp(target_sh_r, dip))
+    var target_el_l = Quaternion(Vector3.RIGHT, deg_to_rad(30.0)) * Quaternion(Vector3.UP, deg_to_rad(15.0))
+    var target_el_r = Quaternion(Vector3.RIGHT, deg_to_rad(30.0)) * Quaternion(Vector3.UP, deg_to_rad(-15.0))
+    skeleton.set_bone_pose_rotation(18, base_rotations[18].slerp(target_el_l, dip))
+    skeleton.set_bone_pose_rotation(19, base_rotations[19].slerp(target_el_r, dip))
+  "backflip", "frontflip":
+   if p > 0.06 and p < 0.80:
+    var flip_p = clampf((p - 0.06) / 0.74, 0.0, 1.0)
+    var tuck = sin(flip_p * PI)
+    skeleton.set_bone_pose_rotation(0, remove_heading(base_rotations[0]))
+    # Athletic knee and hip tuck during the flip
+    var q_knee = Quaternion(Vector3.RIGHT, deg_to_rad(-70.0 * tuck))
+    skeleton.set_bone_pose_rotation(4, base_rotations[4] * q_knee)
+    skeleton.set_bone_pose_rotation(5, base_rotations[5] * q_knee)
+    var q_hip = Quaternion(Vector3.RIGHT, deg_to_rad(65.0 * tuck))
+    skeleton.set_bone_pose_rotation(1, base_rotations[1] * q_hip)
+    skeleton.set_bone_pose_rotation(2, base_rotations[2] * q_hip)
+    var q_spine = Quaternion(Vector3.RIGHT, deg_to_rad(20.0 * tuck))
+    skeleton.set_bone_pose_rotation(3, base_rotations[3] * q_spine)
+    skeleton.set_bone_pose_rotation(6, base_rotations[6] * q_spine)
+    var q_sh = Quaternion(Vector3.RIGHT, deg_to_rad(-25.0 * tuck))
+    skeleton.set_bone_pose_rotation(16, q_sh * base_rotations[16])
+    skeleton.set_bone_pose_rotation(17, q_sh * base_rotations[17])
+  "behind_back":
+   if p > 0.20 and p < 0.75:
+    var dip = sin((p - 0.20) / 0.55 * PI)
+    var q_sh_r = Quaternion(Vector3.UP, deg_to_rad(-45.0 * dip)) * Quaternion(Vector3.RIGHT, deg_to_rad(-35.0 * dip))
+    skeleton.set_bone_pose_rotation(17, q_sh_r * base_rotations[17])
+    var q_sh_l = Quaternion(Vector3.UP, deg_to_rad(30.0 * dip))
+    skeleton.set_bone_pose_rotation(16, q_sh_l * base_rotations[16])

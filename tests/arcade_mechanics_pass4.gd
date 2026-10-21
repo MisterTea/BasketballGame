@@ -85,7 +85,7 @@ func _init() -> void:
 		s_dd.tick_flight(0.016)
 		assert_true.call(s_dd.team_streak[0] == prev_streak + 1, "Made double dunk advances team fire streak")
 
-	# Test 6: Shove knockdown increments victim injury stat
+	# Test 6: Shove knockdown increments victim injury stat and applies backwards knockback physics
 	var s_inj = MatchState.new()
 	s_inj.start(0, 1)
 	s_inj.tipoff = {}
@@ -97,6 +97,14 @@ func _init() -> void:
 	var prev_injury = s_inj.stats[2].injury
 	s_inj.resolve_steal(0, true) # Shove
 	assert_true.call(s_inj.stats[2].injury == prev_injury + 1, "Hard shove knockdown increments victim injury stat")
+	assert_true.call(s_inj.players[2].shove_kind in ["flyback", "stumble"], "Victim receives stumble or flyback shove kind")
+	assert_true.call(s_inj.players[2].vel.x < -100.0, "Victim receives strong backward knockback velocity away from pusher")
+	assert_true.call(s_inj.players[2].face > 0.0, "Victim continues facing toward the pusher while knocked backward")
+	var prev_x = s_inj.players[2].pos.x
+	var prev_vel_x = s_inj.players[2].vel.x
+	s_inj.tick(0.05, {})
+	assert_true.call(s_inj.players[2].pos.x < prev_x, "Stunned victim slides backward across court")
+	assert_true.call(s_inj.players[2].vel.x > prev_vel_x, "Court friction decelerates backward sliding velocity")
 
 	# Test 7: Trailing team turbo conservation (pts_down >= 8)
 	var s_turb = MatchState.new()
@@ -137,6 +145,39 @@ func _init() -> void:
 	s_hang.players[0].jump = 0.05
 	s_hang.tick_flight(0.016)
 	assert_true.call(s_hang.players[0].jump >= 0.20, "Made dunk suspends gravity with rim hang (jump >= 0.20s)")
+
+	# Test 9: Walking speed without turbo reflects authentic BV_TABLE scaled velocity (~280 - 350 px/s)
+	var s_spd = MatchState.new()
+	s_spd.start(0, 1)
+	s_spd.tipoff = {}
+	s_spd.phase = "playing"
+	s_spd.freeze = 0.0
+	s_spd.players[0].pos = Vector2(500, 400)
+	s_spd.players[0].turbo = 1.0
+	s_spd.tick(0.05, {0: {"move": Vector2.RIGHT, "turbo": false}})
+	var walk_spd = s_spd.players[0].vel.length()
+	assert_true.call(walk_spd >= 280.0 and walk_spd <= 350.0, "Authentic walking speed without turbo is in 280-350 px/s range (was: %.1f)" % walk_spd)
+	s_spd.tick(0.05, {0: {"move": Vector2.RIGHT, "turbo": true}})
+	var turbo_spd = s_spd.players[0].vel.length()
+	assert_true.call(turbo_spd > walk_spd * 1.20, "Turbo provides authentic arcade burst (+24.6%) above walking speed (was: %.1f vs %.1f)" % [turbo_spd, walk_spd])
+
+	# Test 10: Shove two opponents at once when both are in range
+	var s_shv2 = MatchState.new()
+	s_shv2.start(0, 1)
+	s_shv2.tipoff = {}
+	s_shv2.phase = "playing"
+	s_shv2.freeze = 0.0
+	s_shv2.players[0].pos = Vector2(500, 400)
+	s_shv2.players[0].face = 1 # Facing right
+	s_shv2.players[2].pos = Vector2(535, 395) # Opponent 1 in range
+	s_shv2.players[3].pos = Vector2(540, 410) # Opponent 2 in range
+	s_shv2.players[2].stun = 0.0
+	s_shv2.players[3].stun = 0.0
+	s_shv2.resolve_steal(0, true) # Shove
+	assert_true.call(s_shv2.players[2].stun > 0.0, "First opponent in range is stunned by shove")
+	assert_true.call(s_shv2.players[3].stun > 0.0, "Second opponent in range is stunned simultaneously by the same shove")
+	assert_true.call(s_shv2.players[2].vel.x > 100.0 and s_shv2.players[3].vel.x > 100.0, "Both opponents receive backward knockback velocity away from pusher")
+	assert_true.call(s_shv2.banner.contains("DOUBLE"), "Announces DOUBLE knockdown/shove when 2 players are shoved")
 
 	print("\n--- RESULTS: %d checks, %d failures ---" % [results.checks, results.failures])
 	if results.failures == 0:

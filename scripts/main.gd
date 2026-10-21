@@ -44,8 +44,19 @@ var sounds: Dictionary = {}
 var sound_players: Array = []
 var sound_player_idx: int = 0
 var sound_player: AudioStreamPlayer
+var announcer_player: AudioStreamPlayer
+var announcer_voices: Dictionary = {}
+var announcer_current_priority: int = 0
+var announcer_busy_until: float = 0.0
+var last_announcer_time: float = -10.0
+var last_announcer_phrase: String = ""
 var status_label: Label
 var last_lt: Array = [0.0, 0.0, 0.0, 0.0]
+var is_bot: bool = false
+var record_duration: float = 0.0
+var record_elapsed: float = 0.0
+var last_athlete_vels: Array = [Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO]
+var squeak_cooldown: float = 0.0
 
 func _ready() -> void:
  configure_macos_window()
@@ -81,24 +92,66 @@ func _ready() -> void:
   add_child(sp)
   sound_players.append(sp)
  sound_player = sound_players[0]
+ announcer_player = AudioStreamPlayer.new()
+ announcer_player.name = "AnnouncerPlayer"
+ add_child(announcer_player)
+ announcer_player.finished.connect(func(): announcer_current_priority = 0)
  make_sounds()
+ load_announcer_voices()
  game.start(picks[0], picks[1])
  arena = ArenaView.new()
  arena.name = "ArenaViewport"
  add_child(arena)
- show_menu()
- # CLI hooks for repeatable engine/network smoke tests.
+ # CLI hooks for quick play and repeatable engine/network smoke tests.
  var args = OS.get_cmdline_user_args()
- if args.has("--test-host"):
+ var all_args = OS.get_cmdline_args()
+ is_bot = args.has("--bot") or all_args.has("--bot") or args.has("--demo") or all_args.has("--demo")
+ for i in range(args.size()):
+  if (args[i] == "--record-duration" or args[i] == "--duration") and i + 1 < args.size():
+   record_duration = args[i + 1].to_float()
+ for i in range(all_args.size()):
+  if (all_args[i] == "--record-duration" or all_args[i] == "--duration") and i + 1 < all_args.size():
+   record_duration = all_args[i + 1].to_float()
+ var is_quickplay = args.has("--quickplay") or args.has("--quick-play") or all_args.has("--quickplay") or all_args.has("--quick-play")
+ if is_quickplay:
+  mode = "solo"
+  local_two = false
+  var match_teams = [picks[0], picks[1]]
+  for i in range(args.size()):
+   if (args[i] == "--teams" or args[i] == "-teams") and i + 1 < args.size():
+    var parts = args[i + 1].split(",")
+    if parts.size() >= 2:
+     match_teams = [parts[0].to_int(), parts[1].to_int()]
+   elif args[i] == "--home" and i + 1 < args.size():
+    match_teams[0] = args[i + 1].to_int()
+   elif args[i] == "--away" and i + 1 < args.size():
+    match_teams[1] = args[i + 1].to_int()
+   elif (args[i] == "--seconds" or args[i] == "-seconds") and i + 1 < args.size():
+    seconds = args[i + 1].to_float()
+  for i in range(all_args.size()):
+   if (all_args[i] == "--teams" or all_args[i] == "-teams") and i + 1 < all_args.size():
+    var parts = all_args[i + 1].split(",")
+    if parts.size() >= 2:
+     match_teams = [parts[0].to_int(), parts[1].to_int()]
+   elif all_args[i] == "--home" and i + 1 < all_args.size():
+    match_teams[0] = all_args[i + 1].to_int()
+   elif all_args[i] == "--away" and i + 1 < all_args.size():
+    match_teams[1] = all_args[i + 1].to_int()
+   elif (all_args[i] == "--seconds" or all_args[i] == "-seconds") and i + 1 < all_args.size():
+    seconds = all_args[i + 1].to_float()
+  begin_match({"teams": match_teams, "seconds": seconds, "level": level})
+ elif args.has("--test-host"):
   net.host_game("HOST")
   screen = "lobby"
   show_lobby()
- if args.has("--test-client"):
+ elif args.has("--test-client"):
   screen = "lobby"
   net.join_game("127.0.0.1", "CLIENT")
   show_lobby()
- if args.has("--autoplay"):
+ elif args.has("--autoplay"):
   begin_match({"teams":[0,1], "seconds":15.0, "level":1})
+ else:
+  show_menu()
 
 func configure_macos_window() -> void:
  if OS.get_name() != "macOS" or DisplayServer.get_name() == "headless":
@@ -139,7 +192,7 @@ func setup_input() -> void:
   "shove": [KEY_L, KEY_KP_5],
   "turbo": [KEY_SHIFT, KEY_KP_0],
   "switch": [KEY_F, KEY_KP_3],
-  "spin": [KEY_APOSTROPHE, KEY_KP_6]
+  "spin": [KEY_L, KEY_KP_6]
  }
  var dpad_buttons = {
   "up": JOY_BUTTON_DPAD_UP,
@@ -170,7 +223,7 @@ func setup_input() -> void:
      tab_key.physical_keycode = KEY_TAB
      InputMap.action_add_event(name_action, tab_key)
     elif action == "spin":
-     for alt_key in [KEY_P, KEY_O, KEY_I, KEY_H, KEY_U, KEY_KP_ENTER]:
+     for alt_key in [KEY_L, KEY_APOSTROPHE, KEY_P, KEY_O, KEY_I, KEY_H, KEY_U, KEY_KP_ENTER]:
       var k = InputEventKey.new()
       k.physical_keycode = alt_key
       InputMap.action_add_event(name_action, k)
@@ -442,7 +495,7 @@ func show_help() -> void:
  panel(60,150,555,540)
  panel(645,150,575,540)
  label_at("PLAYER ONE",88,176,22,GOLD)
- label_at("MOVE     W A S D\nSHOOT / BLOCK     J\nPASS / STEAL     K\nSHOVE (TURBO+STEAL)     L\nTURBO     SHIFT\nSPIN / ELBOWS     '  (or P / O / I / H)\nSWITCH ATHLETE     F  (or TAB)",88,214,18,INK)
+ label_at("MOVE     W A S D\nSHOOT / BLOCK     J\nPASS / STEAL     K\nSPIN / ELBOWS (OFFENSE)     L\nSHOVE (DEFENSE)     L  (or SHIFT+K)\nTURBO     SHIFT\nSWITCH ATHLETE     F  (or TAB)",88,214,18,INK)
  label_at("PLAYER TWO — LOCAL VERSUS",88,430,20,GOLD)
  label_at("MOVE     ARROWS\nSHOOT / BLOCK     NUMPAD 1\nPASS / STEAL     NUMPAD 2\nTURBO     NUMPAD 0    •    SWITCH     NUMPAD 3",88,475,18)
  label_at("GAMEPAD",675,172,21,GOLD)
@@ -568,8 +621,11 @@ func read_command(index: int) -> Dictionary:
  var pass_pressed = Input.is_action_just_pressed(prefix+"pass")
  var spin = Input.is_action_just_pressed(prefix+"spin")
  if shove:
-  turbo = true
-  pass_pressed = true
+  if is_instance_valid(game) and game.owner == index:
+   spin = true
+  else:
+   turbo = true
+   pass_pressed = true
  var joypads = Input.get_connected_joypads()
  var joy_id = joypads[index] if index < joypads.size() else index
  if joypads.has(joy_id):
@@ -584,6 +640,11 @@ func read_command(index: int) -> Dictionary:
 
 func _physics_process(delta: float) -> void:
  visual_time += delta
+ if record_duration > 0.0 and screen == "game":
+  record_elapsed += delta
+  if record_elapsed >= record_duration:
+   get_tree().quit(0)
+   return
  if screen == "game" and not paused:
   if net.online:
    # Inputs are sent each physics frame; state is broadcast at 20 Hz.
@@ -598,7 +659,7 @@ func _physics_process(delta: float) -> void:
   else:
    var commands = {}
    var count = 2 if local_two else 1
-   if not OS.get_cmdline_user_args().has("--autoplay"):
+   if not OS.get_cmdline_user_args().has("--autoplay") and not is_bot:
     for p in range(count):
      var joypads = Input.get_connected_joypads()
      var joy_id = joypads[p] if p < joypads.size() else p
@@ -616,18 +677,32 @@ func _physics_process(delta: float) -> void:
   if p0_cmd.turbo and p0_cmd.move.length() > 0.25 and turbo_sound_cooldown <= 0.0:
    play_sound("turbo")
    turbo_sound_cooldown = 1.3
+  squeak_cooldown = maxf(0.0, squeak_cooldown - delta)
+  if squeak_cooldown <= 0.0:
+   for p_i in range(mini(4, game.players.size())):
+    var cur_v: Vector2 = game.players[p_i].vel
+    var prev_v: Vector2 = last_athlete_vels[p_i]
+    if prev_v.length() > 220.0 and cur_v.length() > 140.0:
+     if prev_v.normalized().dot(cur_v.normalized()) < 0.2:
+      play_sound("squeak")
+      squeak_cooldown = 0.35
+      break
+    elif game.players[p_i].get("spin", 0.0) > 0.40:
+     play_sound("squeak")
+     squeak_cooldown = 0.45
+     break
+  for p_i in range(mini(4, game.players.size())):
+   last_athlete_vels[p_i] = game.players[p_i].vel
 
   if game.event_id != last_event:
    last_event = game.event_id
    if game.event_kind in ["score","dunk","shatter","fire"]:
     shake = 0.45 if game.event_kind == "shatter" else 0.18
-   if game.event_kind == "whistle" and (game.banner.contains("FINAL") or game.banner.contains("CLOCK")):
-    play_sound("buzzer")
-   else:
-    play_sound(game.event_kind)
+   play_sound(game.event_kind)
    if game.event_kind in ["dunk","shatter","fire"] or (game.event_kind == "score" and game.flight.get("super_dunk",false)):
     play_sound("cheer")
-  if game.phase == "finished":
+   play_announcer(game.banner)
+  if game.phase == "finished" and not game.quarter_transition.get("active", false):
    if net.hosting:
     net.broadcast(game.snapshot())
    show_results()
@@ -667,7 +742,8 @@ func make_sounds() -> void:
  var sound_defs = [
   ["shot",0.10],["pass",0.08],["score",0.26],["dunk",0.44],["steal",0.14],
   ["block",0.22],["miss",0.30],["whistle",0.38],["catch",0.08],["start",0.18],
-  ["shatter",0.75],["buzzer",0.65],["fire",0.55],["cheer",0.60],["turbo",0.22]
+  ["shatter",0.75],["buzzer",0.65],["fire",0.55],["cheer",0.60],["turbo",0.22],
+  ["squeak",0.09]
  ]
  for def in sound_defs:
   var kind: String = def[0]
@@ -732,6 +808,11 @@ func make_sounds() -> void:
      wave = sin(TAU*180.0*t)*exp(-t*40.0)*0.24
     "start":
      wave = sin(TAU*660.0*t*(1.0+t*0.8))*pow(1.0-progress,2)*0.18
+    "squeak":
+     var chirp_freq = lerpf(1800.0, 2600.0, sin(progress * PI))
+     var friction = noise.randf_range(-1.0, 1.0) * 0.16 * exp(-t * 22.0)
+     var chirp = sin(TAU * chirp_freq * t) * 0.20 * sin(progress * PI)
+     wave = chirp + friction
     _:
      wave = sin(TAU*440.0*t)*pow(1.0-progress,2)*0.16
    wave = clampf(wave,-0.98,0.98)
@@ -745,6 +826,220 @@ func play_sound(kind: String) -> void:
   sound_player_idx = (sound_player_idx+1)%sound_players.size()
   sp.stream = sounds[kind]
   sp.play()
+
+func load_announcer_voices() -> void:
+ announcer_voices.clear()
+ var manifest_path = "res://voices/announcer/announcements_manifest.json"
+ var manifest_dict: Dictionary = {}
+ if FileAccess.file_exists(manifest_path):
+  var f = FileAccess.open(manifest_path, FileAccess.READ)
+  if f:
+   var parsed = JSON.parse_string(f.get_as_text())
+   if parsed is Dictionary:
+    manifest_dict = parsed
+
+ for key in manifest_dict:
+  var file_path: String = manifest_dict[key]
+  var stream = load_audio_clip(file_path)
+  if stream:
+   announcer_voices[key] = stream
+
+ var dir = DirAccess.open("res://voices/announcer")
+ if dir:
+  dir.list_dir_begin()
+  var file_name = dir.get_next()
+  while file_name != "":
+   if not dir.current_is_dir() and file_name.ends_with(".wav"):
+    var base_id = file_name.get_basename()
+    if not announcer_voices.has(base_id):
+     var stream = load_audio_clip("res://voices/announcer/" + file_name)
+     if stream:
+      announcer_voices[base_id] = stream
+   file_name = dir.get_next()
+
+func load_audio_clip(path: String) -> AudioStream:
+ if ResourceLoader.exists(path):
+  var res = load(path)
+  if res is AudioStream:
+   return res
+ if FileAccess.file_exists(path):
+  var fa = FileAccess.open(path, FileAccess.READ)
+  if fa:
+   var buffer = fa.get_buffer(fa.get_length())
+   var stream = parse_wav(buffer)
+   if stream:
+    return stream
+ return null
+
+func parse_wav(bytes: PackedByteArray) -> AudioStreamWAV:
+ if bytes.size() < 44:
+  return null
+ if bytes.slice(0, 4).get_string_from_ascii() != "RIFF":
+  return null
+ if bytes.slice(8, 12).get_string_from_ascii() != "WAVE":
+  return null
+ var idx = 12
+ var format = 1
+ var channels = 1
+ var sample_rate = 44100
+ var bits = 16
+ var audio_data = PackedByteArray()
+ while idx + 8 <= bytes.size():
+  var chunk_id = bytes.slice(idx, idx + 4).get_string_from_ascii()
+  var chunk_size = bytes.decode_u32(idx + 4)
+  idx += 8
+  if chunk_id == "fmt " and chunk_size >= 16:
+   format = bytes.decode_u16(idx)
+   channels = bytes.decode_u16(idx + 2)
+   sample_rate = bytes.decode_u32(idx + 4)
+   bits = bytes.decode_u16(idx + 14)
+  elif chunk_id == "data":
+   audio_data = bytes.slice(idx, mini(idx + chunk_size, bytes.size()))
+  idx += chunk_size
+ if audio_data.is_empty():
+  return null
+ var stream = AudioStreamWAV.new()
+ stream.format = AudioStreamWAV.FORMAT_16_BITS if bits == 16 else AudioStreamWAV.FORMAT_8_BITS
+ stream.stereo = (channels == 2)
+ stream.mix_rate = sample_rate
+ stream.data = audio_data
+ return stream
+
+func get_announcer_stream(banner_text: String) -> AudioStream:
+ if announcer_voices.has(banner_text):
+  return announcer_voices[banner_text]
+ if banner_text.begins_with("HE'S ON FIRE"):
+  return announcer_voices.get("hes_on_fire", null)
+ if banner_text.begins_with("HE'S HEATING UP"):
+  return announcer_voices.get("heating_up", null)
+ if banner_text.contains("WINS THE TIP"):
+  return announcer_voices.get("wins_the_tip", null)
+ if banner_text.begins_with("GOALTENDING"):
+  return announcer_voices.get("goaltending", null)
+ if banner_text.contains("QUARTER"):
+  for q in [1, 2, 3, 4]:
+   if banner_text.contains(str(q)):
+    var s = announcer_voices.get("quarter_%d" % q, null)
+    if s:
+     return s
+ if banner_text.contains("HALFTIME"):
+  var s = announcer_voices.get("halftime", null)
+  if s:
+   return s
+ if banner_text.contains("FINAL"):
+  var s = announcer_voices.get("final", null)
+  if s:
+   return s
+ if banner_text.contains("OVERTIME"):
+  if banner_text.contains("TRIPLE"):
+   return announcer_voices.get("triple_overtime", null)
+  elif banner_text.contains("DOUBLE"):
+   return announcer_voices.get("double_overtime", null)
+  else:
+   return announcer_voices.get("overtime", null)
+ for key in announcer_voices:
+  if key.length() >= 4 and banner_text.contains(key):
+   return announcer_voices[key]
+ return null
+
+func get_announcer_priority(banner_text: String) -> int:
+ if banner_text.contains("FINAL") or banner_text.contains("HALFTIME") or banner_text.contains("OVERTIME") or banner_text.contains("QUARTER") or banner_text.contains("SHATTERED") or banner_text.contains("SHOT CLOCK VIOLATION") or banner_text.contains("TEAM ZONE EXPIRED"):
+  return 32
+ if banner_text.begins_with("HE'S ON FIRE") or banner_text.contains("TEAM IN THE ZONE"):
+  return 20
+ if banner_text.contains("BOOMSHAKALAKA") or banner_text.contains("DOUBLE DUNK") or banner_text.contains("ALLEY-OOP") or banner_text.contains("SOMERSAULT") or banner_text.contains("BACKFLIP") or banner_text.contains("WINDMILL") or banner_text.contains("BETWEEN THE LEGS") or banner_text.contains("BEHIND THE BACK SLAM"):
+  return 18
+ if banner_text.contains("REJECTED") or banner_text.contains("DENIED") or banner_text.contains("STUFFED") or banner_text.contains("FIRE BLOCK") or banner_text.begins_with("GOALTENDING"):
+  return 18
+ if banner_text.contains("SLAM DUNK") or banner_text.contains("FROM DOWNTOWN") or banner_text.contains("NOTHING BUT NET") or banner_text.contains("FINGER ROLL") or banner_text.contains("SWITCHES HANDS"):
+  return 16
+ if banner_text.contains("AIRBALL") or banner_text.contains("OFF THE RIM") or banner_text.contains("OFF THE GLASS") or banner_text.contains("OFF THE BACK IRON"):
+  return 16
+ if banner_text.begins_with("HE'S HEATING UP") or banner_text.contains("HE'S COOLED OFF"):
+  return 16
+ if banner_text.contains("PICKED THEIR POCKET") or banner_text.contains("STOLEN") or banner_text.contains("PASS PICKED OFF") or banner_text.contains("TURNOVER") or banner_text.contains("LOST THE BALL"):
+  return 14
+ if banner_text.contains("WINS THE TIP") or banner_text.contains("REBOUND") or banner_text.contains("LOOSE BALL") or banner_text.contains("TIPPED PASS"):
+  return 10
+ if banner_text.contains("PASS") or banner_text.contains("DISH"):
+  return 7
+ return 5
+
+func play_announcer(banner_text: String, force: bool = false) -> void:
+ if muted or announcer_player == null or banner_text.is_empty():
+  return
+
+ var priority = get_announcer_priority(banner_text)
+ var now = Time.get_ticks_msec() / 1000.0
+
+ if not force:
+  # 1. Strict Channel Priority Lockout (Midway DCS driver SOUNDS.ASM:795-818)
+  var is_busy = (now < announcer_busy_until) or announcer_player.playing
+  if is_busy:
+   if priority < announcer_current_priority:
+    return
+   if priority == announcer_current_priority and priority < 16:
+    return
+
+  # 2. Authentic Arcade Speech Gating & Probabilistic Silence Tables
+  # Head Fakes (base/PLYR2.ASM:4426, base/SPEECH.ASM:3368)
+  if banner_text.contains("HEAD FAKE"):
+   if game != null and game.clock < 4.0:
+    return
+   if randf() < 0.50:
+    return
+
+  # Pushes / Shoves (base/PLYR.ASM:1608-1694, base/SPEECH.ASM:2933)
+  # Routine contact / non-turnover shoves NEVER trigger voice commentary in arcade NBA Jam!
+  if banner_text in [
+   "SHOVED! NO FOULS!",
+   "CLEAR OUT!",
+   "DOUBLE SHOVE! KEEPS THE BALL!",
+   "DOUBLE KNOCKDOWN! NO FOULS!",
+   "SHOVED! KEEPS THE BALL!",
+   "STUMBLED! KEEPS THE BALL!",
+   "STAGGERED!",
+   "NO PUSHING!"
+  ]:
+   return
+
+  # Turnover knockdowns have 30% silence slot (matching #pushtab in SPEECH.ASM:2933)
+  if banner_text in ["DOUBLE KNOCKDOWN! TURNOVER!", "STUMBLED! LOST THE BALL!"]:
+   if randf() < 0.30:
+    return
+
+  # Routine Shot Releases (base/SPEECH.ASM:1596)
+  # 65% silence for open jumpers so court audio can breathe until the basket outcome
+  if banner_text in ["PULL-UP JUMPER!", "UP IT GOES", "LAY IT UP!", "HOOK SHOT!", "FADEAWAY JUMPER!"]:
+   if game != null and game.clock <= 2.0:
+    pass
+   elif randf() < 0.65:
+    return
+
+  # Routine Passes (base/SPEECH.ASM:2457)
+  # 70% silence for routine passes
+  if banner_text in ["NICE PASS", "BEHIND THE BACK PASS!", "LOB IT UP!", "AIRBORNE DISH!"]:
+   if randf() < 0.70:
+    return
+
+  # 3. Incidental Commentary Cooldown & Deduplication (base/SPEECH.ASM:2457)
+  if priority <= 10:
+   if banner_text == last_announcer_phrase and (now - last_announcer_time) < 3.5:
+    return
+   if (now - last_announcer_time) < 2.0:
+    return
+
+ var stream = get_announcer_stream(banner_text)
+ if stream != null:
+  announcer_player.stream = stream
+  announcer_player.play()
+  announcer_current_priority = priority
+  var clip_len = stream.get_length() if stream != null else 1.0
+  if clip_len <= 0.05:
+   clip_len = 1.0
+  announcer_busy_until = now + clip_len
+  last_announcer_time = now
+  last_announcer_phrase = banner_text
 
 func text_at(text: String, pos: Vector2, size: int = 20, color: Color = INK, centered = false) -> void:
  var origin = pos
@@ -874,31 +1169,117 @@ func draw_hud() -> void:
   var is_heating = game.player_streak[i] == 2
   var p_name = Teams.DATA[team_idx].players[i % 2]
   var bg_col = Color(0.24, 0.08, 0.04, 0.90) if is_burning else (Color(0.16, 0.12, 0.06, 0.88) if is_heating else Color(0.06, 0.10, 0.16, 0.88))
-  var border_col = Color("ff772c") if is_burning else (GOLD if is_heating else Color("22364c"))
-  var plate_rect = Rect2(x, 756, 284, 36)
+  var flash_active = game.players[i].get("turbo_flash", 0.0) > 0.0
+  var is_flashing = flash_active and int(visual_time * 16.0) % 2 == 0
+  var border_col = Color("ff3344") if is_flashing else (Color("ff772c") if is_burning else (GOLD if is_heating else Color("22364c")))
+  var plate_rect = Rect2(x, 754, 284, 38)
   draw_rect(plate_rect, bg_col)
   draw_rect(plate_rect, border_col, false, 1.5)
-  var status_text = "★ ON FIRE! ★" if is_burning else ("🔥 HEATING UP" if is_heating else "P%d" % (i + 1))
-  var status_col = GOLD if (is_burning or is_heating) else team_color
-  text_at(status_text, Vector2(x + 10, 771), 11, status_col)
-  text_at(p_name, Vector2(x + 95, 771), 12, INK)
-  var turbo_bg = Rect2(x + 10, 778, 264, 8)
-  draw_rect(turbo_bg, Color("14202e"))
-  var turbo_w = 264.0 * game.players[i].turbo
+
+  # Arcade slot badge: P1 Red, P2 White, P3 Blue, P4 Gold
+  var arcade_slot_colors = [Color("e82c2c"), Color("f1f5f9"), Color("2b82ea"), Color("facc15")]
+  var slot_col: Color = arcade_slot_colors[i]
+  var badge_rect = Rect2(x + 6, 757, 26, 15)
+  draw_rect(badge_rect, slot_col)
+  var badge_text_col = Color("0b1321") if (i == 1 or i == 3) else Color.WHITE
+  text_at("P%d" % (i + 1), Vector2(x + 19, 769), 11, badge_text_col, true)
+
+  # Player name
+  text_at(p_name, Vector2(x + 36, 769), 12, INK)
+
+  # Status badge / callout (right aligned)
+  var status_text = "★ ON FIRE! ★" if is_burning else ("🔥 HEATING" if is_heating else ("⚠ LOW TURBO" if flash_active else ""))
+  if not status_text.is_empty():
+   var status_col = Color("ff3344") if flash_active else (Color("ff772c") if is_burning else GOLD)
+   var text_w = font.get_string_size(status_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
+   text_at(status_text, Vector2(x + 278 - text_w, 769), 11, status_col)
+
+  # TURBO label prefix
+  text_at("TURBO", Vector2(x + 6, 785), 9, Color("ff772c") if is_burning else (GOLD if game.players[i].turbo < 0.25 else Color("94a3b8")))
+
+  # Segmented turbo bar
+  var bar_rect = Rect2(x + 46, 776, 230, 10)
+  draw_rect(bar_rect, Color("ff2233") if is_flashing else Color("0e1724"))
+  draw_rect(bar_rect, Color("22364c"), false, 1.0)
+  var turbo_val = clampf(game.players[i].turbo, 0.0, 1.0)
+  var turbo_w = 230.0 * turbo_val
   if turbo_w > 0:
-   var turbo_fill_color = Color("ff5522") if is_burning else (GOLD if game.players[i].turbo < 0.25 else team_color)
-   draw_rect(Rect2(x + 10, 778, turbo_w, 8), turbo_fill_color)
-   for tick in range(1, 10):
-    var tx = x + 10 + tick * 26.4
-    if tx < x + 10 + turbo_w:
-     draw_line(Vector2(tx, 778), Vector2(tx, 786), Color(0.05, 0.08, 0.12, 0.6), 1.0)
+   var turbo_fill_color = Color.WHITE if is_flashing else (Color("ff5522") if is_burning else (GOLD if turbo_val < 0.25 else slot_col))
+   draw_rect(Rect2(x + 46, 776, turbo_w, 10), turbo_fill_color)
+   # 13-segment divider ticks (matching 52 arcade tick counts)
+   for seg in range(1, 13):
+    var tx = x + 46 + seg * (230.0 / 13.0)
+    if tx < x + 46 + turbo_w:
+     draw_line(Vector2(tx, 776), Vector2(tx, 786), Color("08111c"), 1.5)
+  if is_flashing:
+   draw_rect(bar_rect, Color("ff3344"), false, 1.5)
  if game.banner_time > 0:
   var offset = Vector2(sin(visual_time*60)*shake*18,0)
   draw_rect(Rect2(Vector2(280,155)+offset,Vector2(720,62)),Color(0.03,0.06,0.1,0.88))
   text_at(game.banner,Vector2(640,197)+offset,30,GOLD,true)
  draw_rect(Rect2(180,696,920,30),Color(0.03,0.06,0.1,0.88))
  draw_rect(Rect2(180,696,920,30),Color("22364c"),false,1.0)
- text_at("J  SHOOT/BLOCK    K  PASS/STEAL    L  SHOVE    SHIFT  TURBO    F  SWITCH    O  SHOT %% (%s)    ESC  MENU" % ("ON" if show_shot_percentage else "OFF"),Vector2(640,716),12,INK,true)
+ text_at("J  SHOOT/BLOCK    K  PASS/STEAL    L  SPIN/SHOVE    SHIFT  TURBO    F  SWITCH    O  SHOT %% (%s)    ESC  MENU" % ("ON" if show_shot_percentage else "OFF"),Vector2(640,716),12,INK,true)
+ if game.quarter_transition.get("active", false):
+  draw_quarter_intermission()
+  var fade = clampf(game.quarter_transition.get("fade_alpha", 0.0), 0.0, 1.0)
+  if fade > 0.0:
+   draw_rect(Rect2(0, 0, 1280, 800), Color(0.0, 0.0, 0.0, fade))
+
+func draw_quarter_intermission() -> void:
+ if not game.quarter_transition.get("active", false):
+  return
+ draw_rect(Rect2(0, 0, 1280, 800), Color(0.01, 0.03, 0.06, 0.78))
+ var card = Rect2(230, 150, 820, 470)
+ draw_rect(card, Color(0.04, 0.08, 0.15, 0.96))
+ draw_rect(card, Color("24486e"), false, 2.0)
+ var header_rect = Rect2(230, 150, 820, 58)
+ draw_rect(header_rect, Color(0.08, 0.16, 0.28, 1.0))
+ draw_line(Vector2(230, 208), Vector2(1050, 208), GOLD, 2.0)
+ var banner_msg = game.quarter_transition.get("banner", "END OF QUARTER")
+ text_at(banner_msg, Vector2(640, 188), 24, GOLD, true)
+ text_at("TEAM", Vector2(275, 238), 14, MUTED)
+ text_at("1ST", Vector2(570, 238), 14, MUTED, true)
+ text_at("2ND", Vector2(660, 238), 14, MUTED, true)
+ text_at("3RD", Vector2(750, 238), 14, MUTED, true)
+ text_at("4TH", Vector2(840, 238), 14, MUTED, true)
+ text_at("TOTAL", Vector2(960, 238), 16, GOLD, true)
+ draw_line(Vector2(255, 252), Vector2(1025, 252), Color("1a2e46"), 1.5)
+ var q_idx = game.quarter_transition.quarter - 1
+ for side in range(2):
+  var team_id = game.teams[side]
+  var team_col = Teams.color_for(team_id)
+  var row_y = 270 + side * 115
+  var row_rect = Rect2(255, row_y, 770, 95)
+  draw_rect(row_rect, Color(0.07, 0.12, 0.20, 0.65))
+  draw_rect(Rect2(255, row_y, 8, 95), team_col)
+  text_at(Teams.DATA[team_id].city.to_upper(), Vector2(280, row_y + 36), 14, MUTED)
+  text_at(Teams.DATA[team_id].name.to_upper(), Vector2(280, row_y + 70), 24, team_col)
+  for q in range(4):
+   var col_x = 570 + q * 90
+   if q < game.quarter_scores.size():
+    var pts = game.quarter_scores[q][side]
+    var is_active = (q == q_idx)
+    if is_active:
+     draw_rect(Rect2(col_x - 32, row_y + 16, 64, 62), Color(0.9, 0.75, 0.2, 0.14))
+     draw_rect(Rect2(col_x - 32, row_y + 16, 64, 62), GOLD, false, 1.0)
+    text_at(str(pts), Vector2(col_x, row_y + 56), 26, GOLD if is_active else INK, true)
+   else:
+    text_at("-", Vector2(col_x, row_y + 56), 26, Color("334860"), true)
+  text_at("%02d" % game.score[side], Vector2(960, row_y + 60), 44, Color.WHITE, true)
+ var foot_rect = Rect2(230, 545, 820, 75)
+ draw_rect(foot_rect, Color(0.03, 0.06, 0.12, 0.98))
+ draw_line(Vector2(230, 545), Vector2(1050, 545), Color("224466"), 1.5)
+ var footer_text = ""
+ if game.quarter_transition.get("is_final", false):
+  footer_text = "FINAL SCORE  •  GAME OVER"
+ elif game.quarter_transition.get("is_overtime", false):
+  footer_text = "TIED AT THE BUZZER  •  PREPARE FOR OVERTIME"
+ elif game.quarter_transition.quarter == 2:
+  footer_text = "HALFTIME  •  SWITCHING COURTS  •  TURBO REFILLED"
+ else:
+  footer_text = "CATCH YOUR BREATH  •  TURBO REFILLED"
+ text_at(footer_text, Vector2(640, 588), 16, GOLD if not game.quarter_transition.get("is_final", false) else Color("44ff88"), true)
 
 func set_initials(value: String) -> void:
  initials = value.to_upper().strip_edges().left(12)

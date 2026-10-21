@@ -1,0 +1,431 @@
+[
+  {
+    "id": "hes_on_fire",
+    "target_phrase": "He's on fire!",
+    "generation_time_sec": 72.4,
+    "original": {
+      "file": "50 - He's On Fire (7.3k).wav",
+      "path": "E:\\github\\jam_game\\base\\NBA Jam - Tournament Edition Sounds\\50 - He's On Fire (7.3k).wav",
+      "metrics": {
+        "duration_sec": 0.986,
+        "sample_rate": 7333,
+        "rms_db": -9.75,
+        "peak_db": -0.24,
+        "spectral_centroid_hz": 1459.7,
+        "spectral_rolloff_hz": 2560.8,
+        "zero_crossing_rate": 0.216
+      },
+      "asr_transcript": "Please don't fire!"
+    },
+    "cloned": {
+      "file": "voxcpm_hes_on_fire.wav",
+      "path": "E:\\github\\jam_game\\base\\cloned_announcer_voxcpm\\voxcpm_hes_on_fire.wav",
+      "metrics": {
+        "duration_sec": 1.6,
+        "sample_rate": 48000,
+        "rms_db": -12.67,
+        "peak_db": -1.16,
+        "spectral_centroid_hz": 1585.5,
+        "spectral_rolloff_hz": 2912.5,
+        "zero_crossing_rate": 0.0366
+      },
+      "asr_transcript": "He's on fire!"
+    }
+  },
+  {
+    "id": "kaboom",
+    "target_phrase": "Kaboom!",
+    "generation_time_sec": 59.91,
+    "original": {
+      "file": "58 - Kaboom (slightly slow).wav",
+      "path": "E:\\github\\jam_game\\base\\NBA Jam - Tournament Edition Sounds\\58 - Kaboom (slightly slow).wav",
+      "metrics": {
+        "duration_sec": 0.766,
+        "sample_rate": 8000,
+        "rms_db": -10.13,
+        "peak_db": -0.66,
+        "spectral_centroid_hz": 1285.1,
+        "spectral_rolloff_hz": 2642.3,
+        "zero_crossing_rate": 0.1915
+      },
+      "asr_transcript": "Pebble!"
+    },
+    "cloned": {
+      "file": "voxcpm_kaboom.wav",
+      "path": "E:\\github\\jam_game\\base\\cloned_announcer_voxcpm\\voxcpm_kaboom.wav",
+      "metrics": {
+        "duration_sec": 1.28,
+        "sample_rate": 48000,
+        "rms_db": -14.48,
+        "peak_db": -1.17,
+        "spectral_centroid_hz": 2566.5,
+        "spectral_rolloff_hz": 4809.5,
+        "zero_crossing_rate": 0.0596
+      },
+      "asr_transcript": "Come on!"
+    }
+  },
+  {
+    "id": "from_downtown",
+    "target_phrase": "From downtown!",
+    "generation_time_sec": 32.03,
+    "original": {
+      "file": "21 - From Downtown (6k).wav",
+      "path": "E:\\github\\jam_game\\base\\NBA Jam - Tournament Edition Sounds\\21 - From Downtown (6k).wav",
+      "metrics": {
+        "duration_sec": 1.027,
+        "sample_rate": 6000,
+        "rms_db": -8.5,
+        "peak_db": -0.21,
+        "spectral_centroid_hz": 1195.3,
+        "spectral_rolloff_hz": 2166.8,
+        "zero_crossing_rate": 0.2552
+      },
+      "asr_transcript": "I'll go, go!"
+    },
+    "cloned": {
+      "file": "voxcpm_from_downtown.wav",
+      "path": "E:\\github\\jam_game\\base\\cloned_announcer_voxcpm\\voxcpm_from_downtown.wav",
+      "metrics": {
+        "duration_sec": 1.44,
+        "sample_rate": 48000,
+        "rms_db": -12.84,
+        "peak_db": -1.62,
+        "spectral_centroid_hz": 1339.9,
+        "spectral_rolloff_hz": 2311.5,
+        "zero_crossing_rate": 0.0403
+      },
+      "asr_transcript": "Prop down town!"
+    }
+  },
+  {
+    "id": "monster_jam",
+    "target_phrase": "Monster jam!",
+    "generation_time_sec": 8.59,
+    "original": {
+      "file": "23 - Monster Jam (6k).wav",
+      "path": "E:\\github\\jam_game\\base\\NBA Jam - Tournament Edition Sounds\\23 - Monster Jam (6k).wav",
+      "metrics": {
+        "duration_sec": 1.021,
+        "sample_rate": 6000,
+        "rms_db": -9.76,
+        "peak_db": -0.21,
+        "spectral_centroid_hz": 1362.6,
+        "spectral_rolloff_hz": 2223.4,
+        "zero_crossing_rate": 0.334
+      },
+      "asr_transcript": "Motherfucker!"
+    },
+    "cloned": {
+      "file": "voxcpm_monster_jam.wav",
+      "path": "E:\\github\\jam_game\\base\\cloned_announcer_voxcpm\\voxcpm_monster_jam.wav",
+      "metrics": {
+        "duration_sec": 1.44,
+        "sample_rate": 48000,
+        "rms_db": -13.66,
+        "peak_db": -1.08,
+        "spectral_centroid_hz": 1017.9,
+        "spectral_rolloff_hz": 1943.9,
+        "zero_crossing_rate": 0.0277
+      },
+      "asr_transcript": "Month or down!"
+    }
+  },
+  {
+    "id": "razzle_dazzle",
+    "target_phrase": "Razzle Dazzle!",
+    "generation_time_sec": 8.74,
+    "original": {
+      "file": "3 - Razzle Dazzle.wav",
+      "path": "E:\\github\\jam_game\\base\\NBA Jam - Tournament Edition Sounds\\3 - Razzle Dazzle.wav",
+      "metrics": {
+        "duration_sec": 1.068,
+        "sample_rate": 8000,
+        "rms_db": -9.79,
+        "peak_db": -0.22,
+        "spectral_centroid_hz": 1173.1,
+        "spectral_rolloff_hz": 2078.6,
+        "zero_crossing_rate": 0.2093
+      },
+      "asr_transcript": "Wazzle Dazzle!"
+    },
+    "cloned": {
+      "file": "voxcpm_razzle_dazzle.wav",
+      "path": "E:\\github\\jam_game\\base\\cloned_announcer_voxcpm\\voxcpm_razzle_dazzle.wav",
+      "metrics": {
+        "duration_sec": 1.44,
+        "sample_rate": 48000,
+        "rms_db": -12.67,
+        "peak_db": -0.47,
+        "spectral_centroid_hz": 1244.9,
+        "spectral_rolloff_hz": 2140.7,
+        "zero_crossing_rate": 0.0394
+      },
+      "asr_transcript": "Rago deldo!"
+    }
+  },
+  {
+    "id": "rejected",
+    "target_phrase": "Rejected!",
+    "generation_time_sec": 10.1,
+    "original": {
+      "file": "77 - Rejected (7.3k).wav",
+      "path": "E:\\github\\jam_game\\base\\NBA Jam - Tournament Edition Sounds\\77 - Rejected (7.3k).wav",
+      "metrics": {
+        "duration_sec": 0.831,
+        "sample_rate": 7333,
+        "rms_db": -9.6,
+        "peak_db": -0.28,
+        "spectral_centroid_hz": 1472.5,
+        "spectral_rolloff_hz": 2550.0,
+        "zero_crossing_rate": 0.2603
+      },
+      "asr_transcript": "We got it!"
+    },
+    "cloned": {
+      "file": "voxcpm_rejected.wav",
+      "path": "E:\\github\\jam_game\\base\\cloned_announcer_voxcpm\\voxcpm_rejected.wav",
+      "metrics": {
+        "duration_sec": 1.6,
+        "sample_rate": 48000,
+        "rms_db": -15.26,
+        "peak_db": -1.42,
+        "spectral_centroid_hz": 1865.8,
+        "spectral_rolloff_hz": 2969.0,
+        "zero_crossing_rate": 0.0502
+      },
+      "asr_transcript": "rejected!"
+    }
+  },
+  {
+    "id": "stolen",
+    "target_phrase": "Stolen!",
+    "generation_time_sec": 5.97,
+    "original": {
+      "file": "2 - Stolen.wav",
+      "path": "E:\\github\\jam_game\\base\\NBA Jam - Tournament Edition Sounds\\2 - Stolen.wav",
+      "metrics": {
+        "duration_sec": 0.712,
+        "sample_rate": 8000,
+        "rms_db": -9.67,
+        "peak_db": -0.25,
+        "spectral_centroid_hz": 1435.8,
+        "spectral_rolloff_hz": 2734.7,
+        "zero_crossing_rate": 0.1836
+      },
+      "asr_transcript": "Stop it!"
+    },
+    "cloned": {
+      "file": "voxcpm_stolen.wav",
+      "path": "E:\\github\\jam_game\\base\\cloned_announcer_voxcpm\\voxcpm_stolen.wav",
+      "metrics": {
+        "duration_sec": 0.96,
+        "sample_rate": 48000,
+        "rms_db": -13.22,
+        "peak_db": -1.07,
+        "spectral_centroid_hz": 1117.4,
+        "spectral_rolloff_hz": 2389.9,
+        "zero_crossing_rate": 0.0187
+      },
+      "asr_transcript": "Oh, and..."
+    }
+  },
+  {
+    "id": "slams_it",
+    "target_phrase": "Slams it!",
+    "generation_time_sec": 7.65,
+    "original": {
+      "file": "4 -  Slams It.wav",
+      "path": "E:\\github\\jam_game\\base\\NBA Jam - Tournament Edition Sounds\\4 -  Slams It.wav",
+      "metrics": {
+        "duration_sec": 0.742,
+        "sample_rate": 8000,
+        "rms_db": -13.31,
+        "peak_db": -0.6,
+        "spectral_centroid_hz": 1761.6,
+        "spectral_rolloff_hz": 3159.5,
+        "zero_crossing_rate": 0.3116
+      },
+      "asr_transcript": "FOMBIT!"
+    },
+    "cloned": {
+      "file": "voxcpm_slams_it.wav",
+      "path": "E:\\github\\jam_game\\base\\cloned_announcer_voxcpm\\voxcpm_slams_it.wav",
+      "metrics": {
+        "duration_sec": 1.28,
+        "sample_rate": 48000,
+        "rms_db": -13.63,
+        "peak_db": -0.56,
+        "spectral_centroid_hz": 1192.2,
+        "spectral_rolloff_hz": 2078.6,
+        "zero_crossing_rate": 0.0432
+      },
+      "asr_transcript": "Welcome!"
+    }
+  },
+  {
+    "id": "heating_up",
+    "target_phrase": "Heating up!",
+    "generation_time_sec": 6.8,
+    "original": {
+      "file": "51 Heating Up (slow).wav",
+      "path": "E:\\github\\jam_game\\base\\NBA Jam - Tournament Edition Sounds\\51 Heating Up (slow).wav",
+      "metrics": {
+        "duration_sec": 0.746,
+        "sample_rate": 8000,
+        "rms_db": -11.4,
+        "peak_db": -0.24,
+        "spectral_centroid_hz": 1329.4,
+        "spectral_rolloff_hz": 2250.0,
+        "zero_crossing_rate": 0.2088
+      },
+      "asr_transcript": "No, no, no, no, no."
+    },
+    "cloned": {
+      "file": "voxcpm_heating_up.wav",
+      "path": "E:\\github\\jam_game\\base\\cloned_announcer_voxcpm\\voxcpm_heating_up.wav",
+      "metrics": {
+        "duration_sec": 1.12,
+        "sample_rate": 48000,
+        "rms_db": -12.65,
+        "peak_db": -1.31,
+        "spectral_centroid_hz": 2682.5,
+        "spectral_rolloff_hz": 4786.8,
+        "zero_crossing_rate": 0.0863
+      },
+      "asr_transcript": "\u3044\u3044\u306d\u30fc\u306e\u30fc!"
+    }
+  },
+  {
+    "id": "showtime",
+    "target_phrase": "Showtime!",
+    "generation_time_sec": 7.77,
+    "original": {
+      "file": "68 - Showtime.wav",
+      "path": "E:\\github\\jam_game\\base\\NBA Jam - Tournament Edition Sounds\\68 - Showtime.wav",
+      "metrics": {
+        "duration_sec": 1.064,
+        "sample_rate": 8000,
+        "rms_db": -13.28,
+        "peak_db": -0.23,
+        "spectral_centroid_hz": 1333.5,
+        "spectral_rolloff_hz": 2406.7,
+        "zero_crossing_rate": 0.2271
+      },
+      "asr_transcript": "Showtime!"
+    },
+    "cloned": {
+      "file": "voxcpm_showtime.wav",
+      "path": "E:\\github\\jam_game\\base\\cloned_announcer_voxcpm\\voxcpm_showtime.wav",
+      "metrics": {
+        "duration_sec": 1.28,
+        "sample_rate": 48000,
+        "rms_db": -13.05,
+        "peak_db": -0.55,
+        "spectral_centroid_hz": 1568.8,
+        "spectral_rolloff_hz": 2740.3,
+        "zero_crossing_rate": 0.0447
+      },
+      "asr_transcript": "Showtime!"
+    }
+  },
+  {
+    "id": "terrible_shot",
+    "target_phrase": "Terrible shot!",
+    "generation_time_sec": 9.6,
+    "original": {
+      "file": "8 - Terrible Shot.wav",
+      "path": "E:\\github\\jam_game\\base\\NBA Jam - Tournament Edition Sounds\\8 - Terrible Shot.wav",
+      "metrics": {
+        "duration_sec": 0.784,
+        "sample_rate": 8000,
+        "rms_db": -9.44,
+        "peak_db": -0.26,
+        "spectral_centroid_hz": 1336.4,
+        "spectral_rolloff_hz": 2431.5,
+        "zero_crossing_rate": 0.2299
+      },
+      "asr_transcript": "terrible shot."
+    },
+    "cloned": {
+      "file": "voxcpm_terrible_shot.wav",
+      "path": "E:\\github\\jam_game\\base\\cloned_announcer_voxcpm\\voxcpm_terrible_shot.wav",
+      "metrics": {
+        "duration_sec": 1.6,
+        "sample_rate": 48000,
+        "rms_db": -14.42,
+        "peak_db": -1.22,
+        "spectral_centroid_hz": 1744.3,
+        "spectral_rolloff_hz": 2958.6,
+        "zero_crossing_rate": 0.0519
+      },
+      "asr_transcript": "Terrible shot!"
+    }
+  },
+  {
+    "id": "at_the_buzzer",
+    "target_phrase": "At the buzzer!",
+    "generation_time_sec": 9.9,
+    "original": {
+      "file": "49 - At the Buzzer (7.3k).wav",
+      "path": "E:\\github\\jam_game\\base\\NBA Jam - Tournament Edition Sounds\\49 - At the Buzzer (7.3k).wav",
+      "metrics": {
+        "duration_sec": 0.766,
+        "sample_rate": 7333,
+        "rms_db": -10.83,
+        "peak_db": -1.88,
+        "spectral_centroid_hz": 1193.4,
+        "spectral_rolloff_hz": 2206.0,
+        "zero_crossing_rate": 0.1782
+      },
+      "asr_transcript": "Have a booger!"
+    },
+    "cloned": {
+      "file": "voxcpm_at_the_buzzer.wav",
+      "path": "E:\\github\\jam_game\\base\\cloned_announcer_voxcpm\\voxcpm_at_the_buzzer.wav",
+      "metrics": {
+        "duration_sec": 1.6,
+        "sample_rate": 48000,
+        "rms_db": -12.87,
+        "peak_db": -1.77,
+        "spectral_centroid_hz": 1227.8,
+        "spectral_rolloff_hz": 2077.2,
+        "zero_crossing_rate": 0.0408
+      },
+      "asr_transcript": "That's a buzzer!"
+    }
+  },
+  {
+    "id": "welcome_to_nba_jam",
+    "target_phrase": "Welcome to NBA Jam!",
+    "generation_time_sec": 12.0,
+    "original": {
+      "file": "28 - Welcome to NBA JAM (slightly slow).wav",
+      "path": "E:\\github\\jam_game\\base\\NBA Jam - Tournament Edition Sounds\\28 - Welcome to NBA JAM (slightly slow).wav",
+      "metrics": {
+        "duration_sec": 6.948,
+        "sample_rate": 8000,
+        "rms_db": -16.09,
+        "peak_db": -2.0,
+        "spectral_centroid_hz": 1748.7,
+        "spectral_rolloff_hz": 3030.0,
+        "zero_crossing_rate": 0.3531
+      },
+      "asr_transcript": "Welcome to NBAJ!"
+    },
+    "cloned": {
+      "file": "voxcpm_welcome_to_nba_jam.wav",
+      "path": "E:\\github\\jam_game\\base\\cloned_announcer_voxcpm\\voxcpm_welcome_to_nba_jam.wav",
+      "metrics": {
+        "duration_sec": 1.92,
+        "sample_rate": 48000,
+        "rms_db": -13.19,
+        "peak_db": -1.63,
+        "spectral_centroid_hz": 1495.0,
+        "spectral_rolloff_hz": 2715.8,
+        "zero_crossing_rate": 0.0305
+      },
+      "asr_transcript": "Welcome to NBA Jam!"
+    }
+  }
+]

@@ -109,7 +109,7 @@ func run() -> void:
  s.ball = s.players[0].pos
  s.shoot_ball(0,false)
  s.flight.made = true
- s.tick_flight(1)
+ s.tick_flight(1.5)
  check(s.stats[0].dunks == 1 and s.board_breaks == [-1.0,-1.0],"regular late-game dunks score but only specialty dunks can shatter glass")
  var normal = stage_pass(1,false)
  var fast = stage_pass(1,true)

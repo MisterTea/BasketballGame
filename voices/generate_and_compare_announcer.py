@@ -72,7 +72,7 @@ def compute_audio_metrics(audio, sr):
 
 def main():
     sound_dir = r"E:\github\jam_game\base\NBA Jam - Tournament Edition Sounds"
-    out_dir = r"E:\github\jam_game\base\cloned_announcer_voxcpm"
+    out_dir = r"E:\github\jam_game\voices\cloned_announcer_voxcpm"
     os.makedirs(out_dir, exist_ok=True)
 
     print("=== Step 1: Preparing Reference Audio ===")

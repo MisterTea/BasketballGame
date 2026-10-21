@@ -1,0 +1,288 @@
+[
+  {
+    "id": "hes_on_fire",
+    "category": "shout",
+    "target_phrase": "He's on fire!",
+    "original": {
+      "file": "50 - He's On Fire (7.3k).wav",
+      "median_f0_hz": 369.0,
+      "mean_f0_hz": 364.8,
+      "asr": "Please don't fire!"
+    },
+    "option_a": {
+      "file": "optA_shout_hes_on_fire.wav",
+      "median_f0_hz": 312.7,
+      "mean_f0_hz": 303.6,
+      "semitone_diff": -2.87,
+      "asr": "He's on fire!"
+    },
+    "baseline_single_ref": {
+      "median_f0_hz": 338.2,
+      "semitone_diff": -3.63
+    }
+  },
+  {
+    "id": "kaboom",
+    "category": "shout",
+    "target_phrase": "Kaboom!",
+    "original": {
+      "file": "58 - Kaboom (slightly slow).wav",
+      "median_f0_hz": 266.8,
+      "mean_f0_hz": 263.8,
+      "asr": "Pebble!"
+    },
+    "option_a": {
+      "file": "optA_shout_kaboom.wav",
+      "median_f0_hz": 186.4,
+      "mean_f0_hz": 205.2,
+      "semitone_diff": -6.21,
+      "asr": "Kabul!"
+    },
+    "baseline_single_ref": {
+      "median_f0_hz": 178.4,
+      "semitone_diff": -5.53
+    }
+  },
+  {
+    "id": "rejected",
+    "category": "shout",
+    "target_phrase": "Rejected!",
+    "original": {
+      "file": "77 - Rejected (7.3k).wav",
+      "median_f0_hz": 389.3,
+      "mean_f0_hz": 375.2,
+      "asr": "We got it!"
+    },
+    "option_a": {
+      "file": "optA_shout_rejected.wav",
+      "median_f0_hz": 319.9,
+      "mean_f0_hz": 286.5,
+      "semitone_diff": -3.4,
+      "asr": "rejected."
+    },
+    "baseline_single_ref": {
+      "median_f0_hz": 220.3,
+      "semitone_diff": -8.49
+    }
+  },
+  {
+    "id": "monster_jam",
+    "category": "shout",
+    "target_phrase": "Monster jam!",
+    "original": {
+      "file": "23 - Monster Jam (6k).wav",
+      "median_f0_hz": 320.2,
+      "mean_f0_hz": 322.1,
+      "asr": "Motherfucker!"
+    },
+    "option_a": {
+      "file": "optA_shout_monster_jam.wav",
+      "median_f0_hz": 325.1,
+      "mean_f0_hz": 301.7,
+      "semitone_diff": 0.26,
+      "asr": "Monster Jam!"
+    },
+    "baseline_single_ref": {
+      "median_f0_hz": 250.0,
+      "semitone_diff": -6.54
+    }
+  },
+  {
+    "id": "from_downtown",
+    "category": "shout",
+    "target_phrase": "From downtown!",
+    "original": {
+      "file": "21 - From Downtown (6k).wav",
+      "median_f0_hz": 336.1,
+      "mean_f0_hz": 314.1,
+      "asr": "I'll go, go!"
+    },
+    "option_a": {
+      "file": "optA_shout_from_downtown.wav",
+      "median_f0_hz": 344.1,
+      "mean_f0_hz": 332.5,
+      "semitone_diff": 0.41,
+      "asr": "From down down!"
+    },
+    "baseline_single_ref": {
+      "median_f0_hz": 282.3,
+      "semitone_diff": -3.66
+    }
+  },
+  {
+    "id": "slams_it",
+    "category": "shout",
+    "target_phrase": "Slams it!",
+    "original": {
+      "file": "4 -  Slams It.wav",
+      "median_f0_hz": 329.6,
+      "mean_f0_hz": 295.1,
+      "asr": "FOMBIT!"
+    },
+    "option_a": {
+      "file": "optA_shout_slams_it.wav",
+      "median_f0_hz": 247.7,
+      "mean_f0_hz": 245.7,
+      "semitone_diff": -4.95,
+      "asr": "Why am I here?"
+    },
+    "baseline_single_ref": {
+      "median_f0_hz": 277.8,
+      "semitone_diff": -2.22
+    }
+  },
+  {
+    "id": "razzle_dazzle",
+    "category": "shout",
+    "target_phrase": "Razzle Dazzle!",
+    "original": {
+      "file": "3 - Razzle Dazzle.wav",
+      "median_f0_hz": 314.4,
+      "mean_f0_hz": 276.1,
+      "asr": "Wazzle Dazzle!"
+    },
+    "option_a": {
+      "file": "optA_shout_razzle_dazzle.wav",
+      "median_f0_hz": 335.2,
+      "mean_f0_hz": 278.4,
+      "semitone_diff": 1.11,
+      "asr": "Razzle Label!"
+    },
+    "baseline_single_ref": {
+      "median_f0_hz": 246.1,
+      "semitone_diff": -2.37
+    }
+  },
+  {
+    "id": "welcome_to_nba_jam",
+    "category": "play_by_play",
+    "target_phrase": "Welcome to NBA Jam!",
+    "original": {
+      "file": "28 - Welcome to NBA JAM (slightly slow).wav",
+      "median_f0_hz": 268.2,
+      "mean_f0_hz": 251.6,
+      "asr": "Welcome to NBAJ!"
+    },
+    "option_a": {
+      "file": "optA_play_by_play_welcome_to_nba_jam.wav",
+      "median_f0_hz": 259.8,
+      "mean_f0_hz": 245.9,
+      "semitone_diff": -0.55,
+      "asr": "Welcome to NBA Jam!"
+    },
+    "baseline_single_ref": {
+      "median_f0_hz": 221.4,
+      "semitone_diff": -2.68
+    }
+  },
+  {
+    "id": "showtime",
+    "category": "play_by_play",
+    "target_phrase": "Showtime!",
+    "original": {
+      "file": "68 - Showtime.wav",
+      "median_f0_hz": 240.0,
+      "mean_f0_hz": 267.8,
+      "asr": "Showtime!"
+    },
+    "option_a": {
+      "file": "optA_play_by_play_showtime.wav",
+      "median_f0_hz": 206.6,
+      "mean_f0_hz": 202.5,
+      "semitone_diff": -2.6,
+      "asr": "TOOT TIME!"
+    },
+    "baseline_single_ref": {
+      "median_f0_hz": 199.0,
+      "semitone_diff": -4.86
+    }
+  },
+  {
+    "id": "at_the_buzzer",
+    "category": "play_by_play",
+    "target_phrase": "At the buzzer!",
+    "original": {
+      "file": "49 - At the Buzzer (7.3k).wav",
+      "median_f0_hz": 262.7,
+      "mean_f0_hz": 263.6,
+      "asr": "Have a booger!"
+    },
+    "option_a": {
+      "file": "optA_play_by_play_at_the_buzzer.wav",
+      "median_f0_hz": 228.7,
+      "mean_f0_hz": 214.2,
+      "semitone_diff": -2.4,
+      "asr": "at the buzzer."
+    },
+    "baseline_single_ref": {
+      "median_f0_hz": 263.9,
+      "semitone_diff": -0.28
+    }
+  },
+  {
+    "id": "heating_up",
+    "category": "play_by_play",
+    "target_phrase": "Heating up!",
+    "original": {
+      "file": "51 Heating Up (slow).wav",
+      "median_f0_hz": 274.9,
+      "mean_f0_hz": 269.3,
+      "asr": "No, no, no, no, no."
+    },
+    "option_a": {
+      "file": "optA_play_by_play_heating_up.wav",
+      "median_f0_hz": 233.8,
+      "mean_f0_hz": 214.1,
+      "semitone_diff": -2.81,
+      "asr": "heating up."
+    },
+    "baseline_single_ref": {
+      "median_f0_hz": 277.3,
+      "semitone_diff": -0.48
+    }
+  },
+  {
+    "id": "two_points",
+    "category": "play_by_play",
+    "target_phrase": "Two points!",
+    "original": {
+      "file": "57 - Two Points (7.3k).wav",
+      "median_f0_hz": 324.4,
+      "mean_f0_hz": 314.8,
+      "asr": "Two boys!"
+    },
+    "option_a": {
+      "file": "optA_play_by_play_two_points.wav",
+      "median_f0_hz": 162.7,
+      "mean_f0_hz": 177.5,
+      "semitone_diff": -11.95,
+      "asr": "2 points."
+    },
+    "baseline_single_ref": {
+      "median_f0_hz": null,
+      "semitone_diff": null
+    }
+  },
+  {
+    "id": "count_it",
+    "category": "play_by_play",
+    "target_phrase": "Count it!",
+    "original": {
+      "file": "20 - Count It.wav",
+      "median_f0_hz": 308.0,
+      "mean_f0_hz": 292.3,
+      "asr": "Tell me!"
+    },
+    "option_a": {
+      "file": "optA_play_by_play_count_it.wav",
+      "median_f0_hz": 235.6,
+      "mean_f0_hz": 233.7,
+      "semitone_diff": -4.64,
+      "asr": "Count it!"
+    },
+    "baseline_single_ref": {
+      "median_f0_hz": null,
+      "semitone_diff": null
+    }
+  }
+]

@@ -5,6 +5,10 @@ const HYMotionRig = preload("res://scripts/hy_motion_rig.gd")
 # Presentation only: simulation coordinates, inputs, and network state stay unchanged.
 const COURT_SCALE = Vector2(28.0 / 1050.0, 15.0 / 410.0)
 const GOLD = Color("ffcb68")
+const BASE_CAM_Y = 10.6
+const BASE_CAM_Z = 18.6
+const BASE_LOOK_Y = 1.3
+const BASE_FOV = 23.5
 var world: Node3D
 var camera: Camera3D
 var athletes: Array = []
@@ -18,9 +22,23 @@ var time = 0.0
 var materials: Dictionary = {}
 var camera_initialized = false
 var camera_focus = 0.0
+var dunk_cam_lift: float = 0.0
+var dunk_cam_zoom: float = 0.0
+var dunk_cam_look_lift: float = 0.0
+var dunk_shake_timer: float = 0.0
+var dunk_shake_duration: float = 0.38
+var dunk_shake_intensity: float = 0.0
+var dunk_slam_shaken: bool = false
 var baskets: Array = []
 var possession_flash_material: StandardMaterial3D
 var last_event_id: int = -1
+var cached_shadow_texture: ImageTexture = null
+var ball_shadow: MeshInstance3D
+var rim_dips: Array = [0.0, 0.0]
+var rim_vels: Array = [0.0, 0.0]
+var rim_nodes: Array = []
+var rim_rods: Array = []
+var flashbulbs: Array = []
 
 func _ready() -> void:
  size = Vector2i(1280,600)
@@ -48,15 +66,26 @@ func _ready() -> void:
  camera = Camera3D.new()
  camera.name = "SidelineCamera"
  camera.projection = Camera3D.PROJECTION_PERSPECTIVE
- camera.fov = 24.5
- camera.position = Vector3(0,19,34)
+ camera.fov = BASE_FOV
+ camera.position = Vector3(0,BASE_CAM_Y,BASE_CAM_Z)
  world.add_child(camera)
- camera.look_at(Vector3(0,0.9,0))
+ camera.look_at(Vector3(0,BASE_LOOK_Y,0))
  camera.current = true
  camera.far = 120.0
 
+func trigger_dunk_shake(intensity: float, duration: float) -> void:
+ var remaining_factor = dunk_shake_timer / maxf(0.001, dunk_shake_duration) if dunk_shake_duration > 0.0 else 0.0
+ dunk_shake_intensity = maxf(dunk_shake_intensity * remaining_factor, intensity)
+ dunk_shake_duration = duration
+ dunk_shake_timer = duration
+
 func reset_camera() -> void:
  camera_initialized = false
+ dunk_cam_lift = 0.0
+ dunk_cam_zoom = 0.0
+ dunk_cam_look_lift = 0.0
+ dunk_shake_timer = 0.0
+ dunk_slam_shaken = false
 
 func update_camera(state: MatchState, ball: Vector2, delta: float, paused: bool) -> void:
  if state.phase == "finished":
@@ -65,20 +94,59 @@ func update_camera(state: MatchState, ball: Vector2, delta: float, paused: bool)
   camera.look_at(Vector3(0,0.9,0))
   camera_initialized = false
   return
- var target = clampf(court_point(ball).x*0.72,-7.5,7.5)
+ if paused:
+  return
+ var target = clampf(court_point(ball).x*0.72,-7.0,7.0)
  if not camera_initialized:
   camera_focus = target
   camera_initialized = true
- elif not paused:
+ else:
   camera_focus = lerpf(camera_focus,target,1.0-exp(-delta*5.0))
- camera.position = Vector3(camera_focus,13,23)
- camera.fov = 26.0
- camera.look_at(Vector3(camera_focus,1.4,0))
+
+ var is_dunking = not state.flight.is_empty() and state.flight.get("kind", "") == "shot" and state.flight.get("dunk", false)
+ var target_lift = 0.0
+ var target_look_lift = 0.0
+ var target_zoom = 0.0
+ if is_dunking:
+  var p = clampf(state.flight.time / state.flight.duration, 0.0, 1.0)
+  var arc_h = state.flight.get("arc_height", 1.5)
+  var lift = arc_h * sin(p * PI)
+  target_lift = lift * 0.45
+  target_look_lift = lift * 0.60
+  target_zoom = minf(4.5, lift * 0.90)
+
+ var follow_speed = 10.0 if is_dunking else 5.0
+ dunk_cam_lift = lerpf(dunk_cam_lift, target_lift, 1.0 - exp(-delta * follow_speed))
+ dunk_cam_look_lift = lerpf(dunk_cam_look_lift, target_look_lift, 1.0 - exp(-delta * follow_speed))
+ dunk_cam_zoom = lerpf(dunk_cam_zoom, target_zoom, 1.0 - exp(-delta * follow_speed))
+ if not is_dunking:
+  if absf(dunk_cam_lift) < 0.02:
+   dunk_cam_lift = 0.0
+  if absf(dunk_cam_look_lift) < 0.02:
+   dunk_cam_look_lift = 0.0
+  if absf(dunk_cam_zoom) < 0.02:
+   dunk_cam_zoom = 0.0
+
+ var dolly_z = minf(1.8, dunk_cam_lift * 0.35)
+ camera.position = Vector3(camera_focus, BASE_CAM_Y + dunk_cam_lift, BASE_CAM_Z - dolly_z)
+ camera.fov = BASE_FOV - dunk_cam_zoom
+ camera.look_at(Vector3(camera_focus, BASE_LOOK_Y + dunk_cam_look_lift, 0.0))
+
+ if dunk_shake_timer > 0.0:
+  dunk_shake_timer = maxf(0.0, dunk_shake_timer - delta)
+  var progress = 1.0 - (dunk_shake_timer / maxf(0.001, dunk_shake_duration))
+  var decay = exp(-progress * 4.5) * (1.0 - progress)
+  var shake_y = sin(progress * TAU * 14.0) * dunk_shake_intensity * decay
+  var shake_x = cos(progress * TAU * 11.0) * dunk_shake_intensity * decay * 0.45
+  var shake_z = sin(progress * TAU * 8.0) * dunk_shake_intensity * decay * 0.25
+  camera.position += Vector3(shake_x, shake_y, shake_z)
+
  var latest = maxf(state.board_breaks[0],state.board_breaks[1])
  if latest >= 0:
   var age = state.elapsed-latest
-  var impact = maxf(0,1.0-age/0.65)*0.13
-  camera.position += Vector3(sin(age*73)*impact,cos(age*91)*impact,0)
+  if age < 0.65:
+   var impact = maxf(0.0, 1.0 - age / 0.65) * 0.25
+   camera.position += Vector3(sin(age * 73.0) * impact, cos(age * 91.0) * impact, 0.0)
 
 func player_indicator(index: int) -> Dictionary:
  var point = camera.unproject_position(athletes[index].root.position+Vector3(0,1.2,0))
@@ -199,6 +267,31 @@ func hardwood_texture() -> ImageTexture:
    image.set_pixel(x,y,color)
  return ImageTexture.create_from_image(image)
 
+func shadow_texture() -> ImageTexture:
+ if cached_shadow_texture != null:
+  return cached_shadow_texture
+ var img = Image.create(64,64,false,Image.FORMAT_RGBA8)
+ var center = Vector2(31.5,31.5)
+ for y in range(64):
+  for x in range(64):
+   var dist = center.distance_to(Vector2(x,y)) / 31.5
+   if dist >= 1.0:
+    img.set_pixel(x,y,Color(0,0,0,0))
+   else:
+    var a = pow(1.0-dist,1.8)*0.62
+    img.set_pixel(x,y,Color(0,0,0,a))
+ cached_shadow_texture = ImageTexture.create_from_image(img)
+ return cached_shadow_texture
+
+func trigger_flashbulbs(count: int = 4) -> void:
+ var triggered = 0
+ for fb in flashbulbs:
+  if fb.timer <= 0.0:
+   fb.timer = 0.08
+   triggered += 1
+   if triggered >= count:
+    break
+
 func line(points: Array, width: float, mat: Material, height: float = 0.027) -> void:
  var geometry = ImmediateMesh.new()
  geometry.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -306,8 +399,11 @@ func build_basket(side: int) -> void:
   box(target_marks,Vector3(0.026,0.51,0.035),Vector3(target_x,3.35,center.z+z),net_material)
  for y in [3.095,3.605]:
   box(target_marks,Vector3(0.026,0.035,0.715),Vector3(target_x,y,center.z),net_material)
- rod(group,Vector3(board_x,3.05,center.z),center,0.045,orange)
- ring(group,0.43,0.035,center,orange,36).name = "OrangeRim"
+ var rim_rod = rod(group,Vector3(board_x,3.05,center.z),center,0.045,orange)
+ var orange_rim = ring(group,0.43,0.035,center,orange,36)
+ orange_rim.name = "OrangeRim"
+ rim_nodes.append(orange_rim)
+ rim_rods.append({"rod": rim_rod, "board_pos": Vector3(board_x,3.05,center.z), "center": center})
  var net_rings: Array = []
  var base_ring_radii = [0.43, lerpf(0.43,0.27,1.0/3.0), lerpf(0.43,0.27,2.0/3.0), 0.27]
  for layer in range(4):
@@ -621,6 +717,32 @@ void fragment() {
  crowd.multimesh = instances
  crowd.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
  world.add_child(crowd)
+ flashbulbs.clear()
+ for fb_i in range(18):
+  var flash = MeshInstance3D.new()
+  var fb_mesh = QuadMesh.new()
+  fb_mesh.size = Vector2(0.44,0.44)
+  flash.mesh = fb_mesh
+  var fb_mat = StandardMaterial3D.new()
+  fb_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+  fb_mat.albedo_color = Color(1.0,1.0,1.0,0.0)
+  fb_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+  fb_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+  fb_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+  flash.material_override = fb_mat
+  flash.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+  var fb_pos = Vector3.ZERO
+  if fb_i < 12:
+   var row = fb_i % 6
+   var col_x = -16.0 + float(fb_i) * 2.8 + random.randf_range(-0.5, 0.5)
+   fb_pos = Vector3(col_x, 1.4 + row * 0.52, -9.3 - row * 1.08)
+  else:
+   var s = -1 if fb_i < 15 else 1
+   var row = (fb_i - 12) % 3
+   fb_pos = Vector3(s * (17.5 + row * 1.05), 1.6 + row * 0.56, -4.0 + float(row) * 2.5)
+  flash.position = fb_pos
+  world.add_child(flash)
+  flashbulbs.append({"mesh": flash, "material": fb_mat, "timer": 0.0, "cooldown": random.randf_range(0.4, 3.2)})
 
 func build_athlete(index: int) -> Dictionary:
  var root = Node3D.new()
@@ -656,7 +778,23 @@ func build_athlete(index: int) -> Dictionary:
   object.visible = false
   object.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
   fire.append(object)
- return {"root":root,"body":body,"head":body.head,"skeleton":body.skeleton,"arms":[body.attach(16),body.attach(17)],"legs":[body.attach(1),body.attach(2)],"jersey":body.jersey,"shorts":body.shorts,"marker":marker,"label":name_label,"control":control_label,"fire":fire,"mesh_parts":collect_mesh_parts(body),"aim_indicator":aim_root,"aim_ring":aim_ring,"aim_outer":aim_outer,"aim_pips":aim_pips,"aim_label":aim_label}
+ var shadow_mat = StandardMaterial3D.new()
+ shadow_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+ shadow_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+ shadow_mat.albedo_texture = shadow_texture()
+ shadow_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+ shadow_mat.albedo_color = Color(0,0,0,0.60)
+ var shadow_quad = QuadMesh.new()
+ shadow_quad.size = Vector2(1.15,0.72)
+ shadow_quad.orientation = PlaneMesh.FACE_Y
+ var shadow = MeshInstance3D.new()
+ shadow.name = "FloorShadow"
+ shadow.mesh = shadow_quad
+ shadow.material_override = shadow_mat
+ shadow.position = Vector3(0,0.005,0)
+ shadow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+ root.add_child(shadow)
+ return {"root":root,"body":body,"head":body.head,"skeleton":body.skeleton,"arms":[body.attach(16),body.attach(17)],"legs":[body.attach(1),body.attach(2)],"jersey":body.jersey,"shorts":body.shorts,"marker":marker,"label":name_label,"control":control_label,"fire":fire,"mesh_parts":collect_mesh_parts(body),"aim_indicator":aim_root,"aim_ring":aim_ring,"aim_outer":aim_outer,"aim_pips":aim_pips,"aim_label":aim_label,"shadow":shadow,"shadow_mat":shadow_mat}
 
 func collect_mesh_parts(node: Node) -> Array:
  var parts: Array = []
@@ -683,6 +821,22 @@ func build_ball() -> void:
    seam_ring.rotation.x = PI/2
   if axis == 2:
    seam_ring.rotation.z = PI/2
+ var b_shadow_mat = StandardMaterial3D.new()
+ b_shadow_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+ b_shadow_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+ b_shadow_mat.albedo_texture = shadow_texture()
+ b_shadow_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+ b_shadow_mat.albedo_color = Color(0,0,0,0.55)
+ var b_shadow_quad = QuadMesh.new()
+ b_shadow_quad.size = Vector2(0.55,0.55)
+ b_shadow_quad.orientation = PlaneMesh.FACE_Y
+ ball_shadow = MeshInstance3D.new()
+ ball_shadow.name = "BasketballShadow"
+ ball_shadow.mesh = b_shadow_quad
+ ball_shadow.material_override = b_shadow_mat
+ ball_shadow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+ ball_shadow.position = Vector3(0,0.006,0)
+ world.add_child(ball_shadow)
  for i in range(8):
   var flame = SphereMesh.new()
   flame.radius = 0.22
@@ -755,8 +909,9 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
     tip_jump = age/0.62
     jump = sin(tip_jump*PI)*1.6
   actor.body.position.y = maxf(0,jump)
-  var running = clampf(p.vel.length()/230.0,0,1)
-  var is_running = p.vel.length() > 8
+  var running = clampf(p.vel.length() / 420.0, 0, 1)
+  var is_stunned = p.stun > 0.0
+  var is_running = p.vel.length() > 8 and not is_stunned
   var is_shot_actor = not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.shooter == i
   var hoop_dir = state.hoop_for(i/2) - p.pos
   var target_angle = movement_facing_angle(hoop_dir) if (is_shot_actor and not state.flight.dunk) else (movement_facing_angle(p.vel) if is_running else (PI/2 if p.face > 0 else -PI/2))
@@ -779,21 +934,24 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
      actor.body.rotation.z = 0.0
      actor.body.rotation.x = 0.0
     "frontflip":
+     var flip_p = clampf((dunk_p - 0.06) / 0.74, 0.0, 1.0)
      actor.body.rotation.y = target_angle
-     actor.body.rotation.z = -dunk_p * TAU * face_dir
-     actor.body.rotation.x = 0.0
+     actor.body.rotation.x = flip_p * TAU
+     actor.body.rotation.z = 0.0
     "backflip":
+     var flip_p = clampf((dunk_p - 0.06) / 0.74, 0.0, 1.0)
      actor.body.rotation.y = target_angle
-     actor.body.rotation.z = dunk_p * TAU * face_dir
-     actor.body.rotation.x = 0.0
+     actor.body.rotation.x = -flip_p * TAU
+     actor.body.rotation.z = 0.0
     "spin_360":
-     actor.body.rotation.y = target_angle + dunk_p * TAU
+     var spin_p = clampf(dunk_p / 0.82, 0.0, 1.0)
+     actor.body.rotation.y = target_angle + spin_p * TAU
      actor.body.rotation.z = 0.0
      actor.body.rotation.x = 0.0
     "between_legs":
      actor.body.rotation.y = target_angle
      actor.body.rotation.z = 0.0
-     actor.body.rotation.x = sin(dunk_p * PI) * 0.45
+     actor.body.rotation.x = 0.0
     "behind_back":
      actor.body.rotation.y = target_angle + sin(dunk_p * PI) * 0.75 * face_dir
      actor.body.rotation.z = 0.0
@@ -804,12 +962,38 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   else:
    actor.body.rotation.z = 0.0
    actor.body.rotation.x = 0.0
+  if p.stun > 0:
+   var shove_time = maxf(p.get("shove_time", 0.85), 0.001)
+   var prog = 1.0 - clampf(p.stun / shove_time, 0.0, 1.0)
+   var kind = p.get("shove_kind", "flyback" if p.stun > 0.6 else "stumble")
+   if kind == "flyback":
+    if prog < 0.35:
+     var air_t = prog / 0.35
+     actor.body.position.y = sin(air_t * PI) * 0.70
+     actor.body.rotation.x = -air_t * 1.52
+     actor.body.rotation.z = 0.0
+    elif prog < 0.68:
+     actor.body.position.y = 0.06
+     actor.body.rotation.x = -1.52
+     actor.body.rotation.z = 0.0
+    else:
+     var rec_t = (prog - 0.68) / 0.32
+     actor.body.position.y = lerpf(0.06, 0.0, rec_t)
+     actor.body.rotation.x = lerpf(-1.52, 0.0, rec_t)
+     actor.body.rotation.z = sin(rec_t * PI) * 0.35
+   else:
+    actor.body.rotation.x = -sin(prog * PI) * 0.40
+    actor.body.rotation.z = 0.0
+    actor.body.position.y = 0.0
   actor.head.scale = Vector3.ONE*(1.65 if state.big_heads else 1.0)
   var next_action = "idle"
   var phase = -1.0
   if p.stun > 0:
    next_action = "stun"
-   phase = 1.0-clampf(p.stun/0.85,0,1)
+   var shove_time = maxf(p.get("shove_time", 0.85), 0.001)
+   phase = 1.0 - clampf(p.stun / shove_time, 0.0, 1.0)
+  elif state.quarter_transition.get("active", false):
+   next_action = "idle"
   elif tip_jump >= 0:
    next_action = "block"
    phase = tip_jump
@@ -832,22 +1016,25 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
    next_action = "shoot"
    phase = 0.42*sin((1.0-clampf(p.fake/0.38,0,1))*PI)
   elif p.get("swipe",0.0) > 0:
-   next_action = "steal"
-   phase = 1.0-clampf(p.swipe/0.45,0,1)
+   if p.get("swipe_shove", false):
+    next_action = "shove"
+    phase = 1.0 - clampf(p.swipe / 0.45, 0.0, 1.0)
+    actor.body.rotation.x = sin(phase * PI) * 0.32
+   else:
+    next_action = "steal"
+    phase = 1.0 - clampf(p.swipe / 0.45, 0.0, 1.0)
   elif not state.flight.is_empty() and state.flight.kind == "pass" and not state.flight.get("tip",false) and (int(state.flight.target)/2)*2+(1-int(state.flight.target)%2) == i:
    next_action = "pass"
    phase = clampf(state.flight.time/state.flight.duration,0,1)
   elif p.jump > 0:
    next_action = "block"
    phase = 1.0-clampf(p.jump/0.70,0,1)
-  elif p.cooldown > 0.2 and state.owner >= 0 and state.owner/2 != i/2:
-   next_action = "steal"
-   phase = 1.0-clampf(p.cooldown/0.65,0,1)
   elif running > 0.035:
    next_action = "dribble" if state.owner == i else "run"
   elif state.owner >= 0 and state.owner/2 != i/2:
    next_action = "defense"
-  actor.body.animate(next_action,motion_delta,phase,lerpf(0.75,1.5,running),paused)
+  var extra_arg = state.flight.get("dunk_style", "standard") if next_action == "dunk" else p.get("shove_kind","")
+  actor.body.animate(next_action,motion_delta,phase,lerpf(0.75,1.5,running),paused,extra_arg)
   if faces_ball_for_block and next_action == "block":
    # The generated block clip includes some root rotation. Compensate for it so
    # the rendered athlete, not just its outer node, tracks the ball precisely.
@@ -862,7 +1049,7 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
    var foot_trans: Transform3D = actor.skeleton.global_transform * actor.skeleton.get_bone_global_pose(bone)
    lowest_foot = minf(lowest_foot, foot_trans.origin.y)
   var sneaker_bottom = lowest_foot - 0.045
-  if sneaker_bottom < 0.0:
+  if sneaker_bottom < 0.0 and p.stun <= 0.0:
    actor.body.position.y += -sneaker_bottom
   actor.marker.visible = controlled_slots.has(i)
   actor.control.text = ("P1" if i < 2 else "P2") if controlled_slots.has(i) else ""
@@ -920,6 +1107,11 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
    var angle = time*3+flame*TAU/5
    ember.position = Vector3(cos(angle)*0.43,0.7+fmod(time*1.8+flame*0.37,1.6)+jump,sin(angle)*0.43)
    ember.scale.y = 0.6+sin(time*13+flame)*0.25
+  var h = actor.body.position.y
+  var spread = 1.0 + minf(h * 0.38, 1.3)
+  actor.shadow.scale = Vector3(spread, 1.0, spread)
+  var shadow_alpha = clampf(0.60 - h * 0.11, 0.12, 0.60)
+  actor.shadow_mat.albedo_color.a = shadow_alpha
  var ball_height = state.ball_height()
  basketball.position = court_point(ball,ball_height)
  if state.flight.is_empty() and state.owner >= 0:
@@ -933,18 +1125,45 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
    var forward_dir = -carrier.body.global_transform.basis.z
    basketball.global_position = hands_mid + forward_dir * 0.12
  if not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.dunk:
+  var dunker = athletes[state.flight.shooter]
   var dunk_style = state.flight.get("dunk_style", "standard")
   var dunk_p = clampf(state.flight.time / state.flight.duration, 0.0, 1.0)
-  var face_dir = 1.0 if state.players[state.flight.shooter].face > 0 else -1.0
-  if dunk_style == "behind_back" and dunk_p > 0.25 and dunk_p < 0.75:
-   var dip = sin((dunk_p - 0.25) / 0.5 * PI)
-   basketball.position += Vector3(-face_dir * dip * 0.45, -dip * 0.35, 0.0)
-  elif dunk_style == "between_legs" and dunk_p > 0.30 and dunk_p < 0.70:
-   var dip = sin((dunk_p - 0.30) / 0.40 * PI)
-   basketball.position += Vector3(0.0, -dip * 0.55, 0.0)
-  elif dunk_style == "helicopter":
-   var angle = dunk_p * TAU * 3.0
-   basketball.position += Vector3(cos(angle) * 0.42, 0.12, sin(angle) * 0.42)
+  var hand_l: Transform3D = dunker.skeleton.global_transform * dunker.skeleton.get_bone_global_pose(20)
+  var hand_r: Transform3D = dunker.skeleton.global_transform * dunker.skeleton.get_bone_global_pose(21)
+  var hands_mid = (hand_l.origin + hand_r.origin) * 0.5
+  var fwd_dir = dunker.body.global_transform.basis.z
+  var up_dir = dunker.body.global_transform.basis.y
+  var ball_on_hands = hands_mid + fwd_dir * 0.10
+  if dunk_style == "behind_back" and dunk_p > 0.20 and dunk_p < 0.75:
+   var dip = sin((dunk_p - 0.20) / 0.55 * PI)
+   ball_on_hands = hands_mid - fwd_dir * (dip * 0.38) - up_dir * (dip * 0.12)
+  elif dunk_style == "between_legs" and dunk_p > 0.15 and dunk_p < 0.72:
+   var dip = sin(clampf((dunk_p - 0.15) / 0.57, 0.0, 1.0) * PI)
+   ball_on_hands = hands_mid + fwd_dir * 0.08 - up_dir * (dip * 0.04)
+  var b_idx = 0 if state.flight.end.x < 640 else 1
+  var rim_target = court_point(state.flight.end, 3.05 - rim_dips[b_idx])
+  if dunk_p < 0.88:
+   basketball.global_position = ball_on_hands
+  elif dunk_p < 0.94:
+   var slam_t = (dunk_p - 0.88) / 0.06
+   basketball.global_position = ball_on_hands.lerp(rim_target, slam_t)
+  else:
+   var net_drop = (dunk_p - 0.94) / 0.06 * 0.38
+   basketball.global_position = rim_target - Vector3(0, net_drop, 0)
+  if dunk_p >= 0.90 and not dunk_slam_shaken:
+   dunk_slam_shaken = true
+   var is_super = state.flight.get("super_dunk", false) or state.is_player_on_fire(state.flight.shooter)
+   trigger_dunk_shake(0.35 if is_super else 0.22, 0.45 if is_super else 0.35)
+   trigger_flashbulbs(6)
+ else:
+  dunk_slam_shaken = false
+ ball_shadow.position = Vector3(basketball.position.x, 0.006, basketball.position.z)
+ var b_h = basketball.position.y
+ var b_spread = 1.0 + minf(b_h * 0.35, 1.8)
+ ball_shadow.scale = Vector3(b_spread, 1.0, b_spread)
+ var b_alpha = clampf(0.55 - b_h * 0.09, 0.06, 0.55)
+ ball_shadow.material_override.albedo_color.a = b_alpha
+ ball_shadow.visible = b_h < 8.5
  basketball.rotation = Vector3(time*3.2,0,time*2.1)
  # Trigger net swish on made shots reaching rim
  if not state.flight.is_empty() and state.flight.kind == "shot":
@@ -959,13 +1178,19 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
  # Trigger net swish on scoring events (dunks, layups, baskets)
  if state.event_id != last_event_id:
   last_event_id = state.event_id
-  if state.event_kind in ["score", "dunk", "fire", "shatter"]:
+  if state.event_kind == "shatter":
+   trigger_dunk_shake(0.48, 0.65)
+   trigger_flashbulbs(10)
+  elif state.event_kind in ["score", "dunk", "fire"]:
    var scoring_team = 1 - state.inbounding_team if state.inbounding_team >= 0 else (0 if state.score[0] > 0 else 1)
    var hoop = state.hoop_for(scoring_team)
    var b_idx = 0 if hoop.x < 640 else 1
    if b_idx < baskets.size() and baskets[b_idx].get("net", {}).get("swish_time", 10.0) > 0.25:
     var incoming_dir = Vector3(1.0 if hoop.x < 640 else -1.0, 0, 0)
     trigger_net_swish(b_idx, incoming_dir)
+   if state.event_kind in ["dunk", "fire"]:
+    trigger_dunk_shake(0.32 if state.event_kind == "fire" else 0.24, 0.38)
+   trigger_flashbulbs(8 if state.event_kind in ["dunk", "fire"] else 4)
 
  for b_idx in range(baskets.size()):
   var net_data: Dictionary = baskets[b_idx].get("net", {})
@@ -982,6 +1207,46 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
     var drop_dir = net_data.swish_dir if net_data.swish_dir.length() > 0.01 else Vector3(net_data.side, 0, 0)
     basketball.position = net_data.center + Vector3(0, ball_drop_y - 3.05, 0) + drop_dir * (sin(drop_p * PI) * 0.08)
     break
+ var is_dunk_flight = not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.dunk
+ var dunk_basket_idx = -1
+ var dunk_dip_target = 0.0
+ if is_dunk_flight:
+  var dunk_flight_p = clampf(state.flight.time / state.flight.duration, 0.0, 1.0)
+  dunk_basket_idx = 0 if state.flight.end.x < 640 else 1
+  if dunk_flight_p >= 0.82 and dunk_flight_p <= 1.0:
+   var is_super = state.flight.get("super_dunk", false) or state.is_player_on_fire(state.flight.shooter)
+   var pull = sin((dunk_flight_p - 0.82) / 0.18 * PI * 0.5)
+   dunk_dip_target = (0.19 if is_super else 0.13) * pull
+
+ for b in range(2):
+  var target = dunk_dip_target if b == dunk_basket_idx else 0.0
+  var diff = target - rim_dips[b]
+  var k_spring = 260.0
+  var damping = 22.0
+  var accel = k_spring * diff - damping * rim_vels[b]
+  rim_vels[b] += accel * motion_delta
+  rim_dips[b] += rim_vels[b] * motion_delta
+  if target == 0.0 and absf(rim_dips[b]) < 0.001 and absf(rim_vels[b]) < 0.005:
+   rim_dips[b] = 0.0
+   rim_vels[b] = 0.0
+  if rim_nodes.size() > b and is_instance_valid(rim_nodes[b]):
+   rim_nodes[b].position.y = 3.05 - rim_dips[b]
+   if rim_rods.size() > b:
+    var r_data = rim_rods[b]
+    update_rod(r_data.rod, r_data.board_pos, r_data.center - Vector3(0, rim_dips[b], 0))
+
+ for fb in flashbulbs:
+  if not paused:
+   if fb.timer > 0.0:
+    fb.timer = maxf(0.0, fb.timer - delta)
+    var flash_a = clampf(fb.timer / 0.08, 0.0, 1.0)
+    fb.material.albedo_color.a = flash_a * 0.95
+   else:
+    fb.material.albedo_color.a = 0.0
+    fb.cooldown -= delta
+    if fb.cooldown <= 0.0:
+     fb.timer = 0.08
+     fb.cooldown = randf_range(1.2, 4.5)
  update_backboards(state)
  update_camera(state,ball,motion_delta,paused)
  var in_flight = not state.flight.is_empty()

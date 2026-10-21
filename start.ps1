@@ -17,6 +17,9 @@
 .PARAMETER Wait
     If specified, keeps the PowerShell window open until the game process exits.
 
+.PARAMETER QuickPlay
+    If specified, launches directly into a quick play match bypassing menus.
+
 .PARAMETER Godot
     Optional path to a specific Godot executable.
 #>
@@ -24,7 +27,12 @@ param(
     [string]$Godot = "",
     [switch]$Clean,
     [switch]$Console,
-    [switch]$Wait
+    [switch]$Wait,
+    [Alias("Quick", "qp", "q")]
+    [switch]$QuickPlay,
+    [int]$HomeTeam = -1,
+    [int]$AwayTeam = -1,
+    [string]$Teams = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -110,6 +118,12 @@ if (-not $Console -and ($launchExe -match '_console\.exe$')) {
 # Step 5: Launch the rebuilt game
 Write-Host "Launching Rim Rumble..." -ForegroundColor Cyan
 $gameArgs = @("--path", $projectRoot)
+if ($QuickPlay -or $HomeTeam -ge 0 -or $AwayTeam -ge 0 -or (-not [string]::IsNullOrWhiteSpace($Teams))) {
+    $gameArgs += @("--", "--quickplay")
+    if ($HomeTeam -ge 0) { $gameArgs += @("--home", $HomeTeam.ToString()) }
+    if ($AwayTeam -ge 0) { $gameArgs += @("--away", $AwayTeam.ToString()) }
+    if (-not [string]::IsNullOrWhiteSpace($Teams)) { $gameArgs += @("--teams", $Teams) }
+}
 
 $process = Start-Process -FilePath $launchExe -ArgumentList $gameArgs -WorkingDirectory $projectRoot -PassThru
 

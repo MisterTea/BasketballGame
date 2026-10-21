@@ -234,12 +234,22 @@ func run() -> void:
 	var is_off_court = state.players[inbounder].pos.x < MatchState.COURT.position.x or state.players[inbounder].pos.x > MatchState.COURT.end.x
 	check(is_off_court, "after a goal, the inbounding player stands off-court behind the baseline")
 
+	# Inbounder, teammate, and defenders positioning and facing
+	var mate = 3
+	var own_hoop = state.hoop_for(0) # Hoop 1 is at 1115
+	check(absf(state.players[mate].pos.x - (own_hoop.x - 115.0)) < 15.0, "teammate waits in own zone in front of basket for inbound pass")
+	check(state.players[mate].face == 1, "teammate faces toward baseline inbounder")
+	check(state.players[0].pos.x <= 800.0 and state.players[1].pos.x <= 800.0, "enemy defenders stay back near midcourt")
+	check(state.players[0].face == 1 and state.players[1].face == 1, "enemy defenders face inbounding team")
+
 	# Attempt to shoot from off-court
 	state.freeze = 0
 	var prev_charge = state.players[inbounder].charge
 	state.tick(0.20, {inbounder: {"move": Vector2.ZERO, "shoot": true, "pass": false, "turbo": false}})
 	check(state.players[inbounder].charge == 0, "inbounder cannot shoot or charge shot while off-court")
 	check(state.flight.is_empty(), "no shot flight can be launched from off-court")
+	check(state.players[mate].pos.x > 860.0, "teammate remains in own zone and does not sprint downcourt during inbound hold")
+	check(state.players[0].pos.x <= 800.0, "defenders hold backfield position without rushing baseline during inbound hold")
 
 	# Inbounder movement stays clamped behind baseline
 	state.tick(0.10, {inbounder: {"move": Vector2.RIGHT, "shoot": false, "pass": false, "turbo": false}})
@@ -259,7 +269,7 @@ func run() -> void:
 	state.owner = 0
 	state.shoot_ball(0, false)
 	state.flight.made = false # Force miss
-	state.tick_flight(1.20) # Reach rim
+	state.tick_flight(state.flight.duration + 0.01) # Reach rim
 	check(not state.flight.is_empty() and state.flight.kind == "rebound", "missed shot bounces off rim into a rebound flight arc")
 	check(state.flight.arc_height >= 2.0, "rebound arc height has parabolic lift off rim")
 	check(state.flight.duration == MatchState.REBOUND_FLIGHT_DURATION and state.flight.duration > 1.5, "rebound flight uses the slower shared hang-time")

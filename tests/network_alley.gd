@@ -66,7 +66,7 @@ func setup() -> void:
 
 func _process(delta: float) -> bool:
  elapsed += delta
- if elapsed > 15:
+ if elapsed > 24:
   push_error("NETWORK ALLEY TIMEOUT")
   quit(1)
  if not is_instance_valid(net):

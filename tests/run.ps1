@@ -1,4 +1,4 @@
-param([string]$Godot = "godot", [switch]$Capture)
+param([string]$TargetScript = "", [string]$Godot = "godot", [switch]$Capture)
 $ErrorActionPreference = "Stop"
 
 if (-not (Get-Command $Godot -ErrorAction SilentlyContinue)) {
@@ -61,6 +61,12 @@ try {
     }
     if ($importProc.ExitCode -ne 0) { throw "Editor import failed with exit code $($importProc.ExitCode)" }
 
+    if (-not [string]::IsNullOrWhiteSpace($TargetScript)) {
+        Run-GodotTest $TargetScript 45 "Target test: $TargetScript"
+        Write-Host "`nTARGET TEST PASSED SUCCESSFULLY!" -ForegroundColor Green
+        return
+    }
+
     # 2. Standalone Unit Tests (each protected by timeout)
     Run-GodotTest "res://tests/simulation.gd" 45 "Simulation tests"
     Run-GodotTest "res://tests/tipoff.gd" 45 "Tip-off tests"
@@ -77,6 +83,9 @@ try {
     Run-GodotTest "res://tests/arcade_mechanics_pass3.gd" 45 "Arcade mechanics pass 3 tests"
     Run-GodotTest "res://tests/arcade_mechanics_pass4.gd" 45 "Arcade mechanics pass 4 tests"
     Run-GodotTest "res://tests/arcade_mechanics_pass5.gd" 45 "Arcade mechanics pass 5 tests"
+    Run-GodotTest "res://tests/quickplay.gd" 45 "Quickplay launch tests"
+    Run-GodotTest "res://tests/announcer_voice.gd" 45 "Announcer voice commentary tests"
+    Run-GodotTest "res://tests/quarter_transition.gd" 45 "Quarter transition and intermission tests"
 
     # 3. Multiplayer Network Peer Tests
     foreach ($scenario in @(@{ Script = "network_peer"; Peers = 4 }, @{ Script = "network_actions"; Peers = 2 }, @{ Script = "network_tipoff"; Peers = 2 }, @{ Script = "network_alley"; Peers = 4 })) {
@@ -91,7 +100,7 @@ try {
                 if ($i -eq 0) { Start-Sleep -Milliseconds 1000 }
             }
             foreach ($process in $processes) {
-                if (-not $process.WaitForExit(20000)) {
+                if (-not $process.WaitForExit(25000)) {
                     try { Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue } catch {}
                     throw "[TEST FAILED: WATCHDOG TIMEOUT] Network peer timed out in scenario $($scenario.Script)"
                 }

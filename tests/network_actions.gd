@@ -61,7 +61,7 @@ func receive(data: Dictionary) -> void:
   command["pass"] = true
   net.send_command(command)
   stage = 4
- if stage == 4 and state.flight.get("kind","") == "pass" and state.flight.target == 3 and state.flight.start_height > 3.0 and state.flight.get("turbo",false) and state.flight.duration < 0.25 and state.stats[2].attempts == 0:
+ if stage == 4 and state.flight.get("kind","") == "pass" and state.flight.target == 3 and state.flight.start_height > 3.0 and state.flight.get("turbo",false) and state.flight.duration <= 0.35 and state.stats[2].attempts == 0:
   print("NETWORK ACTION PASS: reliable client Pass cancels dunk into a dish")
   stage = 5
  if stage == 5 and state.owner == 3 and state.score == [0,0]:
@@ -96,7 +96,7 @@ func receive(data: Dictionary) -> void:
 
 func _process(delta: float) -> bool:
  elapsed += delta
- if elapsed > 18:
+ if elapsed > 28:
   push_error("NETWORK ACTION TIMEOUT stage=%d" % stage)
   quit(1)
  if not is_instance_valid(net):

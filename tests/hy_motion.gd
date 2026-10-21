@@ -102,6 +102,39 @@ func run() -> void:
  arena.present(state,[],state.ball,[0],0.1,false)
  check(actor.body.action == "stun","stun state selects generated recovery clip")
  unchanged = unchanged and state.snapshot() == before
+ state.players[0].stun = 0.0
+ state.players[0].swipe = 0.45
+ state.players[0].swipe_shove = true
+ before = state.snapshot()
+ arena.present(state,[],state.ball,[0],0.1,false)
+ check(actor.body.action == "shove","swipe with swipe_shove selects shove action")
+ unchanged = unchanged and state.snapshot() == before
+ var shove_smooth = true
+ var shove_reaches_forward = false
+ var shove_never_behind = true
+ var prev_l_rot = rig.skeleton.get_bone_pose_rotation(16)
+ var prev_r_rot = rig.skeleton.get_bone_pose_rotation(17)
+ for step in range(30):
+  var phase = float(step) / 29.0
+  rig.animate("shove", 1.0 / 60.0, phase, 1.0, false)
+  var sk = rig.skeleton
+  var l_wr = sk.get_bone_global_pose(20).origin
+  var r_wr = sk.get_bone_global_pose(21).origin
+  var cur_l_rot = sk.get_bone_pose_rotation(16)
+  var cur_r_rot = sk.get_bone_pose_rotation(17)
+  if step > 0:
+   var l_angle = cur_l_rot.angle_to(prev_l_rot)
+   var r_angle = cur_r_rot.angle_to(prev_r_rot)
+   if l_angle > PI * 0.5 or r_angle > PI * 0.5:
+    shove_smooth = false
+  prev_l_rot = cur_l_rot
+  prev_r_rot = cur_r_rot
+  if l_wr.z > 0.40 and r_wr.z > 0.40:
+   shove_reaches_forward = true
+  if l_wr.z < -0.05 or r_wr.z < -0.05:
+   shove_never_behind = false
+ check(shove_smooth,"shove animation maintains smooth continuous frame-to-frame shoulder rotations without flipping")
+ check(shove_reaches_forward and shove_never_behind,"shove thrusts both arms forward at chest level without wrapping behind the body")
  check(unchanged,"animation does not alter movement, scoring or simulation data")
  var record: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://animations/hy_motion/provenance.json"))
  check(record.executed_locally and record.clips.size() == 11 and record.generator.contains("1B"),"provenance records a completed local standard-model run")

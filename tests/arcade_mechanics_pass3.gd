@@ -213,6 +213,8 @@ func run() -> void:
 	state.tipoff = {}
 	state.freeze = 0
 	state.owner = 0
+	state.players[2].pos = Vector2(950, 465)
+	state.players[3].pos = Vector2(980, 465)
 	state.players[0].turbo = 0.0005 # Just about to empty
 	state.players[0].turbo_burnout = 0.0
 

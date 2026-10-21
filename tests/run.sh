@@ -123,6 +123,9 @@ run_godot_test "res://tests/arcade_mechanics_pass2.gd" 45 "Arcade mechanics pass
 run_godot_test "res://tests/arcade_mechanics_pass3.gd" 45 "Arcade mechanics pass 3 tests"
 run_godot_test "res://tests/arcade_mechanics_pass4.gd" 45 "Arcade mechanics pass 4 tests"
 run_godot_test "res://tests/arcade_mechanics_pass5.gd" 45 "Arcade mechanics pass 5 tests"
+run_godot_test "res://tests/quickplay.gd" 45 "Quickplay launch tests"
+run_godot_test "res://tests/announcer_voice.gd" 45 "Announcer voice commentary tests"
+run_godot_test "res://tests/quarter_transition.gd" 45 "Quarter transition and intermission tests"
 
 # Multiplayer network scenarios
 run_network_scenario() {

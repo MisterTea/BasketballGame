@@ -27,6 +27,8 @@ func run() -> void:
 
 	check(InputMap.has_action("p0_spin"), "InputMap has action p0_spin")
 	var spin_events = InputMap.action_get_events("p0_spin")
+	var has_l = spin_events.any(func(e): return e is InputEventKey and e.physical_keycode == KEY_L)
+	check(has_l, "p0_spin mapped to KEY_L")
 	var has_apostrophe = spin_events.any(func(e): return e is InputEventKey and e.physical_keycode == KEY_APOSTROPHE)
 	check(has_apostrophe, "p0_spin mapped to KEY_APOSTROPHE (right next to semicolon)")
 

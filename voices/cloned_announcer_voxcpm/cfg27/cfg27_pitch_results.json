@@ -1,0 +1,535 @@
+[
+  {
+    "id": "hes_on_fire",
+    "target_phrase": "He's on fire!",
+    "generation_time_sec": 10.11,
+    "original": {
+      "file": "50 - He's On Fire (7.3k).wav",
+      "metrics": {
+        "duration_sec": 0.986,
+        "sample_rate": 7333,
+        "rms_db": -9.75,
+        "mean_f0_hz": 364.8,
+        "median_f0_hz": 369.0,
+        "min_f0_hz": 306.7,
+        "max_f0_hz": 394.4,
+        "std_f0_hz": 22.3,
+        "spectral_centroid_hz": 1459.7,
+        "spectral_rolloff_hz": 2560.8
+      },
+      "asr_transcript": "Please don't fire!"
+    },
+    "cloned_cfg27": {
+      "file": "voxcpm_cfg27_hes_on_fire.wav",
+      "metrics": {
+        "duration_sec": 1.44,
+        "sample_rate": 48000,
+        "rms_db": -9.68,
+        "mean_f0_hz": 295.8,
+        "median_f0_hz": 338.2,
+        "min_f0_hz": 78.6,
+        "max_f0_hz": 399.3,
+        "std_f0_hz": 86.3,
+        "spectral_centroid_hz": 1578.2,
+        "spectral_rolloff_hz": 2782.3
+      },
+      "asr_transcript": "He's on fire!"
+    },
+    "pitch_comparison": {
+      "delta_mean_f0_hz": -69.0,
+      "semitone_diff": -3.63
+    }
+  },
+  {
+    "id": "kaboom",
+    "target_phrase": "Kaboom!",
+    "generation_time_sec": 7.02,
+    "original": {
+      "file": "58 - Kaboom (slightly slow).wav",
+      "metrics": {
+        "duration_sec": 0.766,
+        "sample_rate": 8000,
+        "rms_db": -10.13,
+        "mean_f0_hz": 263.8,
+        "median_f0_hz": 266.8,
+        "min_f0_hz": 137.3,
+        "max_f0_hz": 333.7,
+        "std_f0_hz": 57.7,
+        "spectral_centroid_hz": 1285.1,
+        "spectral_rolloff_hz": 2642.3
+      },
+      "asr_transcript": "Pebble!"
+    },
+    "cloned_cfg27": {
+      "file": "voxcpm_cfg27_kaboom.wav",
+      "metrics": {
+        "duration_sec": 1.12,
+        "sample_rate": 48000,
+        "rms_db": -10.38,
+        "mean_f0_hz": 191.7,
+        "median_f0_hz": 178.4,
+        "min_f0_hz": 76.6,
+        "max_f0_hz": 380.3,
+        "std_f0_hz": 79.1,
+        "spectral_centroid_hz": 1539.5,
+        "spectral_rolloff_hz": 2635.6
+      },
+      "asr_transcript": "Caboom!"
+    },
+    "pitch_comparison": {
+      "delta_mean_f0_hz": -72.1,
+      "semitone_diff": -5.53
+    }
+  },
+  {
+    "id": "from_downtown",
+    "target_phrase": "From downtown!",
+    "generation_time_sec": 9.87,
+    "original": {
+      "file": "21 - From Downtown (6k).wav",
+      "metrics": {
+        "duration_sec": 1.027,
+        "sample_rate": 6000,
+        "rms_db": -8.5,
+        "mean_f0_hz": 314.1,
+        "median_f0_hz": 336.1,
+        "min_f0_hz": 171.1,
+        "max_f0_hz": 341.4,
+        "std_f0_hz": 45.8,
+        "spectral_centroid_hz": 1195.3,
+        "spectral_rolloff_hz": 2166.8
+      },
+      "asr_transcript": "I'll go, go!"
+    },
+    "cloned_cfg27": {
+      "file": "voxcpm_cfg27_from_downtown.wav",
+      "metrics": {
+        "duration_sec": 1.6,
+        "sample_rate": 48000,
+        "rms_db": -10.16,
+        "mean_f0_hz": 254.2,
+        "median_f0_hz": 282.3,
+        "min_f0_hz": 76.7,
+        "max_f0_hz": 346.2,
+        "std_f0_hz": 66.5,
+        "spectral_centroid_hz": 2241.5,
+        "spectral_rolloff_hz": 4002.4
+      },
+      "asr_transcript": "from downtown."
+    },
+    "pitch_comparison": {
+      "delta_mean_f0_hz": -59.9,
+      "semitone_diff": -3.66
+    }
+  },
+  {
+    "id": "monster_jam",
+    "target_phrase": "Monster jam!",
+    "generation_time_sec": 8.86,
+    "original": {
+      "file": "23 - Monster Jam (6k).wav",
+      "metrics": {
+        "duration_sec": 1.021,
+        "sample_rate": 6000,
+        "rms_db": -9.76,
+        "mean_f0_hz": 322.1,
+        "median_f0_hz": 320.2,
+        "min_f0_hz": 182.9,
+        "max_f0_hz": 393.4,
+        "std_f0_hz": 67.8,
+        "spectral_centroid_hz": 1362.6,
+        "spectral_rolloff_hz": 2223.4
+      },
+      "asr_transcript": "Motherfucker!"
+    },
+    "cloned_cfg27": {
+      "file": "voxcpm_cfg27_monster_jam.wav",
+      "metrics": {
+        "duration_sec": 1.44,
+        "sample_rate": 48000,
+        "rms_db": -12.46,
+        "mean_f0_hz": 220.8,
+        "median_f0_hz": 250.0,
+        "min_f0_hz": 77.1,
+        "max_f0_hz": 352.0,
+        "std_f0_hz": 73.0,
+        "spectral_centroid_hz": 2270.5,
+        "spectral_rolloff_hz": 3936.3
+      },
+      "asr_transcript": "Monster Jam!"
+    },
+    "pitch_comparison": {
+      "delta_mean_f0_hz": -101.3,
+      "semitone_diff": -6.54
+    }
+  },
+  {
+    "id": "razzle_dazzle",
+    "target_phrase": "Razzle Dazzle!",
+    "generation_time_sec": 6.88,
+    "original": {
+      "file": "3 - Razzle Dazzle.wav",
+      "metrics": {
+        "duration_sec": 1.068,
+        "sample_rate": 8000,
+        "rms_db": -9.79,
+        "mean_f0_hz": 276.1,
+        "median_f0_hz": 314.4,
+        "min_f0_hz": 123.1,
+        "max_f0_hz": 337.2,
+        "std_f0_hz": 66.4,
+        "spectral_centroid_hz": 1173.1,
+        "spectral_rolloff_hz": 2078.6
+      },
+      "asr_transcript": "Wazzle Dazzle!"
+    },
+    "cloned_cfg27": {
+      "file": "voxcpm_cfg27_razzle_dazzle.wav",
+      "metrics": {
+        "duration_sec": 1.12,
+        "sample_rate": 48000,
+        "rms_db": -9.77,
+        "mean_f0_hz": 240.8,
+        "median_f0_hz": 246.1,
+        "min_f0_hz": 78.1,
+        "max_f0_hz": 396.0,
+        "std_f0_hz": 70.9,
+        "spectral_centroid_hz": 1456.7,
+        "spectral_rolloff_hz": 2869.3
+      },
+      "asr_transcript": "Raffle Dazzle."
+    },
+    "pitch_comparison": {
+      "delta_mean_f0_hz": -35.3,
+      "semitone_diff": -2.37
+    }
+  },
+  {
+    "id": "rejected",
+    "target_phrase": "Rejected!",
+    "generation_time_sec": 5.88,
+    "original": {
+      "file": "77 - Rejected (7.3k).wav",
+      "metrics": {
+        "duration_sec": 0.831,
+        "sample_rate": 7333,
+        "rms_db": -9.6,
+        "mean_f0_hz": 375.2,
+        "median_f0_hz": 389.3,
+        "min_f0_hz": 241.4,
+        "max_f0_hz": 395.7,
+        "std_f0_hz": 47.4,
+        "spectral_centroid_hz": 1472.5,
+        "spectral_rolloff_hz": 2550.0
+      },
+      "asr_transcript": "We got it!"
+    },
+    "cloned_cfg27": {
+      "file": "voxcpm_cfg27_rejected.wav",
+      "metrics": {
+        "duration_sec": 0.96,
+        "sample_rate": 48000,
+        "rms_db": -11.42,
+        "mean_f0_hz": 229.8,
+        "median_f0_hz": 220.3,
+        "min_f0_hz": 86.4,
+        "max_f0_hz": 381.3,
+        "std_f0_hz": 74.1,
+        "spectral_centroid_hz": 2469.6,
+        "spectral_rolloff_hz": 4164.7
+      },
+      "asr_transcript": "Rejected!"
+    },
+    "pitch_comparison": {
+      "delta_mean_f0_hz": -145.4,
+      "semitone_diff": -8.49
+    }
+  },
+  {
+    "id": "stolen",
+    "target_phrase": "Stolen!",
+    "generation_time_sec": 6.86,
+    "original": {
+      "file": "2 - Stolen.wav",
+      "metrics": {
+        "duration_sec": 0.712,
+        "sample_rate": 8000,
+        "rms_db": -9.67,
+        "mean_f0_hz": 270.3,
+        "median_f0_hz": 298.2,
+        "min_f0_hz": 119.2,
+        "max_f0_hz": 348.2,
+        "std_f0_hz": 79.7,
+        "spectral_centroid_hz": 1435.8,
+        "spectral_rolloff_hz": 2734.7
+      },
+      "asr_transcript": "Stop it!"
+    },
+    "cloned_cfg27": {
+      "file": "voxcpm_cfg27_stolen.wav",
+      "metrics": {
+        "duration_sec": 1.12,
+        "sample_rate": 48000,
+        "rms_db": -11.96,
+        "mean_f0_hz": 193.6,
+        "median_f0_hz": 186.2,
+        "min_f0_hz": 75.1,
+        "max_f0_hz": 399.9,
+        "std_f0_hz": 82.9,
+        "spectral_centroid_hz": 2716.7,
+        "spectral_rolloff_hz": 4715.4
+      },
+      "asr_transcript": "stolen"
+    },
+    "pitch_comparison": {
+      "delta_mean_f0_hz": -76.7,
+      "semitone_diff": -5.78
+    }
+  },
+  {
+    "id": "slams_it",
+    "target_phrase": "Slams it!",
+    "generation_time_sec": 7.1,
+    "original": {
+      "file": "4 -  Slams It.wav",
+      "metrics": {
+        "duration_sec": 0.742,
+        "sample_rate": 8000,
+        "rms_db": -13.31,
+        "mean_f0_hz": 295.1,
+        "median_f0_hz": 329.6,
+        "min_f0_hz": 234.4,
+        "max_f0_hz": 344.3,
+        "std_f0_hz": 50.4,
+        "spectral_centroid_hz": 1761.6,
+        "spectral_rolloff_hz": 3159.5
+      },
+      "asr_transcript": "FOMBIT!"
+    },
+    "cloned_cfg27": {
+      "file": "voxcpm_cfg27_slams_it.wav",
+      "metrics": {
+        "duration_sec": 1.12,
+        "sample_rate": 48000,
+        "rms_db": -10.14,
+        "mean_f0_hz": 259.6,
+        "median_f0_hz": 277.8,
+        "min_f0_hz": 77.2,
+        "max_f0_hz": 335.1,
+        "std_f0_hz": 65.6,
+        "spectral_centroid_hz": 2449.4,
+        "spectral_rolloff_hz": 4386.1
+      },
+      "asr_transcript": "Slams it!"
+    },
+    "pitch_comparison": {
+      "delta_mean_f0_hz": -35.5,
+      "semitone_diff": -2.22
+    }
+  },
+  {
+    "id": "heating_up",
+    "target_phrase": "Heating up!",
+    "generation_time_sec": 6.13,
+    "original": {
+      "file": "51 Heating Up (slow).wav",
+      "metrics": {
+        "duration_sec": 0.746,
+        "sample_rate": 8000,
+        "rms_db": -11.4,
+        "mean_f0_hz": 269.3,
+        "median_f0_hz": 274.9,
+        "min_f0_hz": 170.3,
+        "max_f0_hz": 298.5,
+        "std_f0_hz": 32.9,
+        "spectral_centroid_hz": 1329.4,
+        "spectral_rolloff_hz": 2250.0
+      },
+      "asr_transcript": "No, no, no, no, no."
+    },
+    "cloned_cfg27": {
+      "file": "voxcpm_cfg27_heating_up.wav",
+      "metrics": {
+        "duration_sec": 0.96,
+        "sample_rate": 48000,
+        "rms_db": -11.69,
+        "mean_f0_hz": 262.0,
+        "median_f0_hz": 277.3,
+        "min_f0_hz": 87.1,
+        "max_f0_hz": 397.2,
+        "std_f0_hz": 67.3,
+        "spectral_centroid_hz": 2467.0,
+        "spectral_rolloff_hz": 4214.9
+      },
+      "asr_transcript": "Heading up!"
+    },
+    "pitch_comparison": {
+      "delta_mean_f0_hz": -7.3,
+      "semitone_diff": -0.48
+    }
+  },
+  {
+    "id": "showtime",
+    "target_phrase": "Showtime!",
+    "generation_time_sec": 9.0,
+    "original": {
+      "file": "68 - Showtime.wav",
+      "metrics": {
+        "duration_sec": 1.064,
+        "sample_rate": 8000,
+        "rms_db": -13.28,
+        "mean_f0_hz": 267.8,
+        "median_f0_hz": 240.0,
+        "min_f0_hz": 167.7,
+        "max_f0_hz": 382.7,
+        "std_f0_hz": 64.1,
+        "spectral_centroid_hz": 1333.5,
+        "spectral_rolloff_hz": 2406.7
+      },
+      "asr_transcript": "Showtime!"
+    },
+    "cloned_cfg27": {
+      "file": "voxcpm_cfg27_showtime.wav",
+      "metrics": {
+        "duration_sec": 1.44,
+        "sample_rate": 48000,
+        "rms_db": -11.81,
+        "mean_f0_hz": 202.2,
+        "median_f0_hz": 199.0,
+        "min_f0_hz": 75.2,
+        "max_f0_hz": 357.8,
+        "std_f0_hz": 80.9,
+        "spectral_centroid_hz": 2233.3,
+        "spectral_rolloff_hz": 3712.6
+      },
+      "asr_transcript": "Showtime!"
+    },
+    "pitch_comparison": {
+      "delta_mean_f0_hz": -65.6,
+      "semitone_diff": -4.86
+    }
+  },
+  {
+    "id": "terrible_shot",
+    "target_phrase": "Terrible shot!",
+    "generation_time_sec": 7.97,
+    "original": {
+      "file": "8 - Terrible Shot.wav",
+      "metrics": {
+        "duration_sec": 0.784,
+        "sample_rate": 8000,
+        "rms_db": -9.44,
+        "mean_f0_hz": 308.7,
+        "median_f0_hz": 293.3,
+        "min_f0_hz": 162.6,
+        "max_f0_hz": 397.5,
+        "std_f0_hz": 76.1,
+        "spectral_centroid_hz": 1336.4,
+        "spectral_rolloff_hz": 2431.5
+      },
+      "asr_transcript": "terrible shot."
+    },
+    "cloned_cfg27": {
+      "file": "voxcpm_cfg27_terrible_shot.wav",
+      "metrics": {
+        "duration_sec": 1.28,
+        "sample_rate": 48000,
+        "rms_db": -11.37,
+        "mean_f0_hz": 245.6,
+        "median_f0_hz": 269.6,
+        "min_f0_hz": 75.9,
+        "max_f0_hz": 343.4,
+        "std_f0_hz": 69.7,
+        "spectral_centroid_hz": 1913.4,
+        "spectral_rolloff_hz": 3198.5
+      },
+      "asr_transcript": "Terrible shot!"
+    },
+    "pitch_comparison": {
+      "delta_mean_f0_hz": -63.1,
+      "semitone_diff": -3.96
+    }
+  },
+  {
+    "id": "at_the_buzzer",
+    "target_phrase": "At the buzzer!",
+    "generation_time_sec": 8.28,
+    "original": {
+      "file": "49 - At the Buzzer (7.3k).wav",
+      "metrics": {
+        "duration_sec": 0.766,
+        "sample_rate": 7333,
+        "rms_db": -10.83,
+        "mean_f0_hz": 263.6,
+        "median_f0_hz": 262.7,
+        "min_f0_hz": 165.9,
+        "max_f0_hz": 299.0,
+        "std_f0_hz": 35.3,
+        "spectral_centroid_hz": 1193.4,
+        "spectral_rolloff_hz": 2206.0
+      },
+      "asr_transcript": "Have a booger!"
+    },
+    "cloned_cfg27": {
+      "file": "voxcpm_cfg27_at_the_buzzer.wav",
+      "metrics": {
+        "duration_sec": 1.28,
+        "sample_rate": 48000,
+        "rms_db": -10.17,
+        "mean_f0_hz": 259.3,
+        "median_f0_hz": 263.9,
+        "min_f0_hz": 76.3,
+        "max_f0_hz": 387.8,
+        "std_f0_hz": 79.3,
+        "spectral_centroid_hz": 2002.5,
+        "spectral_rolloff_hz": 3502.1
+      },
+      "asr_transcript": "At the buzzer!"
+    },
+    "pitch_comparison": {
+      "delta_mean_f0_hz": -4.3,
+      "semitone_diff": -0.28
+    }
+  },
+  {
+    "id": "welcome_to_nba_jam",
+    "target_phrase": "Welcome to NBA Jam!",
+    "generation_time_sec": 11.02,
+    "original": {
+      "file": "28 - Welcome to NBA JAM (slightly slow).wav",
+      "metrics": {
+        "duration_sec": 6.948,
+        "sample_rate": 8000,
+        "rms_db": -16.09,
+        "mean_f0_hz": 251.6,
+        "median_f0_hz": 268.2,
+        "min_f0_hz": 78.3,
+        "max_f0_hz": 362.1,
+        "std_f0_hz": 78.2,
+        "spectral_centroid_hz": 1748.7,
+        "spectral_rolloff_hz": 3030.0
+      },
+      "asr_transcript": "Welcome to NBAJ!"
+    },
+    "cloned_cfg27": {
+      "file": "voxcpm_cfg27_welcome_to_nba_jam.wav",
+      "metrics": {
+        "duration_sec": 1.76,
+        "sample_rate": 48000,
+        "rms_db": -11.23,
+        "mean_f0_hz": 215.5,
+        "median_f0_hz": 221.4,
+        "min_f0_hz": 75.0,
+        "max_f0_hz": 399.9,
+        "std_f0_hz": 69.9,
+        "spectral_centroid_hz": 2117.3,
+        "spectral_rolloff_hz": 3714.0
+      },
+      "asr_transcript": "Welcome to NBA Jam."
+    },
+    "pitch_comparison": {
+      "delta_mean_f0_hz": -36.1,
+      "semitone_diff": -2.68
+    }
+  }
+]

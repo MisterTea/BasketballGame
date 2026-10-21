@@ -10,7 +10,7 @@ Import `project.godot` in **Godot 4.5.1 or newer 4.x**, then press **F6/F5** to 
 godot --path E:/github/jam_game
 ```
 
-A Windows convenience launcher is included: `./play.ps1 -Godot 'C:/path/to/godot.exe'`. No exported executable or Godot engine binary is checked into Git.
+A Windows convenience launcher is included: `./play.ps1 -Godot 'C:/path/to/godot.exe'`. Pass `-QuickPlay` (or `-Quick` / `-qp`) to jump straight into a match with the standard teams, bypassing all menus for fast gameplay iteration: `./play.ps1 -QuickPlay`. No exported executable or Godot engine binary is checked into Git.
 
 On macOS, the window automatically follows the current display's backing scale: 2560 × 1600 on a 2× Retina display and 1280 × 800 on a 1× display. Moving the game between displays updates the window size, with automatic fitting when the usable desktop is smaller than the preferred size.
 
@@ -100,16 +100,26 @@ The tip-off suite checks opening input, both teams winning, CPU/human authority,
 
 Tested with official Godot 4.5.1 on Windows; network tests use loopback. Public-internet latency, packet loss, real gamepad hardware, other operating systems, and exported builds have not been validated.
 
+## Cloned Announcer Commentary
+
+The game features dynamic, cloned arcade commentary generated via VoxCPM voice synthesis from iconic arcade announcer reference audio. Announcer clips are stored in `voices/announcer/` and loaded by `scripts/main.gd`. Whenever an in-game event triggers an announcement banner (e.g. tip-off, dunks, boomshakalaka, downtown threes, rejections, fire streaks, turnovers, goaltending, quarter transitions, and buzzer beaters), the dedicated `announcer_player` plays the corresponding voice line in sync with the visual announcement.
+
+The synthesis scripts, reference audio, and model evaluation code live in `voices/`:
+- `voices/synthesize_all_announcements.py`: batch synthesis pipeline that generates, trims, normalizes, and manifests all announcer lines.
+- `voices/announcer/announcements_manifest.json`: dictionary mapping all banner events and IDs to audio streams.
+- `voices/cloned_announcer_voxcpm/`: composite reference audio and pitch comparison evaluation results.
+
 ## Scope and remaining work
 
 This is a playable original prototype, **not feature-for-feature NBA Jam arcade parity**. It uses original low-poly 3D art, an elevated sideline camera, and fictional teams, rather than licensed NBA rosters, digitized sprites, or original audio. Not included: all historical rosters and secret characters, substitutions, arcade cabinet credit/service/DIP-switch emulation, licensed commentary and music, original animation/collision fidelity, attract/replay sequences, exact original shattering triggers, online matchmaking, controller-only menus, remappable controls, and production-quality network prediction/reconnection. Tuning and extended human playtesting remain necessary.
 
 ## Source map
 
-- `scripts/main.gd`: menu flow, local inputs, HUD, sound, saved records, arcade ladder.
+- `scripts/main.gd`: menu flow, local inputs, HUD, sound effects, cloned announcer voice playback, saved records, arcade ladder.
 - `scripts/arena_3d.gd`: 3D arena, repeating hardwood, player action selection, baskets, billboard crowd shader/atlas, sideline camera, and ball presentation.
 - `scripts/hy_motion_rig.gd`: exact SMPL-H Skeleton3D, bone-attached low-poly mesh, generated clip playback, blending and event timing.
 - `tools/generate_hy_motion.py`: local text encoding, standard-model inference, native skeleton export, rotation conversion, loop selection, and provenance.
+- `voices/`: announcer speech synthesis pipeline, models, audio references, experiments, and runtime commentary clips (`voices/announcer/`).
 - `scripts/match_state.gd`: host/offline simulation, CPU behavior, basketball rules, snapshots.
 - `scripts/network.gd`: ENet lobby, peer slots, readiness, validated inputs, state delivery.
 - `scripts/teams.gd`: original teams and athlete ratings.
