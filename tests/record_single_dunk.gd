@@ -2,7 +2,6 @@ extends SceneTree
 
 const DunkCallouts = {
 	"standard": "SLAM DUNK!",
-	"backflip": "BACKFLIP DUNK!",
 	"frontflip": "SOMERSAULT JAM!",
 	"helicopter": "HELICOPTER SLAM!",
 	"spin_360": "360 WINDMILL!",
@@ -14,7 +13,7 @@ func _initialize() -> void:
 	call_deferred("run")
 
 func run() -> void:
-	var dunk_style = "backflip"
+	var dunk_style = "between_legs"
 	var args = OS.get_cmdline_user_args()
 	for i in range(args.size()):
 		if args[i] == "--dunk-style" and i + 1 < args.size():
@@ -75,10 +74,9 @@ func run() -> void:
 	main_scene.game.flight.dunk_style = dunk_style
 	main_scene.game.banner = DunkCallouts.get(dunk_style, "SLAM DUNK!")
 	main_scene.game.banner_time = 2.0
-	if dunk_style != "standard":
-		main_scene.game.flight.super_dunk = true
-		main_scene.game.flight.duration = 1.45
-		main_scene.game.flight.arc_height = 3.0
+	main_scene.game.flight.super_dunk = (dunk_style != "standard")
+	main_scene.game.flight.duration = 1.35
+	main_scene.game.flight.arc_height = 2.4 if dunk_style == "standard" else 3.0
 	
 	# Record through flight, rim impact, and landing
 	for f in range(120):

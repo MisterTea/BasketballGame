@@ -298,11 +298,11 @@ func apply_stumble_pose(progress: float) -> void:
 
 func apply_dunk_pose(style: String, progress: float) -> void:
  var p = clampf(progress, 0.0, 1.0)
+ skeleton.set_bone_pose_rotation(0, remove_heading(base_rotations[0]))
  match style:
   "between_legs":
    if p > 0.15 and p < 0.72:
     var dip = sin(clampf((p - 0.15) / 0.57, 0.0, 1.0) * PI)
-    skeleton.set_bone_pose_rotation(0, remove_heading(base_rotations[0]))
     # High left knee and tucked hip to open path under thigh
     var q_hip_l = Quaternion(Vector3.RIGHT, deg_to_rad(85.0 * dip)) * Quaternion(Vector3.FORWARD, deg_to_rad(-16.0 * dip))
     skeleton.set_bone_pose_rotation(1, base_rotations[1] * q_hip_l)
@@ -324,24 +324,32 @@ func apply_dunk_pose(style: String, progress: float) -> void:
     var target_el_r = Quaternion(Vector3.RIGHT, deg_to_rad(30.0)) * Quaternion(Vector3.UP, deg_to_rad(-15.0))
     skeleton.set_bone_pose_rotation(18, base_rotations[18].slerp(target_el_l, dip))
     skeleton.set_bone_pose_rotation(19, base_rotations[19].slerp(target_el_r, dip))
-  "backflip", "frontflip":
-   if p > 0.06 and p < 0.80:
-    var flip_p = clampf((p - 0.06) / 0.74, 0.0, 1.0)
+  "frontflip":
+   if p > 0.05 and p < 0.80:
+    var flip_p = clampf((p - 0.05) / 0.75, 0.0, 1.0)
     var tuck = sin(flip_p * PI)
-    skeleton.set_bone_pose_rotation(0, remove_heading(base_rotations[0]))
-    # Athletic knee and hip tuck during the flip
-    var q_knee = Quaternion(Vector3.RIGHT, deg_to_rad(-70.0 * tuck))
+    # Duck / cannonball tuck during manual somersault
+    var q_knee = Quaternion(Vector3.RIGHT, deg_to_rad(-105.0 * tuck))
     skeleton.set_bone_pose_rotation(4, base_rotations[4] * q_knee)
     skeleton.set_bone_pose_rotation(5, base_rotations[5] * q_knee)
-    var q_hip = Quaternion(Vector3.RIGHT, deg_to_rad(65.0 * tuck))
+    var q_hip = Quaternion(Vector3.RIGHT, deg_to_rad(85.0 * tuck))
     skeleton.set_bone_pose_rotation(1, base_rotations[1] * q_hip)
     skeleton.set_bone_pose_rotation(2, base_rotations[2] * q_hip)
-    var q_spine = Quaternion(Vector3.RIGHT, deg_to_rad(20.0 * tuck))
+    var q_spine = Quaternion(Vector3.RIGHT, deg_to_rad(35.0 * tuck))
     skeleton.set_bone_pose_rotation(3, base_rotations[3] * q_spine)
     skeleton.set_bone_pose_rotation(6, base_rotations[6] * q_spine)
-    var q_sh = Quaternion(Vector3.RIGHT, deg_to_rad(-25.0 * tuck))
-    skeleton.set_bone_pose_rotation(16, q_sh * base_rotations[16])
-    skeleton.set_bone_pose_rotation(17, q_sh * base_rotations[17])
+    var target_sh_l = Quaternion(Vector3.FORWARD, deg_to_rad(55.0)) * Quaternion(Vector3.RIGHT, deg_to_rad(35.0))
+    var target_sh_r = Quaternion(Vector3.FORWARD, deg_to_rad(-55.0)) * Quaternion(Vector3.RIGHT, deg_to_rad(35.0))
+    skeleton.set_bone_pose_rotation(16, base_rotations[16].slerp(target_sh_l, tuck))
+    skeleton.set_bone_pose_rotation(17, base_rotations[17].slerp(target_sh_r, tuck))
+  "spin_360":
+   if p < 0.80:
+    # One arm holding ball high up, other arm down at side
+    var q_sh_l = Quaternion(Vector3.FORWARD, deg_to_rad(-80.0))
+    skeleton.set_bone_pose_rotation(16, q_sh_l)
+    skeleton.set_bone_pose_rotation(18, Quaternion.IDENTITY)
+    var q_sh_r = Quaternion(Vector3.FORWARD, deg_to_rad(-85.0)) * Quaternion(Vector3.RIGHT, deg_to_rad(45.0))
+    skeleton.set_bone_pose_rotation(17, q_sh_r)
   "behind_back":
    if p > 0.20 and p < 0.75:
     var dip = sin((p - 0.20) / 0.55 * PI)
@@ -349,3 +357,15 @@ func apply_dunk_pose(style: String, progress: float) -> void:
     skeleton.set_bone_pose_rotation(17, q_sh_r * base_rotations[17])
     var q_sh_l = Quaternion(Vector3.UP, deg_to_rad(30.0 * dip))
     skeleton.set_bone_pose_rotation(16, q_sh_l * base_rotations[16])
+
+func reach_rim(blend: float, one_handed: bool = false) -> void:
+ if blend <= 0.001:
+  return
+ var target_sh_l = Quaternion(Vector3.FORWARD, deg_to_rad(85.0)) * Quaternion(Vector3.RIGHT, deg_to_rad(30.0))
+ var target_sh_r = Quaternion(Vector3.FORWARD, deg_to_rad(-85.0)) * Quaternion(Vector3.RIGHT, deg_to_rad(30.0))
+ var target_el = Quaternion(Vector3.RIGHT, deg_to_rad(15.0))
+ if not one_handed:
+  skeleton.set_bone_pose_rotation(16, base_rotations[16].slerp(target_sh_l, blend))
+  skeleton.set_bone_pose_rotation(18, base_rotations[18].slerp(target_el, blend))
+ skeleton.set_bone_pose_rotation(17, base_rotations[17].slerp(target_sh_r, blend))
+ skeleton.set_bone_pose_rotation(19, base_rotations[19].slerp(target_el, blend))

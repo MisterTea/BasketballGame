@@ -207,7 +207,7 @@ func run() -> void:
  check(absf(arena.camera.fov - arena.BASE_FOV) < 0.05 and absf(arena.camera.position.y - arena.BASE_CAM_Y) < 0.05 and arena.dunk_shake_timer == 0.0, "camera cleanly recovers base framing and shake decays to zero")
 
  # Dunk hand attachment and rim delivery presentation tests
- var dunk_styles_tested = ["frontflip", "backflip", "helicopter", "standard"]
+ var dunk_styles_tested = ["frontflip", "helicopter", "standard", "between_legs"]
  var all_dunks_stay_in_hands = true
  for style in dunk_styles_tested:
   state.flight = {

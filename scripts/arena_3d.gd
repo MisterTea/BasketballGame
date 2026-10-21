@@ -15,6 +15,7 @@ var athletes: Array = []
 var basketball: Node3D
 var ball_fire: Array = []
 var ball_trail: Array = []
+var ball_trail_history: Array[Vector3] = []
 var crowd: MultiMeshInstance3D
 var wood_material: StandardMaterial3D
 var last_teams: Array = []
@@ -913,38 +914,36 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   var is_stunned = p.stun > 0.0
   var is_running = p.vel.length() > 8 and not is_stunned
   var is_shot_actor = not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.shooter == i
+  var is_dunking = (is_shot_actor and state.flight.get("dunk", false)) or p.get("rim_hang", 0.0) > 0.0
+  var dunk_style = state.flight.get("dunk_style", "standard") if (not state.flight.is_empty() and state.flight.get("dunk", false)) else "standard"
+  var dunk_p = clampf(state.flight.time / state.flight.duration, 0.0, 1.0) if not state.flight.is_empty() else 1.0
+  if p.get("rim_hang", 0.0) > 0.0:
+   actor.body.position.y = 1.35
   var hoop_dir = state.hoop_for(i/2) - p.pos
-  var target_angle = movement_facing_angle(hoop_dir) if (is_shot_actor and not state.flight.dunk) else (movement_facing_angle(p.vel) if is_running else (PI/2 if p.face > 0 else -PI/2))
+  var target_angle = movement_facing_angle(hoop_dir) if (is_shot_actor or p.get("rim_hang", 0.0) > 0.0) else (movement_facing_angle(p.vel) if is_running else (PI/2 if p.face > 0 else -PI/2))
   var faces_ball_for_block = p.jump > 0 and p.receive_jump <= 0 and tip_jump < 0 and not is_shot_actor
   # Locomotion must point along travel immediately; smoothing here made athletes
   # visibly run backward while their body caught up after a direction change.
-  actor.body.rotation.y = target_angle if (is_running or (is_shot_actor and not state.flight.dunk)) else lerp_angle(actor.body.rotation.y,target_angle,1.0-exp(-motion_delta*15))
+  actor.body.rotation.y = target_angle if (is_running or is_shot_actor or p.get("rim_hang", 0.0) > 0.0) else lerp_angle(actor.body.rotation.y,target_angle,1.0-exp(-motion_delta*15))
   if p.get("spin", 0.0) > 0.0:
    actor.body.rotation.y = target_angle + (1.0 - p.spin / 0.45) * TAU
   elif p.get("elbow", 0.0) > 0.0:
    actor.body.rotation.y = target_angle + sin((1.0 - p.elbow / 0.50) * TAU * 2.0) * 0.9
-  var is_dunking = is_shot_actor and state.flight.dunk
   if is_dunking:
-   var dunk_style = state.flight.get("dunk_style", "standard")
-   var dunk_p = clampf(state.flight.time / state.flight.duration, 0.0, 1.0)
    var face_dir = 1.0 if p.face > 0 else -1.0
    match dunk_style:
     "helicopter":
-     actor.body.rotation.y = target_angle + dunk_p * TAU * 3.0
+     var spin_p = clampf(dunk_p / 0.80, 0.0, 1.0)
+     actor.body.rotation.y = target_angle + spin_p * TAU * 2.0
      actor.body.rotation.z = 0.0
      actor.body.rotation.x = 0.0
     "frontflip":
-     var flip_p = clampf((dunk_p - 0.06) / 0.74, 0.0, 1.0)
+     var flip_p = clampf((dunk_p - 0.05) / 0.75, 0.0, 1.0)
      actor.body.rotation.y = target_angle
      actor.body.rotation.x = flip_p * TAU
      actor.body.rotation.z = 0.0
-    "backflip":
-     var flip_p = clampf((dunk_p - 0.06) / 0.74, 0.0, 1.0)
-     actor.body.rotation.y = target_angle
-     actor.body.rotation.x = -flip_p * TAU
-     actor.body.rotation.z = 0.0
     "spin_360":
-     var spin_p = clampf(dunk_p / 0.82, 0.0, 1.0)
+     var spin_p = clampf(dunk_p / 0.80, 0.0, 1.0)
      actor.body.rotation.y = target_angle + spin_p * TAU
      actor.body.rotation.z = 0.0
      actor.body.rotation.x = 0.0
@@ -953,10 +952,13 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
      actor.body.rotation.z = 0.0
      actor.body.rotation.x = 0.0
     "behind_back":
-     actor.body.rotation.y = target_angle + sin(dunk_p * PI) * 0.75 * face_dir
+     var twist_p = clampf((dunk_p - 0.20) / 0.55, 0.0, 1.0)
+     var twist = sin(twist_p * PI) if (dunk_p > 0.20 and dunk_p < 0.75) else 0.0
+     actor.body.rotation.y = target_angle + twist * 0.75 * face_dir
      actor.body.rotation.z = 0.0
-     actor.body.rotation.x = sin(dunk_p * PI) * 0.25
+     actor.body.rotation.x = twist * 0.25
     _:
+     actor.body.rotation.y = target_angle
      actor.body.rotation.z = 0.0
      actor.body.rotation.x = 0.0
   else:
@@ -1000,6 +1002,9 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   elif state.pending_inbound >= 0 and state.shatter_shooter == i:
    next_action = "dunk"
    phase = 1.0
+  elif p.get("rim_hang", 0.0) > 0.0:
+   next_action = "dunk"
+   phase = 1.0
   elif p.receive_jump > 0:
    next_action = "block"
    var progress = 1.0-clampf(p.receive_jump/0.7,0,1)
@@ -1033,8 +1038,32 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
    next_action = "dribble" if state.owner == i else "run"
   elif state.owner >= 0 and state.owner/2 != i/2:
    next_action = "defense"
-  var extra_arg = state.flight.get("dunk_style", "standard") if next_action == "dunk" else p.get("shove_kind","")
+  var extra_arg = dunk_style if next_action == "dunk" else p.get("shove_kind","")
   actor.body.animate(next_action,motion_delta,phase,lerpf(0.75,1.5,running),paused,extra_arg)
+  if is_dunking:
+   var reach_blend = 0.0
+   if dunk_p >= 0.85:
+    reach_blend = clampf((dunk_p - 0.85) / 0.07, 0.0, 1.0)
+   elif p.get("rim_hang", 0.0) > 0.0:
+    reach_blend = 1.0
+   var is_one_handed = (dunk_style == "spin_360" and dunk_p < 0.94)
+   actor.body.reach_rim(reach_blend, is_one_handed)
+   if reach_blend > 0.0:
+    var hoop_pos = state.flight.end if not state.flight.is_empty() else state.hoop_for(i / 2)
+    var b_idx = 0 if hoop_pos.x < 640 else 1
+    var rim_target = court_point(hoop_pos, 3.05 - rim_dips[b_idx])
+    var rim_local = actor.skeleton.global_transform.affine_inverse() * rim_target
+    var target_l = Transform3D(Basis.IDENTITY, rim_local + Vector3(0.12, 0.02, -0.05))
+    var target_r = Transform3D(Basis.IDENTITY, rim_local + Vector3(-0.12, 0.02, -0.05))
+    if not is_one_handed:
+     actor.skeleton.set_bone_global_pose_override(20, target_l, reach_blend, true)
+    else:
+     actor.skeleton.set_bone_global_pose_override(20, Transform3D.IDENTITY, 0.0, false)
+    actor.skeleton.set_bone_global_pose_override(21, target_r, reach_blend, true)
+   else:
+    actor.skeleton.clear_bones_global_pose_override()
+  else:
+   actor.skeleton.clear_bones_global_pose_override()
   if faces_ball_for_block and next_action == "block":
    # The generated block clip includes some root rotation. Compensate for it so
    # the rendered athlete, not just its outer node, tracks the ball precisely.
@@ -1140,6 +1169,8 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   elif dunk_style == "between_legs" and dunk_p > 0.15 and dunk_p < 0.72:
    var dip = sin(clampf((dunk_p - 0.15) / 0.57, 0.0, 1.0) * PI)
    ball_on_hands = hands_mid + fwd_dir * 0.08 - up_dir * (dip * 0.04)
+  elif dunk_style == "spin_360":
+   ball_on_hands = hand_r.origin + fwd_dir * 0.08 + up_dir * 0.05
   var b_idx = 0 if state.flight.end.x < 640 else 1
   var rim_target = court_point(state.flight.end, 3.05 - rim_dips[b_idx])
   if dunk_p < 0.88:
@@ -1254,31 +1285,30 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
  var burning_shot = is_shot and state.is_player_on_fire(state.flight.shooter) and not state.flight.blocked
  var is_turbo_lob = in_flight and (state.flight.get("turbo",false) or state.flight.get("alley",false) or state.flight.get("super_dunk",false))
  var trail_mat = material(Color("ff4400") if burning_shot else (GOLD if is_turbo_lob else Color("70dcff")), 0.5, true)
+ if not paused:
+  if in_flight:
+   ball_trail_history.push_front(basketball.global_position)
+   if ball_trail_history.size() > 32:
+    ball_trail_history.resize(32)
+  else:
+   ball_trail_history.clear()
  for i in range(ball_trail.size()):
   var p_mesh: MeshInstance3D = ball_trail[i]
   p_mesh.visible = in_flight
   if in_flight:
    p_mesh.material_override = trail_mat
-   var delay_t = 0.018 * (i + 1)
-   var delayed_p = clampf(state.flight.time / state.flight.duration - delay_t, 0.0, 1.0)
-   var pt: Vector2 = state.flight.start.lerp(state.flight.end, delayed_p)
-   var arc_h = state.flight.get("arc_height", 1.7 if state.flight.get("dunk",false) else 4.6) if is_shot else (1.4 if state.flight.get("alley",false) else 0.5)
-   var start_h = state.flight.get("release_height", 1.3) if is_shot else state.flight.get("start_height", 1.1)
-   var end_h = 3.05 if is_shot else state.flight.get("end_height", 1.1)
-   var h = lerpf(start_h, end_h, delayed_p) + sin(delayed_p * PI) * arc_h
-   p_mesh.position = court_point(pt, h)
+   var hist_idx = mini(i + 1, ball_trail_history.size() - 1) if ball_trail_history.size() > 0 else -1
+   p_mesh.position = ball_trail_history[hist_idx] if hist_idx >= 0 else basketball.global_position
    var sc = (1.0 - float(i) / float(ball_trail.size())) * 0.85
    p_mesh.scale = Vector3.ONE * sc
  for i in range(ball_fire.size()):
   var ember: MeshInstance3D = ball_fire[i]
   ember.visible = burning_shot
   if burning_shot:
-   var t = clampf(state.flight.time/state.flight.duration-0.018*(i+1),0,1)
-   var point: Vector2 = state.flight.start.lerp(state.flight.end,t)
-   point += ball-state.flight_position()
-   var height = lerpf(state.flight.get("release_height",1.3),3.05,t)+sin(t*PI)*state.flight.get("arc_height",1.7 if state.flight.dunk else 4.6)
-   ember.position = court_point(point,height+0.10+0.08*sin(time*17+i))
-   ember.scale = Vector3.ONE*(1.0-float(i)/10.0)
+   var hist_idx = mini(i + 1, ball_trail_history.size() - 1) if ball_trail_history.size() > 0 else -1
+   var base_pos = ball_trail_history[hist_idx] if hist_idx >= 0 else basketball.global_position
+   ember.position = base_pos + Vector3(0, 0.10 + 0.08 * sin(time * 17.0 + i), 0)
+   ember.scale = Vector3.ONE * (1.0 - float(i) / 10.0)
 
 func shot_meter_position(index: int) -> Vector2:
  var actor: Dictionary = athletes[index]

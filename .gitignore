@@ -19,3 +19,5 @@ cfg/
 sta/
 
 tests/video_samples/
+*.mp4
+dunk_frames/
