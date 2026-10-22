@@ -51,19 +51,21 @@ func run() -> void:
 	check(has_a, "p0_pass has Joypad A button (bottom thumb button)")
 	check(has_b, "p0_pass has Joypad B button (right thumb button / steal / shove)")
 
-	# Check 4: Right shoulder buttons: RT (Right Trigger) and RB (Right Bumper) for Boost (Turbo)
+	# Check 4: RT (Right Trigger) is the sole gamepad control for Boost (Turbo)
 	var turbo_events = InputMap.action_get_events("p0_turbo")
 	var has_rb = turbo_events.any(func(e): return e is InputEventJoypadButton and e.button_index == JOY_BUTTON_RIGHT_SHOULDER)
 	var has_rt = turbo_events.any(func(e): return e is InputEventJoypadMotion and e.axis == JOY_AXIS_TRIGGER_RIGHT)
-	check(has_rb, "p0_turbo has Right Bumper (RB)")
 	check(has_rt, "p0_turbo has Right Trigger (RT) for boost")
+	check(not has_rb, "p0_turbo does not use Right Bumper (RB)")
 
-	# Check 5: Left shoulder buttons: LB (Left Bumper) and LT (Left Trigger) for Switch Athlete
+	# Check 5: RB (Right Bumper) is the sole gamepad control for Switch Athlete
 	var switch_events = InputMap.action_get_events("p0_switch")
+	var switch_has_rb = switch_events.any(func(e): return e is InputEventJoypadButton and e.button_index == JOY_BUTTON_RIGHT_SHOULDER)
 	var has_lb = switch_events.any(func(e): return e is InputEventJoypadButton and e.button_index == JOY_BUTTON_LEFT_SHOULDER)
 	var has_lt = switch_events.any(func(e): return e is InputEventJoypadMotion and e.axis == JOY_AXIS_TRIGGER_LEFT)
-	check(has_lb, "p0_switch has Left Bumper (LB)")
-	check(has_lt, "p0_switch has Left Trigger (LT)")
+	check(switch_has_rb, "p0_switch has Right Bumper (RB)")
+	check(not has_lb, "p0_switch does not use Left Bumper (LB)")
+	check(not has_lt, "p0_switch does not use Left Trigger (LT)")
 
 	# Check 6: UI actions have gamepad buttons for navigation
 	var ui_accept_events = InputMap.action_get_events("ui_accept")

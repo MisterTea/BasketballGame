@@ -56,10 +56,28 @@ func run() -> void:
  drive(s,0.58,true,false)
  check(s.flight.get("finish","") == "jumper" and not s.flight.dunk,"holding Turbo and Shoot while standing cannot create a dunk")
  s = fresh()
- s.players[0].pos = Vector2(955,465)
+ var hoop = s.hoop_for(0)
+ # Stay outside the 80-unit no-turbo dunk line and inside a jump shot.
+ s.players[0].pos = hoop + Vector2(-220, 0)
  s.ball = s.players[0].pos
  drive(s,0.22,false)
- check(s.flight.get("finish","") == "layup" and s.flight.layup and not s.flight.dunk,"a short running Shoot hold releases a layup")
+ check(s.flight.get("finish","") == "jumper" and not s.flight.dunk and not s.flight.layup,"a short running shot outside 80 ASM units without turbo is a jumper")
+ s = fresh()
+ hoop = s.hoop_for(0)
+ s.players[0].pos = hoop + Vector2(-140, 0)
+ s.players[0].vel = Vector2(200, 0)
+ s.players[2].pos = hoop + Vector2(-90, 0)
+ s.ball = s.players[0].pos
+ var laid_up = false
+ for seed_value in range(40):
+  s.rng.seed = seed_value
+  if s.finish_kind(0, false) != "layup":
+   continue
+  s.rng.seed = seed_value
+  s.shoot_ball(0, false)
+  laid_up = s.flight.get("finish","") == "layup"
+  break
+ check(laid_up and s.flight.layup and not s.flight.dunk,"a defender in the dunk lane can turn the attempt into a layup")
  check(s.flight.points == 2 and s.flight.arc_height == 1.0 and s.stats[0].attempts == 1,"layups use a lower two-point trajectory and one field-goal attempt")
  var layup = MatchState.new()
  layup.apply_snapshot(s.snapshot())
@@ -73,17 +91,23 @@ func run() -> void:
  s.tick_flight(1)
  check(s.score == [2,0] and s.stats[0].dunks == 0,"a made layup scores without increasing dunk statistics")
  s = fresh()
- s.players[0].pos = Vector2(965,465)
+ s.players[0].pos = s.hoop_for(0) + Vector2(-70, 0)
  s.ball = s.players[0].pos
+ var events_before = s.event_id
  drive(s,0.5,false)
- check(s.flight.get("finish","") == "dunk" and not s.flight.super_dunk,"holding Shoot on a close approach launches a regular dunk without Turbo")
+ check(s.flight.get("finish","") == "dunk" and not s.flight.super_dunk,"a close shot leaves the floor as a dunk instead of waiting for the release")
+ check(s.event_id == events_before,"the dunk call waits for the score instead of playing on the way up")
  var normal_duration: float = s.flight.duration
  var normal_arc: float = s.flight.arc_height
+ s.flight.time = s.flight.duration
+ s.flight.made = true
+ s.tick_flight(0.016)
+ check(s.banner == "SLAM DUNK!" and s.event_id == events_before + 1,"a made dunk says slams it once")
  s = fresh()
- s.players[0].pos = Vector2(965,465)
+ s.players[0].pos = s.hoop_for(0) + Vector2(-240, 0)
  s.ball = s.players[0].pos
  drive(s,0.5,true)
- check(s.flight.get("finish","") == "turbo_dunk" and s.flight.super_dunk,"Turbo and a moving Shoot hold launch the specialty dunk before release")
+ check(s.flight.get("finish","") == "turbo_dunk" and s.flight.super_dunk,"Turbo inside the long dunk line leaves the floor in a specialty dunk")
  check(s.players[0].pos == s.flight.player_start,"a finisher starts from its actual launch point instead of teleporting toward the rim")
  check(s.flight.duration > normal_duration and s.flight.arc_height > normal_arc,"specialty dunks have a higher, longer flight than regular dunks")
  var attempts: int = s.stats[0].attempts
@@ -92,15 +116,15 @@ func run() -> void:
  check(s.stats[0].attempts == attempts,"continuing to hold Shoot cannot relaunch an airborne dunk")
  check(s.players[0].pos.x > launch_position.x and s.players[0].pos.x <= s.flight.player_end.x,"a launched dunk glides toward the basket despite opposite movement input")
  s = fresh()
- s.players[0].pos = Vector2(960,465)
+ s.players[0].pos = s.hoop_for(0) + Vector2(-70, 0)
  s.ball = s.players[0].pos
  drive(s,0.10,false)
- check(s.flight.is_empty() and s.players[0].fake > 0 and s.owner == 0,"a quick tap still head-fakes while running")
+ check(s.flight.get("dunk", false) and s.stats[0].attempts == 1 and not s.players[0].dribble_locked,"a tap inside dunk range goes up for the dunk; seq_jump only fakes a jumper")
  s = fresh()
- s.players[0].pos = Vector2(800,465)
+ s.players[0].pos = s.hoop_for(0) + Vector2(-420, 0)
  s.ball = s.players[0].pos
  drive(s,0.2,true)
- check(s.flight.get("finish","") == "jumper","running shots outside the finishing range remain jump shots")
+ check(s.flight.get("finish","") == "jumper","running shots outside 170 ASM units remain jump shots")
  s = fresh()
  s.quarter = 4
  s.players[0].pos = s.hoop_for(0)+Vector2(100,0)
@@ -131,14 +155,14 @@ func run() -> void:
  var active_catches = 0
  var active_misses = 0
  var valid_catches = true
- for seed_value in range(20):
+ for seed_value in range(200):
   s = stage_pass(seed_value,false)
   s.flight.time = s.flight.duration*0.5
   s.ball = s.flight_position()
   s.steal(2,false)
   if s.owner == 2:
    active_catches += 1
-   valid_catches = valid_catches and s.flight.is_empty() and s.stats[2].steals == 1 and s.score == [0,0] and s.shot_clock == 24
+   valid_catches = valid_catches and s.flight.is_empty() and s.stats[2].steals == 1 and s.score == [0,0] and is_equal_approx(s.shot_clock, MatchState.SHOT_CLOCK_SECONDS)
   else:
    active_misses += 1
  check(active_catches > 0 and active_misses > 0,"active lane swipes can succeed or miss instead of guaranteeing a steal")
@@ -150,7 +174,7 @@ func run() -> void:
  s.players[0].charge = 0.58
  check(s.finish_kind(0,true) == "dunk","an empty Turbo meter cannot grant a specialty dunk")
  s = fresh()
- s.players[0].pos = Vector2(955,465)
+ s.players[0].pos = s.hoop_for(0) + Vector2(-220, 0)
  s.ball = s.players[0].pos
  var commands = neutral()
  commands[0] = {"move":Vector2.RIGHT,"shoot":true}
@@ -158,12 +182,20 @@ func run() -> void:
   s.tick(1.0/60.0,commands)
  commands[0] = {"move":Vector2.ZERO,"shoot":false}
  s.tick(1.0/60.0,commands)
- check(s.flight.get("finish","") == "layup","releasing movement and Shoot together preserves recent drive momentum")
- s.flight.time = s.flight.duration*0.92
- s.ball = s.flight_position()
- s.players[2].pos = s.ball
- s.defend(2,false)
- check(s.stats[2].goaltends == 1 and s.score[0] == 2,"descending released layups retain normal goaltending rules")
+ check(s.flight.get("finish","") == "jumper","releasing a no-turbo drive outside 80 ASM units stays a jumper")
+ var layup_shot = s.snapshot()
+ var layup_whistle = false
+ for n in range(80):
+  s.apply_snapshot(layup_shot)
+  s.rng.seed = 4000 + n
+  s.flight.time = s.flight.duration*0.92
+  s.ball = s.flight_position()
+  s.players[2].pos = s.ball
+  s.defend(2,false)
+  if s.stats[2].goaltends == 1 and s.score[0] == 2:
+   layup_whistle = true
+   break
+ check(layup_whistle,"descending released layups can be goaltended when the swat connects")
  s = stage_pass(1,false)
  s.players[2].stun = 1
  while not s.flight.is_empty():

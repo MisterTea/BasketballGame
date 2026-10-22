@@ -24,7 +24,10 @@ func dunk(s: MatchState, shooter: int, made: bool = true, blocked: bool = false)
  s.freeze = 0
  s.owner = shooter
  var hoop = s.hoop_for(shooter/2)
- s.players[shooter].pos = hoop+Vector2(110 if hoop.x < 640 else -110,0)
+ s.players[shooter].pos = hoop+Vector2(180 if hoop.x < 640 else -180,0)
+ for other in range(4):
+  if other != shooter:
+   s.players[other].pos = hoop + Vector2(360 if hoop.x < 640 else -360, 170 if other % 2 == 0 else -170)
  s.players[shooter].charge = 0.58
  s.players[shooter].vel = (hoop-s.players[shooter].pos).normalized()*200
  s.ball = s.players[shooter].pos
@@ -66,7 +69,7 @@ func run() -> void:
  var clock: float = s.clock
  var height: float = s.ball_height()
  s.tick(0.3,{})
- check(s.clock == clock and s.shot_clock == 24 and s.pending_inbound == 1,"spectacle pauses both clocks")
+ check(s.clock == clock and is_equal_approx(s.shot_clock, MatchState.SHOT_CLOCK_SECONDS) and s.pending_inbound == 1,"spectacle pauses both clocks")
  check(s.ball_height() < height and s.players[0].jump == 0,"the ball drops and the dunker lands during the spectacle")
  s.tick(2.0,{})
  s.tick(0.01,{})

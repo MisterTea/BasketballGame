@@ -86,6 +86,8 @@ func run() -> void:
  arena.present(state,display_positions,state.ball+Vector2(20,0),[2],0.1,false)
  check(arena.athletes[2].root.position.is_equal_approx(arena.court_point(display_positions[2])),"network-smoothed coordinates drive the 3D athlete")
  check(state.snapshot() == before,"interpolated presentation still leaves simulation unchanged")
+ state.players[0].pos = state.hoop_for(0) + Vector2(-200, 0)
+ state.ball = state.players[0].pos
  state.players[0].charge = 0.58
  state.shoot_ball(0,false)
  state.flight.time = state.flight.duration*0.5
@@ -148,6 +150,33 @@ func run() -> void:
    mesh_stays_above_floor = false
  check(mesh_stays_above_floor, "athlete mesh never penetrates through floor during jump stages")
  state.players[0].jump = 0.0
+
+ # Passes visually connect the animated release and catch hands while the
+ # authoritative center-to-center trajectory remains unchanged.
+ state.owner = 0
+ state.flight = {}
+ state.players[0].pos = Vector2(450, 420)
+ state.players[1].pos = Vector2(780, 510)
+ state.players[0].face = 1
+ state.players[1].face = -1
+ state.ball = state.players[0].pos + Vector2(14, -7)
+ state.pass_ball(0, false)
+ state.flight.time = 0.0
+ before = state.snapshot()
+ arena.present(state, [], state.flight_position(), [0], 0.016, false)
+ var passer_l: Transform3D = arena.athletes[0].skeleton.global_transform * arena.athletes[0].skeleton.get_bone_global_pose(20)
+ var passer_r: Transform3D = arena.athletes[0].skeleton.global_transform * arena.athletes[0].skeleton.get_bone_global_pose(21)
+ var release_hands = (passer_l.origin + passer_r.origin) * 0.5
+ check(arena.basketball.global_position.distance_to(release_hands) < 0.01, "a pass begins in the passer's animated hands")
+ state.flight.time = state.flight.duration
+ before = state.snapshot()
+ arena.present(state, [], state.flight_position(), [0], 0.016, false)
+ var receiver_l: Transform3D = arena.athletes[1].skeleton.global_transform * arena.athletes[1].skeleton.get_bone_global_pose(20)
+ var receiver_r: Transform3D = arena.athletes[1].skeleton.global_transform * arena.athletes[1].skeleton.get_bone_global_pose(21)
+ var catch_hands = (receiver_l.origin + receiver_r.origin) * 0.5
+ check(arena.basketball.global_position.distance_to(catch_hands) < 0.01, "a pass finishes in the receiver's animated hands")
+ check(state.snapshot() == before, "hand-to-hand pass presentation does not mutate gameplay state")
+ state.flight = {}
 
  # Net impact swirl presentation tests
  check(arena.baskets.size() == 2 and arena.baskets[0].has("net") and arena.baskets[1].has("net"), "modeled baskets contain structured dynamic net data")
@@ -244,7 +273,25 @@ func run() -> void:
  arena.present(state, [], state.flight_position(), [0], 0.016, false)
  var rim_pos = arena.court_point(state.flight.end, 3.05 - arena.rim_dips[1])
  check(arena.basketball.global_position.distance_to(rim_pos) < 0.05, "basketball reaches and delivers directly through rim at dunk impact")
+ state.flight.blocked = true
+ state.flight.dunk_style = "frontflip"
+ state.flight.time = 0.50 * state.flight.duration
+ state.players[0].jump = 0.0
+ state.players[0].rim_hang = 0.0
+ state.players[0].pos = state.flight.player_start
+ arena.present(state, [], state.flight_position(), [0], 0.016, false)
+ check(arena.athletes[0].body.position.y < 0.2 and arena.athletes[0].body.action != "dunk" and absf(arena.athletes[0].body.rotation.x) < 0.2, "a blocked dunk drops the dunker out of the airborne dunk pose")
  state.flight = {}
+
+ var slide_from = arena.athletes[0].root.position
+ var slide_target = state.players[0].pos + Vector2(480, 0)
+ state.players[0].pos = slide_target
+ arena.present(state, [], state.ball, [0], 0.016, false)
+ var slide_mid = arena.athletes[0].root.position
+ check(slide_mid.distance_to(slide_from) > 0.05 and slide_mid.distance_to(arena.court_point(slide_target)) > 0.4, "a court relocation starts a linear slide instead of teleporting")
+ for _step in range(30):
+  arena.present(state, [], state.ball, [0], 0.05, false)
+ check(arena.athletes[0].root.position.distance_to(arena.court_point(slide_target)) < 0.08, "the slide arrives at the authoritative player position")
 
  state.phase = "finished"
  arena.present(state,[],state.ball,[0],0.1,true)

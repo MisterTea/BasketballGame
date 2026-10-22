@@ -35,7 +35,7 @@ func run() -> void:
  var command = neutral()
  command[0] = {"move":Vector2.RIGHT,"shoot":true,"turbo":true,"pass":true}
  until(s,0.5,command)
- check(s.clock == 180 and s.shot_clock == 24 and s.players[0].pos == positions[0].pos and s.players[0].turbo == 1,"ready phase locks clocks, movement and turbo consumption")
+ check(s.clock == 180 and is_equal_approx(s.shot_clock, MatchState.SHOT_CLOCK_SECONDS) and s.players[0].pos == positions[0].pos and s.players[0].turbo == 1,"ready phase locks clocks, movement and turbo consumption")
  check(s.tipoff.jumps[0] < 0 and s.flight.is_empty() and s.players[0].charge == 0,"early Shoot and Pass cannot create a jump, shot or pass")
  until(s,1.1,command)
  check(s.tipoff.jumps[0] < 0,"holding Shoot before the toss cannot auto-win the tip")
@@ -54,7 +54,7 @@ func run() -> void:
  check(not s.tipoff.active and s.tipoff.winner == 0 and s.flight.get("tip",false) and s.flight.target == 1,"the only valid human jump tips the ball to its partner")
  check(s.clock == 180 and s.score == [0,0] and s.stats[0].rebounds == 0,"tip-off awards no score, shot, rebound or elapsed match time")
  s.tick(0.4,neutral())
- check(s.owner == 1 and s.flight.is_empty() and s.clock < 180 and s.shot_clock < 24,"the winner's partner catches the tip and normal clocks begin")
+ check(s.owner == 1 and s.flight.is_empty() and s.clock < 180 and s.shot_clock < MatchState.SHOT_CLOCK_SECONDS,"the winner's partner catches the tip and normal clocks begin")
  s = fresh()
  until(s,1.09,neutral())
  s.tick(0.01,{0:{},2:{"shoot":true}})

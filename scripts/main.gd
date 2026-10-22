@@ -51,7 +51,6 @@ var announcer_busy_until: float = 0.0
 var last_announcer_time: float = -10.0
 var last_announcer_phrase: String = ""
 var status_label: Label
-var last_lt: Array = [0.0, 0.0, 0.0, 0.0]
 var is_bot: bool = false
 var record_duration: float = 0.0
 var record_elapsed: float = 0.0
@@ -203,8 +202,7 @@ func setup_input() -> void:
  var action_buttons = {
   "shoot": [JOY_BUTTON_X, JOY_BUTTON_Y],
   "pass": [JOY_BUTTON_A, JOY_BUTTON_B],
-  "turbo": [JOY_BUTTON_RIGHT_SHOULDER],
-  "switch": [JOY_BUTTON_LEFT_SHOULDER],
+  "switch": [JOY_BUTTON_RIGHT_SHOULDER],
   "shove": [JOY_BUTTON_Y, JOY_BUTTON_B, JOY_BUTTON_RIGHT_STICK],
   "spin": [JOY_BUTTON_B, JOY_BUTTON_Y, JOY_BUTTON_RIGHT_STICK, JOY_BUTTON_LEFT_STICK]
  }
@@ -242,12 +240,6 @@ func setup_input() -> void:
     var motion = InputEventJoypadMotion.new()
     motion.device = p
     motion.axis = JOY_AXIS_TRIGGER_RIGHT
-    motion.axis_value = 1.0
-    InputMap.action_add_event(name_action, motion)
-   elif action == "switch":
-    var motion = InputEventJoypadMotion.new()
-    motion.device = p
-    motion.axis = JOY_AXIS_TRIGGER_LEFT
     motion.axis_value = 1.0
     InputMap.action_add_event(name_action, motion)
  if not InputMap.action_get_events("ui_accept").any(func(e): return e is InputEventJoypadButton and e.button_index == JOY_BUTTON_A):
@@ -380,7 +372,10 @@ func show_network() -> void:
   var error = net.join_game(address,initials if not initials.is_empty() else "ACE")
   status = "Connecting…" if error == OK else "Cannot connect: " + error_string(error)
   show_lobby(),true)
- label_at("LAN: connect to the host's local IP.\nINTERNET: the host must forward UDP 27888 and allow the game through their firewall.\n\nNo matchmaking or relay service is included.",690,420,19,MUTED,490)
+ var net_note = "LAN: connect to the host's local IP.\nINTERNET: the host must forward UDP 27888 and allow the game through their firewall.\n\nNo matchmaking or relay service is included."
+ if OS.has_feature("web"):
+  net_note = "This browser build plays solo, local versus, and the arcade ladder.\nHosting and joining use UDP, which browsers cannot open.\nUse the desktop build for network play."
+ label_at(net_note,690,420,19,MUTED,490)
  status_label = label_at("",88,580,18,GOLD,500)
 
 func show_selection() -> void:
@@ -495,13 +490,13 @@ func show_help() -> void:
  panel(60,150,555,540)
  panel(645,150,575,540)
  label_at("PLAYER ONE",88,176,22,GOLD)
- label_at("MOVE     W A S D\nSHOOT / BLOCK     J\nPASS / STEAL     K\nSPIN / ELBOWS (OFFENSE)     L\nSHOVE (DEFENSE)     L  (or SHIFT+K)\nTURBO     SHIFT\nSWITCH ATHLETE     F  (or TAB)",88,214,18,INK)
+ label_at("MOVE     W A S D\nSHOOT / BLOCK     J\nPASS / STEAL     K\nELBOW (OFFENSE)     L\nSPIN (OFFENSE)     SHIFT + L\nSHOVE (DEFENSE)     L  (or SHIFT+K)\nTURBO     SHIFT\nSWITCH ATHLETE     F  (or TAB)",88,214,18,INK)
  label_at("PLAYER TWO — LOCAL VERSUS",88,430,20,GOLD)
  label_at("MOVE     ARROWS\nSHOOT / BLOCK     NUMPAD 1\nPASS / STEAL     NUMPAD 2\nTURBO     NUMPAD 0    •    SWITCH     NUMPAD 3",88,475,18)
  label_at("GAMEPAD",675,172,21,GOLD)
- label_at("Left stick or D-pad moves  •  Start: Pause\nRT (Right Trigger) or RB: Boost / Turbo\n4 Face Buttons (Right Thumb):\n  X: Shoot / Layup / Dunk / Fake  •  Y: Block / Rebound / Shove\n  A: Pass / Dish / Alley-Oop Lob  •  B: Steal / Shove / Spin\n  Right / Left Stick (RS/LS): Spin Move / Elbow Clearout\nLB or LT: Switch athlete",675,202,15,INK,515)
+ label_at("Left stick or D-pad moves  •  Start: Pause\nRT (Right Trigger): Boost / Turbo  •  RB: Switch athlete\n4 Face Buttons (Right Thumb):\n  X: Shoot / Layup / Dunk / Fake  •  Y: Block / Rebound / Shove\n  A: Pass / Dish / Alley-Oop Lob  •  B: Steal / Shove / Elbow\n  RT + B (or RT + stick click): Spin Move",675,202,15,INK,515)
  label_at("MAKE THE HIGHLIGHT REEL",675,330,22,GOLD)
- label_at("Tap SHOOT to fake; release jump shots at the gold mark.\nRun + short SHOOT hold: layup. Hold longer close for a dunk.\nAdd TURBO for a super dunk; PASS mid-dunk to dish.\nAlley-oop: receiver SHOOT, passer TURBO + PASS.\nDefense: SHOOT blocks; PASS steals or intercepts.\nTURBO + PASS shoves. CPU teammate has the ball?\nSHOOT jumps + starts CPU shot; quick TURBO + PASS lobs.\nThree unanswered baskets by one athlete ignite FIRE.\nFire survives misses; an opponent basket ends it.\nQ4 / overtime: specialty dunks can shatter a backboard.\nTip-off: tap SHOOT as the tossed ball rises.\nESC: pause offline / leave menu online. M: mute.",675,378,16,INK,510)
+ label_at("Tap SHOOT to fake; after a fake you must pass or shoot.\nRelease jump shots at the gold mark. Run + short SHOOT hold: layup.\nHold longer close for a dunk; add TURBO for a super dunk.\nPASS mid-dunk to dish. Alley-oop: receiver SHOOT, passer TURBO + PASS.\nDefense: SHOOT blocks; PASS steals or intercepts.\nTURBO + PASS shoves. CPU teammate has the ball?\nSHOOT jumps + starts CPU shot; quick TURBO + PASS lobs.\nThree unanswered baskets by one athlete ignite FIRE.\nFire survives misses; an opponent basket ends it.\nQ4 / overtime: specialty dunks can shatter a backboard.\nTip-off: tap SHOOT as the tossed ball rises.\nESC: pause offline / leave menu online. M: mute.",675,378,16,INK,510)
  label_at("Network players use player-one controls. Missing teammates are controlled by the CPU.",60,723,16,MUTED)
  back_btn.grab_focus()
 
@@ -613,6 +608,13 @@ func _unhandled_input(event: InputEvent) -> void:
   elif event.button_index == JOY_BUTTON_B and screen == "game" and paused:
    toggle_pause()
 
+func athlete_for_input(index: int) -> int:
+ if net.online:
+  return net.local_slot
+ if index >= 0 and index < controlled.size():
+  return controlled[index]
+ return index
+
 func read_command(index: int) -> Dictionary:
  var prefix = "p%d_" % index
  var move = Input.get_vector(prefix+"left",prefix+"right",prefix+"up",prefix+"down")
@@ -620,12 +622,21 @@ func read_command(index: int) -> Dictionary:
  var shove = Input.is_action_just_pressed(prefix+"shove")
  var pass_pressed = Input.is_action_just_pressed(prefix+"pass")
  var spin = Input.is_action_just_pressed(prefix+"spin")
- if shove:
-  if is_instance_valid(game) and game.owner == index:
+ var athlete = athlete_for_input(index)
+ var has_ball = is_instance_valid(game) and game.controls_ball(athlete)
+ # BUT2 while the ball is still in hand is plyr_startpass, even if that
+ # physical button is also bound as shove. The elbow is the shove button alone.
+ if pass_pressed and has_ball:
+  shove = false
+  spin = false
+ elif shove or spin:
+  if has_ball:
    spin = true
+   pass_pressed = false
   else:
    turbo = true
    pass_pressed = true
+   shove = true
  var joypads = Input.get_connected_joypads()
  var joy_id = joypads[index] if index < joypads.size() else index
  if joypads.has(joy_id):
@@ -661,14 +672,7 @@ func _physics_process(delta: float) -> void:
    var count = 2 if local_two else 1
    if not OS.get_cmdline_user_args().has("--autoplay") and not is_bot:
     for p in range(count):
-     var joypads = Input.get_connected_joypads()
-     var joy_id = joypads[p] if p < joypads.size() else p
-     var lt_pressed = false
-     if joypads.has(joy_id):
-      var lt_val = Input.get_joy_axis(joy_id, JOY_AXIS_TRIGGER_LEFT)
-      lt_pressed = lt_val > 0.3 and last_lt[p] <= 0.3
-      last_lt[p] = lt_val
-     if Input.is_action_just_pressed("p%d_switch" % p) or lt_pressed:
+     if Input.is_action_just_pressed("p%d_switch" % p):
       controlled[p] = (controlled[p]/2)*2 + (1-controlled[p]%2)
      commands[controlled[p]] = read_command(p)
    game.tick(delta,commands)
@@ -943,9 +947,9 @@ func get_announcer_stream(banner_text: String) -> AudioStream:
  return null
 
 func get_announcer_priority(banner_text: String) -> int:
- if banner_text.contains("FINAL") or banner_text.contains("HALFTIME") or banner_text.contains("OVERTIME") or banner_text.contains("QUARTER") or banner_text.contains("SHATTERED") or banner_text.contains("SHOT CLOCK VIOLATION") or banner_text.contains("TEAM ZONE EXPIRED"):
+ if banner_text.contains("FINAL") or banner_text.contains("HALFTIME") or banner_text.contains("OVERTIME") or banner_text.contains("QUARTER") or banner_text.contains("SHATTERED") or banner_text.contains("SHOT CLOCK VIOLATION"):
   return 32
- if banner_text.begins_with("HE'S ON FIRE") or banner_text.contains("TEAM IN THE ZONE"):
+ if banner_text.begins_with("HE'S ON FIRE"):
   return 20
  if banner_text.contains("BOOMSHAKALAKA") or banner_text.contains("DOUBLE DUNK") or banner_text.contains("ALLEY-OOP") or banner_text.contains("SOMERSAULT") or banner_text.contains("BACKFLIP") or banner_text.contains("WINDMILL") or banner_text.contains("BETWEEN THE LEGS") or banner_text.contains("BEHIND THE BACK SLAM"):
   return 18
@@ -1127,9 +1131,7 @@ func draw_hud() -> void:
   text_at(Teams.DATA[game.teams[side]].city,Vector2(x+20,42),14,MUTED)
   text_at(Teams.DATA[game.teams[side]].name,Vector2(x+20,75),25,color)
   text_at("%02d" % game.score[side],Vector2(x+265,93),53,INK)
-  if game.team_fire_timer[side] > 0.0:
-   text_at("TEAM ZONE: %02d" % int(ceil(game.team_fire_timer[side])),Vector2(x+20,105),15,Color("ff8822"))
-  elif game.on_fire(side):
+  if game.on_fire(side):
    text_at("FIRE: "+str(Teams.DATA[game.teams[side]].players[game.fire_player%2]),Vector2(x+20,105),15,GOLD)
   else:
    for pip in range(3):
@@ -1219,7 +1221,7 @@ func draw_hud() -> void:
   text_at(game.banner,Vector2(640,197)+offset,30,GOLD,true)
  draw_rect(Rect2(180,696,920,30),Color(0.03,0.06,0.1,0.88))
  draw_rect(Rect2(180,696,920,30),Color("22364c"),false,1.0)
- text_at("J  SHOOT/BLOCK    K  PASS/STEAL    L  SPIN/SHOVE    SHIFT  TURBO    F  SWITCH    O  SHOT %% (%s)    ESC  MENU" % ("ON" if show_shot_percentage else "OFF"),Vector2(640,716),12,INK,true)
+ text_at("J  SHOOT/BLOCK    K  PASS/STEAL    L  ELBOW/SHOVE (SHIFT+L SPIN)    SHIFT  TURBO    F  SWITCH    O  SHOT %% (%s)    ESC  MENU" % ("ON" if show_shot_percentage else "OFF"),Vector2(640,716),12,INK,true)
  if game.quarter_transition.get("active", false):
   draw_quarter_intermission()
   var fade = clampf(game.quarter_transition.get("fade_alpha", 0.0), 0.0, 1.0)
@@ -1305,28 +1307,24 @@ func _process(delta: float) -> void:
     rendered_positions.append(player.pos)
    rendered_ball = game.ball
   var dt_snap: float = clampf(visual_time - snapshot_received_time, 0.0, 0.25) * game.gameplay_time_scale()
-  var factor = 1.0 - exp(-delta * 26.0)
   for i in range(game.players.size()):
    var p_snap = game.players[i]
    var predicted_pos = p_snap.pos + p_snap.vel * dt_snap
    predicted_pos.x = clampf(predicted_pos.x, 90.0, 1190.0)
    predicted_pos.y = clampf(predicted_pos.y, 230.0, 700.0)
-   if rendered_positions[i].distance_to(predicted_pos) > 220.0:
-    rendered_positions[i] = predicted_pos
-   else:
-    rendered_positions[i] = rendered_positions[i].lerp(predicted_pos, factor)
+   rendered_positions[i] = rendered_positions[i].move_toward(predicted_pos, 1400.0 * delta)
   if not game.flight.is_empty():
    var fl = game.flight
    var t_flight = clampf((fl.time + dt_snap) / maxf(fl.duration, 0.01), 0.0, 1.0)
    var predicted_ball = fl.start.lerp(fl.end, t_flight)
-   rendered_ball = predicted_ball if rendered_ball.distance_to(predicted_ball) > 280.0 else rendered_ball.lerp(predicted_ball, factor)
+   rendered_ball = rendered_ball.move_toward(predicted_ball, 2200.0 * delta)
   elif game.owner >= 0 and game.owner < rendered_positions.size():
    var owner_pos = rendered_positions[game.owner]
    var face_dir = 1.0 if game.players[game.owner].face > 0 else -1.0
    var carried_ball = owner_pos + Vector2(face_dir * 18.0, 0.0)
-   rendered_ball = carried_ball if rendered_ball.distance_to(carried_ball) > 200.0 else rendered_ball.lerp(carried_ball, factor)
+   rendered_ball = rendered_ball.move_toward(carried_ball, 2200.0 * delta)
   else:
-   rendered_ball = game.ball if rendered_ball.distance_to(game.ball) > 280.0 else rendered_ball.lerp(game.ball, factor)
+   rendered_ball = rendered_ball.move_toward(game.ball, 2200.0 * delta)
   positions = rendered_positions
   ball_position = rendered_ball
  var active: Array = [net.local_slot] if net.online else ([controlled[0],controlled[1]] if local_two else [controlled[0]])

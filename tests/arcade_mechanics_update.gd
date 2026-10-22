@@ -78,8 +78,10 @@ func run() -> void:
 	check(shot_eval.quality == "PERFECT", "release at jump apex (0.58s) is PERFECT quality")
 	check(shot_eval.timing >= 0.99, "apex release timing multiplier is maximal (~1.0)")
 
-	# Release shot via tick
+	# Release shot via tick. x=500 is past midcourt, and those shots are ignored.
 	var commands = {0: {"move": Vector2.ZERO, "shoot": false, "pass": false, "turbo": false}}
+	state.players[0].pos = Vector2(800, 450)
+	state.ball = state.players[0].pos
 	state.players[0].shoot_held = true
 	state.players[0].charge = 0.58
 	state.tick(1.0 / 60.0, commands)
@@ -148,7 +150,7 @@ func run() -> void:
 		state.ball = state.players[0].pos
 		state.rng.seed = trial * 101 + 7
 		state.resolve_steal(2, false)
-		if state.owner == -1 and state.loose_ball_timer > 0:
+		if state.owner == -1 and state.flight.get("kind", "") == "loose":
 			loose_seen = true
 		elif state.owner == 2:
 			clean_seen = true
@@ -168,8 +170,8 @@ func run() -> void:
 		state.resolve_steal(2, false)
 		if state.owner == -1:
 			break
-	check(state.loose_ball_timer >= 0.50, "knocked away ball sets un-grabbable loose_ball_timer >= 0.50s")
-	check(state.players[0].pickup_delay >= 0.40 and state.players[2].pickup_delay >= 0.40, "knocked away ball locks out victim and stealer with pickup_delay")
+	check(state.loose_ball_timer <= 0.0, "a poked steal does not add a global loose-ball lockout")
+	check(state.players[0].pickup_delay >= MatchState.TE_POKE_DELAY - 0.001 and state.players[2].pickup_delay >= MatchState.TE_POKE_DELAY - 0.001, "knocked away ball locks both players out for 15 ticks (plyr_shtdly)")
 
 	# Verify airborne player cannot snatch a loose ball while loose_ball_timer > 0
 	state.owner = -1
@@ -202,12 +204,14 @@ func run() -> void:
 	check(state.owner == -1, "player with active pickup_delay cannot scoop loose ball")
 
 	# Verify shove sets victim pickup_delay (PLYR2.ASM:5900)
-	state.owner = 0
-	state.players[0].pos = Vector2(500, 450)
-	state.players[2].pos = Vector2(530, 450)
-	state.players[0].pickup_delay = 0.0
-	state.resolve_steal(2, true)
-	check(state.players[0].pickup_delay >= 0.30, "shove sets victim pickup_delay (30-40 ticks in PLYR2.ASM)")
+	var shove_state = MatchState.new()
+	shove_state.start(0, 1)
+	shove_state.tipoff = {}
+	shove_state.owner = 0
+	shove_state.players[0].pos = Vector2(500, 450)
+	shove_state.players[2].pos = Vector2(530, 450)
+	shove_state.resolve_steal(2, true)
+	check(shove_state.players[0].pickup_delay >= 0.30, "shove sets victim pickup_delay (30-40 ticks in PLYR2.ASM)")
 
 	# Verify loose ball pickup delay
 	state.bullet_time_remaining = 0.0
@@ -228,18 +232,24 @@ func run() -> void:
 	# ==========================================
 	# ISSUE 6: OFF-COURT INBOUND AFTER GOAL
 	# ==========================================
-	state.inbound(1, true) # Inbound after goal for Team 1
+	state.ball = Vector2(1115, 465)
+	state.players[2].pos = state.ball
+	state.players[3].pos = Vector2(400, 465)
+	state.inbound(1, true) # Inbound after goal for Team 1. Closer teammate takes it out.
 	var inbounder = 2
-	check(state.owner == inbounder, "team 1 inbounder is player 2")
+	check(state.owner == inbounder, "team 1 inbounder is the teammate closer to the ball")
 	var is_off_court = state.players[inbounder].pos.x < MatchState.COURT.position.x or state.players[inbounder].pos.x > MatchState.COURT.end.x
 	check(is_off_court, "after a goal, the inbounding player stands off-court behind the baseline")
 
-	# Inbounder, teammate, and defenders positioning and facing
+	# plyrtob_moveo3: inbounder -355/-20, teammate -270/+10, defenders -150 at -50 and +70, mirrored to the right baseline.
 	var mate = 3
-	var own_hoop = state.hoop_for(0) # Hoop 1 is at 1115
-	check(absf(state.players[mate].pos.x - (own_hoop.x - 115.0)) < 15.0, "teammate waits in own zone in front of basket for inbound pass")
+	var inbound_spot = state.asm_spot(355.0, -20.0)
+	var mate_spot = state.asm_spot(270.0, 10.0)
+	var def_x = state.asm_spot(150.0, 0.0).x
+	check(state.players[inbounder].pos.distance_to(inbound_spot) < 1.0, "inbounder stands at the PLYR.ASM take-out spot")
+	check(state.players[mate].pos.distance_to(mate_spot) < 1.0, "teammate stands 270 world units off center")
 	check(state.players[mate].face == 1, "teammate faces toward baseline inbounder")
-	check(state.players[0].pos.x <= 800.0 and state.players[1].pos.x <= 800.0, "enemy defenders stay back near midcourt")
+	check(absf(state.players[0].pos.x - def_x) < 1.0 and absf(state.players[1].pos.x - def_x) < 1.0, "defenders park 150 world units off center")
 	check(state.players[0].face == 1 and state.players[1].face == 1, "enemy defenders face inbounding team")
 
 	# Attempt to shoot from off-court
@@ -248,8 +258,8 @@ func run() -> void:
 	state.tick(0.20, {inbounder: {"move": Vector2.ZERO, "shoot": true, "pass": false, "turbo": false}})
 	check(state.players[inbounder].charge == 0, "inbounder cannot shoot or charge shot while off-court")
 	check(state.flight.is_empty(), "no shot flight can be launched from off-court")
-	check(state.players[mate].pos.x > 860.0, "teammate remains in own zone and does not sprint downcourt during inbound hold")
-	check(state.players[0].pos.x <= 800.0, "defenders hold backfield position without rushing baseline during inbound hold")
+	check(state.players[mate].pos.x > def_x, "teammate remains in own zone and does not sprint downcourt during inbound hold")
+	check(state.players[0].pos.x <= def_x + 1.0, "defenders hold the 150-unit line without rushing the baseline")
 
 	# Inbounder movement stays clamped behind baseline
 	state.tick(0.10, {inbounder: {"move": Vector2.RIGHT, "shoot": false, "pass": false, "turbo": false}})
@@ -294,6 +304,78 @@ func run() -> void:
 	var elapsed_before_bullet_time = state.elapsed
 	state.tick(0.10, {2: neutral()})
 	check(is_equal_approx(state.elapsed - elapsed_before_bullet_time, 0.10 * MatchState.BULLET_TIME_SCALE), "bullet-time slows authoritative gameplay while using real-time duration")
+
+	# Block contact is seq_block's 30px glide plus tbl1/tbl4, not an 78/85 circle.
+	var reach_state = MatchState.new()
+	reach_state.start(0, 1)
+	var high_box = reach_state.block_contact_box(2, true)
+	check(high_box.x < 78.0 and high_box.y < 78.0, "a high-ball block box is inside the old 78px radius")
+	check(is_equal_approx(reach_state.dunk_rim_ticks(40.0), 37.0), "under-hoop dunks use DUNKB2's 37 ticks to the rim")
+	check(is_equal_approx(reach_state.dunk_rim_ticks(70.0), 64.0), "short dunks use DUNKLAY7's 64 ticks")
+	check(is_equal_approx(reach_state.dunk_rim_ticks(110.0), 74.0), "long dunks use the 74-tick med/long sequences, including on fire")
+
+	var human_shove = MatchState.new()
+	human_shove.start(0, 1)
+	human_shove.tipoff = {}
+	human_shove.owner = 1
+	human_shove.players[0].human = true
+	human_shove.players[0].pos = Vector2(500, 450)
+	human_shove.players[0].swipe_dir = Vector2.RIGHT
+	human_shove.players[1].pos = Vector2(540, 450)
+	human_shove.players[2].pos = Vector2(200, 200)
+	human_shove.players[3].pos = Vector2(200, 600)
+	human_shove.resolve_steal(0, true)
+	check(human_shove.players[1].stun > 0.0, "a human shoves a teammate inside the 16/128 cone")
+
+	var wide = MatchState.new()
+	wide.start(0, 1)
+	wide.tipoff = {}
+	wide.owner = 1
+	wide.players[0].human = true
+	wide.players[0].pos = Vector2(500, 450)
+	wide.players[0].swipe_dir = Vector2.RIGHT
+	wide.players[1].pos = Vector2(520, 510)
+	wide.players[2].pos = Vector2(200, 200)
+	wide.players[3].pos = Vector2(200, 600)
+	wide.resolve_steal(0, true)
+	check(wide.players[1].stun == 0.0, "a teammate outside the narrow cone is not shoved")
+
+	var drone_shove = MatchState.new()
+	drone_shove.start(0, 1)
+	drone_shove.tipoff = {}
+	drone_shove.owner = 1
+	drone_shove.players[0].human = false
+	drone_shove.players[0].pos = Vector2(500, 450)
+	drone_shove.players[0].swipe_dir = Vector2.RIGHT
+	drone_shove.players[1].pos = Vector2(540, 450)
+	drone_shove.players[2].pos = Vector2(200, 200)
+	drone_shove.players[3].pos = Vector2(200, 600)
+	drone_shove.resolve_steal(0, true)
+	check(drone_shove.players[1].stun == 0.0, "a drone never shoves a teammate")
+
+	var saw_short = false
+	var loose_ok = false
+	for seed in range(80):
+		var fly = MatchState.new()
+		fly.start(0, 1)
+		fly.tipoff = {}
+		fly.rng.seed = seed
+		fly.owner = 0
+		fly.score = [0, 8]
+		fly.players[0].pos = Vector2(500, 450)
+		fly.players[0].push_keep_ball = 0.0
+		fly.players[2].pos = Vector2(450, 450)
+		fly.players[2].swipe_dir = Vector2.RIGHT
+		fly.players[2].turbo = 1.0
+		fly.resolve_steal(2, true)
+		if fly.players[0].shove_kind == "flyback" and fly.players[0].vel.length() < 120.0:
+			saw_short = true
+		if fly.flight.get("kind", "") == "loose":
+			var travel = fly.players[0].pos.distance_to(fly.flight.end)
+			if travel < 70.0:
+				loose_ok = true
+	check(saw_short, "a keep-ball miss or short-fly roll quarters flyback speed")
+	check(loose_ok, "a failed keep-ball roll drifts the ball at about one pixel per tick")
 
 	print("\n--- RESULTS: %d checks, %d failures ---" % [checks, failures])
 	quit(0 if failures == 0 else 1)

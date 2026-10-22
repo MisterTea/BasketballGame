@@ -34,19 +34,43 @@ func _init() -> void:
 	assert_true.call(is_equal_approx(s.flight.get("arc_height", 0.0), 2.5), "Hook shot has authentic arc height (2.5)")
 	assert_true.call(s.banner.contains("HOOK SHOT"), "Hook shot announces HOOK SHOT!")
 
-	# Test 3: Behind the back pass
+	# Test 3: PASSBH buckets (facing 2 wants teammate sector 1 or 2, not straight behind)
 	var s_pass = MatchState.new()
 	s_pass.start(0, 1)
 	s_pass.phase = "playing"
 	s_pass.freeze = 0.0
 	s_pass.owner = 0
+	s_pass.inbounding_team = -1
 	s_pass.players[0].pos = Vector2(500.0, 450.0)
-	s_pass.players[0].face = 1 # facing right (+X)
-	s_pass.players[1].pos = Vector2(300.0, 450.0) # teammate is behind (-X)
+	s_pass.players[0].face = 1
+	s_pass.players[0].vel = Vector2.ZERO
+	s_pass.players[0].jump = 0.0
+	s_pass.players[1].pos = Vector2(300.0, 450.0)
+	s_pass.players[2].pos = Vector2(100.0, 100.0)
+	s_pass.players[3].pos = Vector2(1100.0, 800.0)
 	s_pass.ball = s_pass.players[0].pos
+	s_pass.rng.seed = 1
 	s_pass.pass_ball(0, false)
-	assert_true.call(s_pass.flight.get("behind_back", false) == true, "Passing behind player facing direction triggers behind-the-back pass")
-	assert_true.call(s_pass.banner.contains("BEHIND THE BACK"), "Behind-the-back pass announces BEHIND THE BACK PASS!")
+	assert_true.call(s_pass.flight.get("behind_back", false) == false, "A pass straight behind the facing direction is not PASSBH")
+	var bh_seen = false
+	for seed_value in range(40):
+		s_pass.rng.seed = seed_value
+		s_pass.owner = 0
+		s_pass.players[0].pos = Vector2(500.0, 450.0)
+		s_pass.players[0].face = 1
+		s_pass.players[0].vel = Vector2.ZERO
+		s_pass.players[0].jump = 0.0
+		s_pass.players[1].pos = Vector2(620.0, 300.0)
+		s_pass.players[2].pos = Vector2(100.0, 100.0)
+		s_pass.players[3].pos = Vector2(1100.0, 800.0)
+		s_pass.ball = s_pass.players[0].pos
+		s_pass.inbounding_team = -1
+		s_pass.pass_ball(0, false)
+		if s_pass.flight.get("behind_back", false):
+			bh_seen = true
+			assert_true.call(s_pass.banner.contains("BEHIND THE BACK"), "PASSBH announces BEHIND THE BACK PASS!")
+			break
+	assert_true.call(bh_seen, "Facing right with the teammate up-right can select PASSBH")
 
 	# Test 4: Double dunk initiation from airborne dish
 	var s_dd = MatchState.new()
@@ -59,7 +83,7 @@ func _init() -> void:
 	s_dd.flight = {
 		"kind": "shot", "start": hoop + Vector2(-80, 0), "end": hoop,
 		"time": 0.25, "duration": 0.80, "shooter": 0, "points": 2,
-		"made": true, "dunk": true, "blocked": false
+		"made": true, "dunk": true, "blocked": false, "in_hand_until": 0.80
 	}
 	# Teammate (player 1) is jumping near the basket
 	s_dd.players[1].pos = hoop + Vector2(-50, 20)
@@ -71,7 +95,7 @@ func _init() -> void:
 	assert_true.call(s_dd.flight.get("double_dunk", false) == true, "Airborne dish to jumping teammate triggers double_dunk flag")
 	assert_true.call(s_dd.banner.contains("DOUBLE DUNK"), "Airborne dish to jumping teammate announces DOUBLE DUNK!")
 
-	# Test 5: Double dunk catch and score advances team streak
+	# Test 5: Double dunk catch completes and scores
 	s_dd.players[1].receive_jump = 0.40
 	s_dd.flight.time = s_dd.flight.duration + 0.01
 	s_dd.tick_flight(0.016)
@@ -81,9 +105,9 @@ func _init() -> void:
 	if not s_dd.flight.is_empty():
 		s_dd.flight.time = s_dd.flight.duration + 0.01
 		s_dd.flight.made = true
-		var prev_streak = s_dd.team_streak[0]
+		var prev_score = s_dd.score[0]
 		s_dd.tick_flight(0.016)
-		assert_true.call(s_dd.team_streak[0] == prev_streak + 1, "Made double dunk advances team fire streak")
+		assert_true.call(s_dd.score[0] == prev_score + 2, "Made double dunk awards two points")
 
 	# Test 6: Shove knockdown increments victim injury stat and applies backwards knockback physics
 	var s_inj = MatchState.new()
@@ -93,18 +117,19 @@ func _init() -> void:
 	s_inj.freeze = 0.0
 	s_inj.owner = 2 # Player 2 (team 1) has ball
 	s_inj.players[2].pos = Vector2(600, 400)
-	s_inj.players[0].pos = Vector2(610, 400) # Player 0 (team 0) close by
+	s_inj.players[0].pos = Vector2(560, 400) # Victim is in front of the pusher
+	s_inj.maximum_power = true
 	var prev_injury = s_inj.stats[2].injury
 	s_inj.resolve_steal(0, true) # Shove
 	assert_true.call(s_inj.stats[2].injury == prev_injury + 1, "Hard shove knockdown increments victim injury stat")
-	assert_true.call(s_inj.players[2].shove_kind in ["flyback", "stumble"], "Victim receives stumble or flyback shove kind")
-	assert_true.call(s_inj.players[2].vel.x < -100.0, "Victim receives strong backward knockback velocity away from pusher")
-	assert_true.call(s_inj.players[2].face > 0.0, "Victim continues facing toward the pusher while knocked backward")
+	assert_true.call(s_inj.players[2].shove_kind == "flyback", "Maximum-power shove produces the TE flyback reaction")
+	assert_true.call(s_inj.players[2].vel.x > 100.0, "Victim receives strong knockback velocity away from pusher")
+	assert_true.call(s_inj.players[2].face < 0.0, "Victim continues facing toward the pusher while knocked backward")
 	var prev_x = s_inj.players[2].pos.x
 	var prev_vel_x = s_inj.players[2].vel.x
 	s_inj.tick(0.05, {})
-	assert_true.call(s_inj.players[2].pos.x < prev_x, "Stunned victim slides backward across court")
-	assert_true.call(s_inj.players[2].vel.x > prev_vel_x, "Court friction decelerates backward sliding velocity")
+	assert_true.call(s_inj.players[2].pos.x > prev_x, "Stunned victim slides backward across court")
+	assert_true.call(s_inj.players[2].vel.x < prev_vel_x, "Court friction decelerates backward sliding velocity")
 
 	# Test 7: Trailing team turbo conservation (pts_down >= 8)
 	var s_turb = MatchState.new()
@@ -128,7 +153,8 @@ func _init() -> void:
 	s_turb2.players[0].turbo = 1.0
 	s_turb2.tick(1.0, {0: {"turbo": true, "move": Vector2.RIGHT}})
 	var conserved_drain = 1.0 - s_turb2.players[0].turbo
-	assert_true.call(is_equal_approx(conserved_drain, normal_drain * 0.75), "Trailing by 8+ points scales turbo drain by 0.75 (trailing conservation)")
+	assert_true.call(is_equal_approx(conserved_drain, normal_drain), "Turbo drain is one unit every 8 ticks and does not slow down when trailing")
+	assert_true.call(is_equal_approx(normal_drain, MatchState.TE_TURBO_DRAIN_PER_SEC), "A full 47-unit meter lasts 376 ticks")
 
 	# Test 8: Rim hang gravity suspension on made dunk
 	var s_hang = MatchState.new()
@@ -156,12 +182,12 @@ func _init() -> void:
 	s_spd.players[0].turbo = 1.0
 	s_spd.tick(0.05, {0: {"move": Vector2.RIGHT, "turbo": false}})
 	var walk_spd = s_spd.players[0].vel.length()
-	assert_true.call(walk_spd >= 280.0 and walk_spd <= 350.0, "Authentic walking speed without turbo is in 280-350 px/s range (was: %.1f)" % walk_spd)
+	assert_true.call(walk_spd >= 350.0 and walk_spd <= 400.0, "Terminal BV speed without the ball is about 370 px/s (was: %.1f)" % walk_spd)
 	s_spd.tick(0.05, {0: {"move": Vector2.RIGHT, "turbo": true}})
 	var turbo_spd = s_spd.players[0].vel.length()
-	assert_true.call(turbo_spd > walk_spd * 1.20, "Turbo provides authentic arcade burst (+24.6%) above walking speed (was: %.1f vs %.1f)" % [turbo_spd, walk_spd])
+	assert_true.call(turbo_spd > walk_spd * 1.18, "Turbo adds 0x3e00 to acceleration (was: %.1f vs %.1f)" % [turbo_spd, walk_spd])
 
-	# Test 10: Shove two opponents at once when both are in range
+	# Test 10: TE defensive shove selects only the first eligible opponent
 	var s_shv2 = MatchState.new()
 	s_shv2.start(0, 1)
 	s_shv2.tipoff = {}
@@ -173,11 +199,12 @@ func _init() -> void:
 	s_shv2.players[3].pos = Vector2(540, 410) # Opponent 2 in range
 	s_shv2.players[2].stun = 0.0
 	s_shv2.players[3].stun = 0.0
+	s_shv2.maximum_power = true
 	s_shv2.resolve_steal(0, true) # Shove
 	assert_true.call(s_shv2.players[2].stun > 0.0, "First opponent in range is stunned by shove")
-	assert_true.call(s_shv2.players[3].stun > 0.0, "Second opponent in range is stunned simultaneously by the same shove")
-	assert_true.call(s_shv2.players[2].vel.x > 100.0 and s_shv2.players[3].vel.x > 100.0, "Both opponents receive backward knockback velocity away from pusher")
-	assert_true.call(s_shv2.banner.contains("DOUBLE"), "Announces DOUBLE knockdown/shove when 2 players are shoved")
+	assert_true.call(s_shv2.players[3].stun == 0.0, "Second opponent is not hit by the same defensive shove")
+	assert_true.call(s_shv2.players[2].vel.x > 100.0 and s_shv2.players[3].vel == Vector2.ZERO, "Only the selected opponent receives knockback")
+	assert_true.call(not s_shv2.banner.contains("DOUBLE"), "Defensive shove never announces a double knockdown")
 
 	print("\n--- RESULTS: %d checks, %d failures ---" % [results.checks, results.failures])
 	if results.failures == 0:

@@ -58,18 +58,27 @@ func _initialize() -> void:
  s.record_natural_basket(2)
  check(s.fire_player == -1 and s.player_streak[0] == 0,"an opponent's natural basket extinguishes fire")
  s.record_miss(2)
- check(s.player_streak[2] == 0,"misses reset a cold athlete's heating streak")
+ check(s.player_streak[2] == 1,"a miss leaves the make counter alone")
  s = fresh()
  s.record_natural_basket(2)
  s.record_natural_basket(2)
- shot(s,0,true)
- s.flight.made = false
- s.players[2].pos = s.flight_position()
- s.defend(2,false)
- check(s.score[0] == 3 and s.owner == 2 and s.flight.is_empty(),"descending three-point shot contact awards goaltending points even on a miss")
- check(s.stats[2].goaltends == 1 and s.stats[2].blocks == 0,"goaltends are recorded separately from legal blocks")
- check(s.player_streak[2] == 2 and s.player_streak[0] == 0,"goaltending points neither advance nor reset heating streaks")
- check(s.shot_clock == 24.0 and s.freeze > 0,"goaltending gives the defender a fresh inbound possession")
+ var whistled = false
+ var whiffed = false
+ for n in range(80):
+  s = fresh()
+  s.rng.seed = 3000 + n
+  s.record_natural_basket(2)
+  s.record_natural_basket(2)
+  shot(s,0,true)
+  s.flight.made = false
+  s.players[2].pos = s.flight_position()
+  s.defend(2,false)
+  if s.stats[2].goaltends == 1:
+   whistled = whistled or (s.score[0] == 3 and s.owner == 2 and s.flight.is_empty() and s.stats[2].blocks == 0 and s.player_streak[2] == 2 and s.player_streak[0] == 0 and is_equal_approx(s.shot_clock, MatchState.SHOT_CLOCK_SECONDS) and s.freeze > 0)
+  elif not s.flight.get("blocked", false) and s.stats[2].blocks == 0 and s.score[0] == 0:
+   whiffed = true
+ check(whistled,"a fast downward swat that wins the 1-in-4 mask is goaltending")
+ check(whiffed,"three of four fast downward swats miss the ball entirely")
  s = fresh()
  shot(s,0,false)
  s.players[2].pos = s.flight_position()
@@ -96,7 +105,7 @@ func _initialize() -> void:
  s = fresh()
  shot(s,0,true)
  s.players[2].pos = s.flight_position()
- check(not s.ai(2).shoot,"a cold CPU defender avoids intentional descending-shot goaltending")
+ check(s.ai(2).shoot,"a cold CPU defender still contests a descending shot")
  for basket in range(3):
   s.record_natural_basket(2)
  check(s.ai(2).shoot,"a burning CPU defender can attempt a legal descending-shot block")
@@ -118,10 +127,18 @@ func _initialize() -> void:
  s = fresh()
  for basket in range(3):
   s.record_natural_basket(2)
- shot(s,0,true)
- s.players[3].pos = s.flight_position()
- s.defend(3,false)
- check(s.score[0] == 3 and s.stats[3].goaltends == 1,"a burning teammate does not grant another defender goaltending immunity")
+ var cold_base = s.snapshot()
+ var cold_whistle = false
+ for n in range(80):
+  s.apply_snapshot(cold_base)
+  s.rng.seed = 8000 + n
+  shot(s,0,true)
+  s.players[3].pos = s.flight_position()
+  s.defend(3,false)
+  if s.stats[3].goaltends == 1 and s.score[0] == 3:
+   cold_whistle = true
+   break
+ check(cold_whistle,"a burning teammate does not grant another defender goaltending immunity")
  var restored = MatchState.new()
  restored.apply_snapshot(s.snapshot())
  check(restored.fire_player == s.fire_player and restored.player_streak == s.player_streak and restored.stats == s.stats,"snapshots preserve individual fire and goaltending statistics")
@@ -161,22 +178,27 @@ func _initialize() -> void:
  s = fresh()
  s.record_natural_basket(0)
  s.record_natural_basket(0)
+ s.players[0].pos = s.hoop_for(0) + Vector2(-180, 0)
+ s.ball = s.players[0].pos
  call = {0:neutral(),1:neutral(),2:neutral(),3:neutral()}
  call[0].shoot = true
  s.tick(0.10,call)
  call[0].shoot = false
  s.tick(1.0/60.0,call)
- check(s.owner == 0 and s.flight.is_empty() and s.players[0].fake > 0,"a short Shoot tap head-fakes without releasing possession")
- check(s.stats[0].attempts == 0 and s.player_streak[0] == 2,"head-fakes do not count as missed shots or reset heat")
- copy.apply_snapshot(s.snapshot())
- check(copy.players[0].fake == s.players[0].fake,"head-fake animation state survives snapshot restoration")
+ check(s.owner == 0 and s.flight.is_empty() and s.stats[0].attempts == 0 and s.players[0].fake > 0 and not s.players[0].dribble_locked,"a short Shoot tap head-fakes and keeps the ball")
+ check(s.player_streak[0] == 2,"the head fake does not change heat")
+ s.clock = 3.5
+ s.players[0].fake = 0.0
+ s.players[0].shoot_held = false
  call[0].shoot = true
- s.tick(0.58,call)
+ s.tick(0.10,call)
  call[0].shoot = false
  s.tick(1.0/60.0,call)
- check(s.flight.get("shooter",-1) == 0 and s.stats[0].attempts == 1,"a held shot after a fake still releases normally")
+ check(s.flight.get("shooter",-1) == 0 and s.stats[0].attempts == 1,"under 4 seconds a short Shoot tap releases the shot")
  s = fresh()
  s.owner = 1
+ s.players[1].pos = s.hoop_for(0) + Vector2(-180, 0)
+ s.ball = s.players[1].pos
  call = {0:neutral(),2:neutral(),3:neutral()}
  call[0].shoot = true
  s.tick(0.05,call)
@@ -184,10 +206,14 @@ func _initialize() -> void:
  s.tick(1.0/60.0,call)
  check(s.flight.get("shooter",-1) == 1 and s.players[1].fake == 0,"a tapped CPU teammate order shoots rather than head-faking")
  s = fresh()
- s.players[0].pos = Vector2(1020,465)
+ var dish_hoop = s.hoop_for(0)
+ s.players[0].pos = dish_hoop + Vector2(-170, 0)
+ s.players[1].pos = dish_hoop + Vector2(-400, 160)
+ s.players[2].pos = dish_hoop + Vector2(-420, -180)
+ s.players[3].pos = dish_hoop + Vector2(-280, 220)
  s.ball = s.players[0].pos
  s.players[0].charge = 0.58
- s.players[0].vel = (s.hoop_for(0)-s.players[0].pos).normalized()*200
+ s.players[0].vel = (dish_hoop-s.players[0].pos).normalized()*200
  s.shoot_ball(0,true)
  s.flight.time = 0.25
  s.ball = s.flight_position()
@@ -209,17 +235,134 @@ func _initialize() -> void:
  s.tick(1.0/60.0,call)
  check(s.flight.kind == "shot" and s.flight.blocked,"a blocked dunk cannot be rescued with a pass")
  s = fresh()
- s.players[0].pos = Vector2(1020,465)
+ var cpu_hoop = s.hoop_for(0)
+ s.owner = -1
+ s.players[0].pos = cpu_hoop + Vector2(-180, 40)
+ s.players[1].pos = cpu_hoop + Vector2(-80, 0)
+ s.stats[1].attempts = 1
+ s.flight = {
+  "kind": "shot", "start": s.players[1].pos, "end": cpu_hoop,
+  "time": 0.20, "duration": 1.15, "shooter": 1, "points": 2,
+  "made": true, "dunk": true, "blocked": false, "in_hand_until": 1.15 * MatchState.DUNK_HAND_RELEASE,
+  "release_height": 1.3, "arc_height": 1.6
+ }
+ s.ball = s.flight_position()
+ call = {0:neutral(),2:neutral(),3:neutral()}
+ call[0]["pass"] = true
+ s.tick(1.0/60.0, call)
+ check(s.flight.get("kind","") == "pass" and s.flight.get("target", -1) == 0 and s.stats[1].attempts == 0,"pressing Pass while a CPU teammate is dunking makes him dish before the slam")
+ s = fresh()
+ var hand_hoop = s.hoop_for(0)
+ s.owner = 0
+ s.players[0].pos = hand_hoop + Vector2(-420, 0)
+ s.players[1].pos = hand_hoop + Vector2(-200, 80)
+ s.ball = s.players[0].pos
+ s.players[0].charge = 0.4
+ s.players[0].shoot_held = true
+ s.players[0].shot_finish = "jumper"
+ call = {0:neutral(),1:neutral(),2:neutral(),3:neutral()}
+ call[0]["pass"] = true
+ s.tick(1.0/60.0,call)
+ check(s.flight.get("kind","") == "pass" and s.flight.target == 1 and s.stats[0].attempts == 0,"a pass during a jump-shot windup dishes before the ball leaves the hand")
+ s = fresh()
+ s.players[0].pos = hand_hoop + Vector2(-420, 0)
+ s.players[1].pos = hand_hoop + Vector2(-200, 80)
+ s.ball = s.players[0].pos
+ s.shoot_ball(0, false)
+ s.flight.time = 0.05
+ s.ball = s.flight_position()
+ var early_height = s.ball_height()
+ call = {0:neutral(),1:neutral(),2:neutral(),3:neutral()}
+ call[0]["pass"] = true
+ s.tick(1.0/60.0,call)
+ check(s.flight.get("kind","") == "pass" and s.stats[0].attempts == 0 and s.flight.start_height == early_height,"a jumper can be dished in the 12 ticks before plyr_shoot")
+ s = fresh()
+ s.players[0].pos = hand_hoop + Vector2(-70, 0)
+ s.players[0].vel = Vector2(180, 0)
+ s.players[1].pos = hand_hoop + Vector2(-220, 40)
+ s.players[2].pos = hand_hoop + Vector2(-400, -200)
+ s.players[3].pos = hand_hoop + Vector2(-400, 200)
+ s.ball = s.players[0].pos
+ s.shoot_ball(0, false)
+ s.flight.time = s.flight.duration * MatchState.DUNK_HAND_RELEASE
+ s.ball = s.flight_position()
+ call = {0:neutral(),1:neutral(),2:neutral(),3:neutral()}
+ call[0]["pass"] = true
+ s.tick(1.0/60.0,call)
+ check(s.flight.get("kind","") == "shot" and s.flight.dunk,"a pass after the ball leaves the dunking hand does not cancel the dunk")
+ s = fresh()
+ var late_hoop = s.hoop_for(0)
+ s.players[0].pos = late_hoop + Vector2(-170, 0)
+ s.players[1].pos = late_hoop + Vector2(-400, 160)
+ s.players[2].pos = late_hoop + Vector2(-420, -180)
+ s.players[3].pos = late_hoop + Vector2(-280, 220)
  s.ball = s.players[0].pos
  s.players[0].charge = 0.58
- s.players[0].vel = (s.hoop_for(0)-s.players[0].pos).normalized()*200
+ s.players[0].vel = (late_hoop-s.players[0].pos).normalized()*200
  s.shoot_ball(0,true)
  s.flight.time = s.flight.duration*0.92
  s.ball = s.flight_position()
  s.players[2].pos = s.ball
  s.flight.cpu_block_allowed = [true,true,true,true]
  check(s.ai(2).shoot,"a cold CPU defender may challenge a descending dunk held by its shooter")
- s.defend(2,false)
- check(s.flight.blocked and s.stats[2].blocks == 1 and s.stats[2].goaltends == 0 and s.score == [0,0],"late dunk contact is a legal rejection rather than jump-shot goaltending")
+ var late_dunk = s.snapshot()
+ var rejected = false
+ for n in range(40):
+  s.apply_snapshot(late_dunk)
+  s.rng.seed = 7000 + n
+  s.defend(2,false)
+  if s.flight.blocked and s.stats[2].blocks == 1 and s.stats[2].goaltends == 0 and s.score == [0,0]:
+   rejected = true
+   break
+ check(rejected,"late dunk contact is a legal rejection rather than jump-shot goaltending")
+ if rejected:
+  check(s.players[0].jump == 0.0 and s.players[0].vel == Vector2.ZERO and s.players[0].get("rim_hang", 0.0) == 0.0,"a blocked dunker drops out of the dunk")
+ s = fresh()
+ var mid_hoop = s.hoop_for(0)
+ s.players[0].pos = mid_hoop + Vector2(-220, 0)
+ s.players[1].pos = mid_hoop + Vector2(-400, 160)
+ s.players[2].pos = mid_hoop + Vector2(-420, -180)
+ s.players[3].pos = mid_hoop + Vector2(-280, 220)
+ s.ball = s.players[0].pos
+ s.players[0].charge = 0.58
+ s.players[0].vel = (mid_hoop - s.players[0].pos).normalized() * 220.0
+ s.shoot_ball(0, true)
+ s.flight.time = s.flight.duration * 0.35
+ s.ball = s.flight_position()
+ s.players[0].pos = s.finisher_position(s.flight.time)
+ s.players[2].pos = s.ball
+ var mid_dunk = s.snapshot()
+ var stopped = false
+ for n in range(40):
+  s.apply_snapshot(mid_dunk)
+  s.rng.seed = 8100 + n
+  s.defend(2, false)
+  if not s.flight.blocked:
+   continue
+  var scripted = s.finisher_position(s.flight.time + 0.25)
+  s.tick(0.2, {0:neutral(), 1:neutral(), 2:neutral(), 3:neutral()})
+  # Body separation can nudge the dunker off the defender. The dunk glide would carry them to the rim.
+  stopped = s.players[0].jump <= 0.0 and s.players[0].pos.distance_to(scripted) > 30.0
+  break
+ check(stopped, "a blocked dunker stays down instead of floating the rest of the dunk path")
+ s = fresh()
+ var mid = MatchState.COURT.position.x + MatchState.COURT.size.x * 0.5
+ s.owner = 0
+ s.players[0].pos = Vector2(mid - 40.0, 465)
+ s.ball = s.players[0].pos
+ s.shoot_ball(0, false)
+ check(s.flight.is_empty() and s.owner == 0, "a direct shot from beyond half court does not leave the hand")
+ var hold = {0: {"move": Vector2.ZERO, "shoot": true, "pass": false, "turbo": false}, 1: neutral(), 2: neutral(), 3: neutral()}
+ s.tick(0.2, hold)
+ check(s.flight.is_empty() and s.owner == 0 and s.players[0].charge == 0.0, "holding Shoot beyond half court is ignored")
+ s.players[0].pos = Vector2(mid + 40.0, 465)
+ s.ball = s.players[0].pos
+ s.tick(0.2, hold)
+ check(s.flight.is_empty() and s.players[0].charge > 0.0, "holding Shoot on the near side of half court still charges")
+ s.quarter = 3
+ s.players[0].charge = 0.5
+ s.players[0].shot_finish = "jumper"
+ s.tick(0.05, hold)
+ check(s.flight.is_empty() and s.owner == 0 and s.players[0].charge == 0.0, "after the baskets flip, the other side of midcourt cannot shoot")
  print("ARCADE RULE TESTS: ",checks," checks, ","PASS" if failures == 0 else "FAIL")
  quit(0 if failures == 0 else 1)

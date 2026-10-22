@@ -175,7 +175,7 @@ func remove_heading(rotation: Quaternion) -> Quaternion:
 
 func animate(next_action: String, delta: float, phase: float = -1.0, speed: float = 1.0, paused: bool = false, extra: String = "") -> void:
  var clip_to_sample = next_action
- if next_action == "shove":
+ if next_action in ["shove", "elbow"]:
   clip_to_sample = "idle"
  elif not library.has(clip_to_sample):
   clip_to_sample = "idle"
@@ -201,6 +201,8 @@ func animate(next_action: String, delta: float, phase: float = -1.0, speed: floa
   apply_block_pose(phase if phase >= 0 else action_time / 0.70)
  elif action == "shove":
   apply_shove_pose(phase if phase >= 0 else action_time / 0.45)
+ elif action == "elbow":
+  apply_elbow_pose(phase if phase >= 0 else action_time / 0.50)
  elif action == "stun":
   if extra == "flyback":
    apply_flyback_pose(phase if phase >= 0 else action_time / 0.95)
@@ -244,6 +246,25 @@ func apply_shove_pose(progress: float) -> void:
  var q_el_r = Quaternion(Vector3.UP, deg_to_rad(15.0 * thrust))
  skeleton.set_bone_pose_rotation(18, q_el_l * base_rotations[18])
  skeleton.set_bone_pose_rotation(19, q_el_r * base_rotations[19])
+
+func apply_elbow_pose(progress: float) -> void:
+ # Keep both upper arms wide at chest height and fold the forearms back toward
+ # the body. This makes the elbows the leading contact points while the outer
+ # athlete rotation supplies the side-to-side clearout strike.
+ var p = clampf(progress, 0.0, 1.0)
+ var extend = minf(clampf(p / 0.16, 0.0, 1.0), 1.0 - clampf((p - 0.82) / 0.18, 0.0, 1.0))
+ var strike = sin(p * TAU * 2.0)
+ var target_sh_l = Quaternion(Vector3.FORWARD, deg_to_rad(-8.0)) * Quaternion(Vector3.RIGHT, deg_to_rad(-8.0))
+ var target_sh_r = Quaternion(Vector3.FORWARD, deg_to_rad(8.0)) * Quaternion(Vector3.RIGHT, deg_to_rad(-8.0))
+ skeleton.set_bone_pose_rotation(16, base_rotations[16].slerp(target_sh_l, extend))
+ skeleton.set_bone_pose_rotation(17, base_rotations[17].slerp(target_sh_r, extend))
+ var target_el_l = Quaternion(Vector3.UP, deg_to_rad(145.0))
+ var target_el_r = Quaternion(Vector3.UP, deg_to_rad(-145.0))
+ skeleton.set_bone_pose_rotation(18, base_rotations[18].slerp(target_el_l, extend))
+ skeleton.set_bone_pose_rotation(19, base_rotations[19].slerp(target_el_r, extend))
+ var q_spine = Quaternion(Vector3.UP, deg_to_rad(13.0 * strike * extend)) * Quaternion(Vector3.RIGHT, deg_to_rad(8.0 * extend))
+ skeleton.set_bone_pose_rotation(3, q_spine * base_rotations[3])
+ skeleton.set_bone_pose_rotation(6, q_spine * base_rotations[6])
 
 func apply_flyback_pose(progress: float) -> void:
  var p = clampf(progress, 0.0, 1.0)

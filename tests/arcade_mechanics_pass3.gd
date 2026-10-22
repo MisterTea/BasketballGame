@@ -44,7 +44,8 @@ func run() -> void:
 		"finish": "dunk",
 		"arc_height": 2.0,
 		"blocked": false,
-		"clank": false
+		"clank": false,
+		"in_hand_until": 0.75
 	}
 	state.owner = -1
 
@@ -100,13 +101,15 @@ func run() -> void:
 	var dist = state.players[0].pos.distance_to(hoop)
 	check(dist > 450.0, "Full court heave position distance > 450 units")
 
-	state.clock = 10.0 # Not buzzer beater
+	state.clock = 10.0
+	state.rng.seed = 4242
 	var normal_pct = state.calculate_shot_percentage(0, 0.58, false, false, false).chance
 
-	state.clock = 3.0 # Under 4.0 seconds remaining!
+	state.clock = 3.0
+	state.rng.seed = 4242
 	var prayer_pct = state.calculate_shot_percentage(0, 0.58, false, false, false).chance
 
-	check(prayer_pct > normal_pct + 0.10, "Buzzer-beater prayer shot receives authentic +15% flat boost")
+	check(is_equal_approx(prayer_pct, normal_pct), "Q1 heave at 3.0s gets no flat prayer boost (tied game is unchanged before Q4)")
 
 	# ==========================================
 	# 4. MECHANIC 4: RIM CYLINDER & REBOUND LOCKOUT
@@ -221,7 +224,7 @@ func run() -> void:
 	var turbo_cmd = {0: {"move": Vector2.RIGHT, "turbo": true}}
 	state.tick(0.016, turbo_cmd)
 
-	check(state.players[0].turbo_burnout > 0.70, "Emptying turbo triggers authentic burnout delay (~0.75s / 45 ticks)")
+	check(is_equal_approx(state.players[0].turbo_burnout, 24.0 / MatchState.ARCADE_TSEC), "Emptying turbo starts the 24-tick replenish delay")
 
 	# During burnout, turbo does not regenerate
 	var release_turbo_cmd = {0: {"move": Vector2.RIGHT, "turbo": false}}
@@ -285,16 +288,27 @@ func run() -> void:
 
 	# Shot percentage clutch boost
 	state.clock = 30.0
+	state.rng.seed = 4242
 	var mid_game_chance = state.calculate_shot_percentage(0, 0.58, false, false, false).chance
 	state.clock = 8.0 # Final 10 seconds of quarter
+	state.rng.seed = 4242
 	var clutch_game_chance = state.calculate_shot_percentage(0, 0.58, false, false, false).chance
-	check(clutch_game_chance > mid_game_chance + 0.05, "Clutch rating boosts shot chance in final 10s of quarter")
+	check(is_equal_approx(clutch_game_chance, mid_game_chance), "PAT_CLUTCH is unread, so the final 10s do not change make percentage")
 
-	# Clutch pass speed boost
+	# plyr_pass does not read PAT_CLUTCH or the period clock.
+	state.clock = 30.0
+	state.owner = 0
+	state.players[0].pos = Vector2(400, 465)
+	state.players[1].pos = Vector2(700, 465)
+	state.ball = state.players[0].pos
+	state.pass_ball(0, false)
+	var mid_pass = state.flight.duration
 	state.clock = 8.0
 	state.owner = 0
+	state.flight = {}
+	state.ball = state.players[0].pos
 	state.pass_ball(0, false)
-	check(state.flight.duration < 0.60, "Clutch rating delivers faster laser pass duration in final 10s")
+	check(is_equal_approx(state.flight.duration, mid_pass), "The final 10s do not shorten a pass")
 
 	# Summary
 	print("\n--- RESULTS: %d checks, %d failures ---" % [checks, failures])

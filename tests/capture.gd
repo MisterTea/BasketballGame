@@ -119,8 +119,17 @@ func run() -> void:
  scene.game.shoot_ball(0,false)
  scene.game.flight.time = scene.game.flight.duration*0.92
  scene.game.players[2].pos = scene.game.flight_position()
- scene.game.defend(2,false)
- if scene.game.stats[2].goaltends != 1 or scene.game.score[0] != 2:
+ var goaltend_shot = scene.game.snapshot()
+ var goaltend_seen = false
+ for n in range(80):
+  scene.game.apply_snapshot(goaltend_shot)
+  scene.game.rng.seed = 3000 + n
+  scene.game.players[2].pos = scene.game.flight_position()
+  scene.game.defend(2,false)
+  if scene.game.stats[2].goaltends == 1 and scene.game.score[0] == 2:
+   goaltend_seen = true
+   break
+ if not goaltend_seen:
   push_error("Render fixture did not trigger actual goaltending")
   quit(1)
   return

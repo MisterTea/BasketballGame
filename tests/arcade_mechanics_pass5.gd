@@ -77,9 +77,9 @@ func _init() -> void:
 	s_fade.freeze = 0.0
 	s_fade.owner = 0
 	var hoop_f = s_fade.hoop_for(0)
-	# Position at distance 200, moving backward away from hoop
-	var toward_hoop = (hoop_f - Vector2(400, 400)).normalized()
-	s_fade.players[0].pos = Vector2(400, 400)
+	# Frontcourt, moving backward away from the hoop. Past midcourt is not a shot.
+	s_fade.players[0].pos = hoop_f + Vector2(-250, 40)
+	var toward_hoop = (hoop_f - s_fade.players[0].pos).normalized()
 	s_fade.players[0].vel = -toward_hoop * 60.0
 	s_fade.shoot_ball(0, false)
 	assert_true.call(s_fade.flight.get("fadeaway", false) == true, "Moving away from hoop during release launches fadeaway jumper")
@@ -128,16 +128,28 @@ func _init() -> void:
 	assert_true.call(cmd_offball.move.dot(dir_to_net) > 0.85, "Off-ball player moves directly to the net when uncontested")
 
 	# Now place an opposing defender guarding player 1
-	s_off.players[2].pos = Vector2(440, 465) # 40 units away, right in path to net
+	s_off.players[2].pos = Vector2(440, 465) # 40px away, inside the 50-unit push reach
 	s_off.players[2].stun = 0.0
 	s_off.players[1].cooldown = 0.0
 	s_off.players[1].turbo = 1.0
-	var cmd_guarded = s_off.ai(1)
-	assert_true.call(cmd_guarded.pass == true and cmd_guarded.turbo == true, "Off-ball player attempts to shove guarding defender")
+	s_off.players[1].face = 1
+	s_off.maximum_power = true
+	var cmd_guarded = {}
+	var found_push = false
+	for trial in range(300):
+		s_off.rng.seed = trial + 1
+		var cmd = s_off.ai(1)
+		if cmd.pass == true and cmd.turbo == true:
+			cmd_guarded = cmd
+			found_push = true
+			break
+	assert_true.call(found_push, "Off-ball player pushes a defender in front when the #p_t roll hits")
 
-	# Tick simulation with the AI command to verify shove resolution
+	# TE resolves contact halfway through the 24-tick shove animation.
 	var prev_def_x = s_off.players[2].pos.x
-	s_off.tick(0.016, {0: {}, 1: cmd_guarded})
+	s_off.tick(0.016, {0: {}, 1: cmd_guarded, 2: {}, 3: {}})
+	for _step in range(15):
+		s_off.tick(0.016, {0: {}, 1: {}, 2: {}, 3: {}})
 	assert_true.call(s_off.players[2].stun > 0.0, "Guarding defender is stunned by off-ball offensive shove")
 	assert_true.call(s_off.players[2].pos.x > prev_def_x, "Guarding defender is knocked backward by shove")
 	assert_true.call(s_off.owner == 0, "Offensive shove maintains team ball possession")
@@ -165,18 +177,21 @@ func _init() -> void:
 
 	# 2. In shove range (< 56 units), defender initiates shove on the ball carrier
 	s_def.players[2].pos = Vector2(530, 465) # 30 units away from player 0
+	s_def.players[2].nasty_timer = 1.0 # TE nasty mode always reaches the steal/push decision
+	s_def.maximum_power = true
 	var found_shove_owner = false
-	for _i in range(150):
+	for _i in range(20):
 		var cmd_close = s_def.ai(2)
 		if cmd_close.pass == true and cmd_close.turbo == true:
 			found_shove_owner = true
 			s_def.players[2].pos = Vector2(530, 465)
-			for _step in range(4):
-				s_def.tick(0.016, {0: {}, 2: cmd_close})
+			s_def.tick(0.016, {0: {}, 1: {}, 2: cmd_close, 3: {}})
+			for _step in range(15):
+				s_def.tick(0.016, {0: {}, 1: {}, 2: {}, 3: {}})
 			break
 	assert_true.call(found_shove_owner, "CPU defender attempts shove against the ball carrier")
 	assert_true.call(s_def.players[0].stun > 0.0, "Ball carrier is stunned/knocked down by aggressive CPU shove")
-	assert_true.call(s_def.owner == 2 or s_def.owner == -1, "CPU shove forces a turnover from the ball carrier")
+	assert_true.call(s_def.owner == 0 or s_def.owner == -1, "CPU shove retains or loosens the ball instead of awarding it directly to the defender")
 
 	# 3. Off-ball defender shoves the player's teammate
 	var s_team = MatchState.new()
@@ -190,17 +205,15 @@ func _init() -> void:
 	s_team.players[3].pos = Vector2(330, 465) # Defender 3 guarding Teammate, 30 units away
 	s_team.players[3].turbo = 1.0
 	s_team.players[3].cooldown = 0.0
-	var found_shove_teammate = false
-	for _i in range(150):
+	s_team.maximum_power = true
+	var shoved_teammate = false
+	for trial in range(40):
+		s_team.rng.seed = trial + 1
 		var cmd_team = s_team.ai(3)
 		if cmd_team.pass == true and cmd_team.turbo == true:
-			found_shove_teammate = true
-			s_team.players[3].pos = Vector2(330, 465)
-			for _step in range(4):
-				s_team.tick(0.016, {0: {}, 1: {}, 3: cmd_team})
+			shoved_teammate = true
 			break
-	assert_true.call(found_shove_teammate, "CPU defender attempts shove against the player's teammate")
-	assert_true.call(s_team.players[1].stun > 0.0, "Player's teammate is stunned/knocked down by defensive shove")
+	assert_true.call(not shoved_teammate, "A defender does not shove an off-ball opponent who is far from the ball")
 
 	# Test 10: Authentic 8-attribute separation (PLYRAT.ASM: Speed, Shoot, Dunk, Block, Steal, Pass, Power, Clutch)
 	var s_attr = MatchState.new()
@@ -221,20 +234,7 @@ func _init() -> void:
 	s_fire.record_natural_basket(0, 2) # Shot 4 while on fire -> cools off
 	assert_true.call(s_fire.fire_player == -1 and s_fire.fire_shots == 0, "Individual On-Fire cools off after 4th made basket while on fire")
 
-	# Test 12: Team Fire timer pauses while opponent controls the ball (SCORE.ASM:3020-3041)
-	var s_tfire = MatchState.new()
-	s_tfire.start(0, 1)
-	s_tfire.tipoff = {}
-	s_tfire.freeze = 0.0
-	s_tfire.team_fire_timer = [20.0, 0.0]
-	s_tfire.owner = 2 # Opponent (Team 1) has the ball
-	s_tfire.tick(1.0, {})
-	assert_true.call(is_equal_approx(s_tfire.team_fire_timer[0], 20.0), "Team Fire timer pauses while the opposing team has possession")
-	s_tfire.owner = 0 # Team 0 has the ball
-	s_tfire.tick(1.0, {0: {}})
-	assert_true.call(s_tfire.team_fire_timer[0] < 20.0, "Team Fire timer counts down when the team on fire controls the ball")
-
-	# Test 13: Backcourt stalling penalty (PLYR.ASM:2188-2210)
+	# Test 12: Backcourt stalling penalty (PLYR.ASM:2188-2210)
 	var s_stall = MatchState.new()
 	s_stall.start(0, 1)
 	s_stall.tipoff = {}
@@ -250,9 +250,9 @@ func _init() -> void:
 	s_stall.shot_clock = 20.0
 	s_stall.tick(0.05, {0: {"move": Vector2.RIGHT, "turbo": false}})
 	var normal_speed = s_stall.players[0].vel.length()
-	assert_true.call(stalled_speed < normal_speed * 0.75, "Backcourt stalling penalty slows leading ball-carrier when shot clock <= 10s")
+	assert_true.call(stalled_speed < normal_speed * 0.90 and stalled_speed > normal_speed * 0.70, "Backcourt stall subtracts 0x3000 from acceleration once the shot clock leaves 10 (was %.1f vs %.1f)" % [stalled_speed, normal_speed])
 
-	# Test 14: Weak 3-point shooter penalty (PLYR.ASM:5913-5915) & close jumper bonus (PLYR.ASM:5925-5927)
+	# Test 13: Weak 3-point shooter penalty (PLYR.ASM:5913-5915) & close jumper bonus (PLYR.ASM:5925-5927)
 	var s_3pt = MatchState.new()
 	s_3pt.start(0, 1)
 	s_3pt.tipoff = {}
@@ -260,15 +260,17 @@ func _init() -> void:
 	for p_idx in range(4):
 		s_3pt.players[p_idx].pos = Vector2(50, 50)
 	var hoop_t1 = s_3pt.hoop_for(1) # HOOPS[0] = (165, 465)
-	s_3pt.players[3].pos = hoop_t1 + Vector2(305, 0) # 3-pointer for weak 3pt shooter (rating 5, <= SHT5)
+	s_3pt.players[3].pos = hoop_t1 + Vector2(305, 0) # 3-pointer, shot rating 6 = SHT6 (1080)
 	s_3pt.players[3].vel = Vector2.ZERO
 	s_3pt.players[3].still_time = 1.0
+	s_3pt.score = [5, 0]
 	var weak_3 = s_3pt.calculate_shot_percentage(3, 0.58, false, false, false, false, false, false, false)
-	s_3pt.players[3].pos = hoop_t1 + Vector2(295, 0) # 2-pointer just inside the arc (no -20% weak 3pt penalty)
+	s_3pt.players[3].pos = hoop_t1 + Vector2(295, 0) # 2-pointer just inside the arc
 	var weak_2 = s_3pt.calculate_shot_percentage(3, 0.58, false, false, false, false, false, false, false)
-	assert_true.call(weak_2.chance - weak_3.chance >= 0.20, "Weak 3-point shooter (shooting <= 5) receives authentic -20% 3pt penalty")
+	assert_true.call(MatchState.SHT_PERMILLE[3] <= 1025 and MatchState.SHT_PERMILLE[4] > 1025, "3pt -200 applies only while PAT_SHOTSKILL <= 1025 (SHT0-SHT3)")
+	assert_true.call(weak_2.chance - weak_3.chance < 0.05, "SHT6 (1080) is above 1025, so a 3 loses distance only, not 200")
 
-	# Test 15: Quarter transition refills all players' turbo to 100% (SCORE.ASM:1825-1832)
+	# Test 14: Quarter transition refills all players' turbo to 100% (SCORE.ASM:1825-1832)
 	var s_qtr = MatchState.new()
 	s_qtr.start(0, 1)
 	s_qtr.tipoff = {}
@@ -277,7 +279,7 @@ func _init() -> void:
 	s_qtr.next_period()
 	assert_true.call(is_equal_approx(s_qtr.players[0].turbo, 1.0) and is_equal_approx(s_qtr.players[0].turbo_burnout, 0.0), "Period transition refills all players' turbo meters and clears burnout")
 
-	# Test 16: Consecutive spin within 2.0s grants reduced 0.16s (10-tick) steal immunity (PLYR.ASM:2424-2436)
+	# Test 15: Consecutive spin within 2.0s grants reduced 0.16s (10-tick) steal immunity (PLYR.ASM:2424-2436)
 	var s_cspin = MatchState.new()
 	s_cspin.start(0, 1)
 	s_cspin.tipoff = {}
@@ -286,16 +288,16 @@ func _init() -> void:
 	s_cspin.owner = 0
 	s_cspin.players[0].pos = Vector2(500, 450)
 	s_cspin.players[0].turbo = 1.0
-	s_cspin.tick(0.016, {0: {"move": Vector2.RIGHT, "spin": true}})
+	s_cspin.tick(0.016, {0: {"move": Vector2.RIGHT, "turbo": true, "spin": true}})
 	assert_true.call(s_cspin.players[0].steal_immune > 0.90, "First spin move grants 1.0s (60-tick) steal immunity")
 	# Advance past spin animation (0.45s) while still inside 2.0s spin_cooldown window
 	s_cspin.players[0].spin = 0.0
 	s_cspin.players[0].cooldown = 0.0
 	s_cspin.players[0].turbo = 1.0
-	s_cspin.tick(0.016, {0: {"move": Vector2.RIGHT, "spin": true}})
-	assert_true.call(s_cspin.players[0].spin > 0.35 and s_cspin.players[0].steal_immune < 0.25, "Consecutive spin within 2.0s executes with reduced 0.16s (10-tick) steal immunity")
+	s_cspin.tick(0.016, {0: {"move": Vector2.RIGHT, "turbo": true, "spin": true}})
+	assert_true.call(s_cspin.players[0].spin > 0.35 and s_cspin.players[0].steal_immune > 0.90, "ELBO2 grants 60 ticks of steal immunity on every elbow, including a repeat")
 
-	# Test 17: Standing elbow clearout grants 2.33s (140-tick) steal immunity (PLYR2.ASM:4162-4165)
+	# Test 16: Standing elbow clearout grants 2.33s (140-tick) steal immunity (PLYR2.ASM:4162-4165)
 	var s_elbo = MatchState.new()
 	s_elbo.start(0, 1)
 	s_elbo.tipoff = {}
@@ -303,9 +305,13 @@ func _init() -> void:
 	s_elbo.inbounding_team = -1
 	s_elbo.owner = 0
 	s_elbo.players[0].pos = Vector2(500, 450)
+	s_elbo.players[2].pos = Vector2(530, 440)
+	s_elbo.players[3].pos = Vector2(530, 460)
 	s_elbo.players[0].turbo = 1.0
-	s_elbo.tick(0.016, {0: {"move": Vector2.ZERO, "spin": true}})
-	assert_true.call(s_elbo.players[0].elbow > 0.35 and s_elbo.players[0].steal_immune > 2.0, "Standing elbow clearout grants authentic 2.33s (140-tick) steal immunity")
+	s_elbo.tick(0.016, {0: {"move": Vector2.ZERO, "spin": true}, 1: {}, 2: {}, 3: {}})
+	assert_true.call(s_elbo.players[0].elbow > 0.35 and s_elbo.players[0].steal_immune > 2.0, "Standing ELBO grants 140 ticks of steal immunity and does not spend turbo")
+	assert_true.call(is_equal_approx(s_elbo.players[0].turbo, 1.0), "Standing ELBO has no turbo cost")
+	assert_true.call((s_elbo.players[2].stun > 0.0) == (s_elbo.players[3].stun > 0.0), "TE elbow's shared HCOUNT roll hits both nearby opponents or neither")
 
 	# Test: Spin move and elbow without enough turbo triggers turbo_flash and NEED TURBO announcement
 	var s_noturbo = MatchState.new()
@@ -316,7 +322,7 @@ func _init() -> void:
 	s_noturbo.owner = 0
 	s_noturbo.players[0].pos = Vector2(500, 450)
 	s_noturbo.players[0].turbo = 0.10 # Below 0.14 threshold
-	s_noturbo.tick(0.016, {0: {"move": Vector2.RIGHT, "spin": true}})
+	s_noturbo.tick(0.016, {0: {"move": Vector2.RIGHT, "turbo": true, "spin": true}})
 	assert_true.call(s_noturbo.players[0].spin == 0.0, "Spin move does not execute without enough turbo")
 	assert_true.call(s_noturbo.players[0].turbo_flash > 0.50, "Spin move without enough turbo triggers turbo_flash (>0.5s)")
 	assert_true.call(s_noturbo.banner.contains("NEED TURBO"), "Spin move without enough turbo announces NEED TURBO!")
@@ -330,10 +336,11 @@ func _init() -> void:
 	s_noturbo_elbo.players[0].pos = Vector2(500, 450)
 	s_noturbo_elbo.players[0].turbo = 0.0
 	s_noturbo_elbo.tick(0.016, {0: {"move": Vector2.ZERO, "spin": true}})
-	assert_true.call(s_noturbo_elbo.players[0].elbow == 0.0, "Elbow clearout does not execute without enough turbo")
-	assert_true.call(s_noturbo_elbo.players[0].turbo_flash > 0.50, "Elbow clearout without enough turbo triggers turbo_flash (>0.5s)")
+	assert_true.call(s_noturbo_elbo.players[0].elbow > 0.35, "Standing ELBO still fires with an empty turbo meter")
+	assert_true.call(s_noturbo_elbo.players[0].turbo_flash == 0.0, "Standing ELBO does not ask for turbo")
 
-	# Test 18: Bank shots suppressed when any player is on fire (PLYR.ASM:6328-6329)
+	# Test 17: Close banks are cancelled when anyone is on fire (PLYR.ASM #offbb).
+	# Head-on and inside 100 asm units, so the shot is the close-bank path.
 	var s_bank = MatchState.new()
 	s_bank.start(0, 1)
 	s_bank.tipoff = {}
@@ -343,7 +350,7 @@ func _init() -> void:
 	for trial in range(60):
 		s_bank.rng.seed = trial * 37 + 11
 		s_bank.owner = 0
-		s_bank.players[0].pos = s_bank.hoop_for(0) + Vector2(-120, 80)
+		s_bank.players[0].pos = s_bank.hoop_for(0) + Vector2(-80, 0)
 		s_bank.players[0].vel = Vector2.ZERO
 		s_bank.shoot_ball(0, false)
 		if s_bank.flight.get("bank_shot", false):
@@ -351,7 +358,7 @@ func _init() -> void:
 			break
 	assert_true.call(not banked_while_fire, "Bank shots are strictly suppressed when any player is on fire")
 
-	# Test 19: Off-ball On-Fire drone spaces to 3-point arc instead of crowding rim (DRONE.ASM:981-984)
+	# Test 18: Off-ball On-Fire drone spaces to 3-point arc instead of crowding rim (DRONE.ASM:981-984)
 	var s_fire_ai = MatchState.new()
 	s_fire_ai.start(0, 1)
 	s_fire_ai.tipoff = {}
@@ -365,7 +372,7 @@ func _init() -> void:
 	var fire_offball_cmd = s_fire_ai.ai(1)
 	assert_true.call(fire_offball_cmd.move.x < -0.5, "Off-ball On-Fire drone moves out toward the 3-point arc instead of cutting to the rim")
 
-	# Test 20: Fast-break outlet spacing when teammate is much closer to rebound (DRONE.ASM:1880-1892)
+	# Test 19: Fast-break outlet spacing when teammate is much closer to rebound (DRONE.ASM:1880-1892)
 	var s_outlet = MatchState.new()
 	s_outlet.start(0, 1)
 	s_outlet.tipoff = {}
@@ -387,7 +394,7 @@ func _init() -> void:
 	var outlet_cmd = s_outlet.ai(1)
 	assert_true.call(outlet_cmd.move.x > 0.5, "Further drone sprints toward offensive 3-point outlet when teammate has rebound covered")
 
-	# Test 21: Contested airball roll & goaltending exemption (PLYR.ASM:6430-6488, PLYR2.ASM:2727-2730)
+	# Test 20: Contested airball roll & goaltending exemption (PLYR.ASM:6430-6488, PLYR2.ASM:2727-2730)
 	var s_air = MatchState.new()
 	s_air.start(0, 1)
 	s_air.tipoff = {}
@@ -407,10 +414,19 @@ func _init() -> void:
 	s_air.flight.time = s_air.flight.duration * 0.92
 	s_air.ball = s_air.flight_position()
 	s_air.players[2].pos = s_air.ball
-	s_air.defend(2, false)
-	assert_true.call(s_air.flight.blocked and s_air.stats[2].goaltends == 0, "Descending airball at rim can be legally swatted without goaltending")
+	var air_shot = s_air.snapshot()
+	var air_blocked = false
+	var air_goaltend = false
+	for n in range(40):
+		s_air.apply_snapshot(air_shot)
+		s_air.rng.seed = 9000 + n
+		s_air.players[2].pos = s_air.ball
+		s_air.defend(2, false)
+		air_blocked = air_blocked or s_air.flight.get("blocked", false)
+		air_goaltend = air_goaltend or s_air.stats[2].goaltends > 0
+	assert_true.call(air_blocked and not air_goaltend, "A descending airball that connects is a block, never a goaltend")
 
-	# Test 22: Post-rebound ball retention and steal immunity (PLYR2.ASM:2832-2842)
+	# Test 21: Post-rebound ball retention and steal immunity (PLYR2.ASM:2832-2842)
 	var s_reb_prot = MatchState.new()
 	s_reb_prot.start(0, 1)
 	s_reb_prot.tipoff = {}
@@ -421,9 +437,9 @@ func _init() -> void:
 	s_reb_prot.ball = Vector2(500, 465)
 	s_reb_prot.players[0].pos = Vector2(500, 465)
 	s_reb_prot.tick(0.016, {0: {}})
-	assert_true.call(s_reb_prot.owner == 0 and s_reb_prot.players[0].push_keep_ball > 1.0 and s_reb_prot.players[0].steal_immune >= 0.20, "Securing a rebound grants 80-tick push_keep_ball protection and steal immunity")
+	assert_true.call(s_reb_prot.owner == 0 and s_reb_prot.players[0].push_keep_ball > 1.0 and s_reb_prot.players[0].steal_immune == 0.0, "Securing a rebound grants 80-tick push protection without steal immunity")
 
-	# Test 23: Per-period 3-alley-oop drone limit & reset on next_period (SCORE.ASM:1864-1873, DRONE.ASM:884-891)
+	# Test 22: Per-period 3-alley-oop drone limit & reset on next_period (SCORE.ASM:1864-1873, DRONE.ASM:884-891)
 	var s_aly = MatchState.new()
 	s_aly.start(0, 1)
 	s_aly.tipoff = {}
@@ -433,17 +449,18 @@ func _init() -> void:
 	s_aly.players[2].pos = Vector2(200, 200)
 	s_aly.players[3].pos = Vector2(200, 600)
 	s_aly.players[1].alley_cnt = 3 # Already completed 3 alley-oops this period
-	var aly_blocked_by_cap = true
+	var alley_jump = false
 	for trial in range(100):
 		s_aly.rng.seed = trial * 29 + 3
+		s_aly.players[1].alley_cnt = 0
 		if s_aly.ai(1).shoot:
-			aly_blocked_by_cap = false
+			alley_jump = true
 			break
-	assert_true.call(aly_blocked_by_cap, "Off-ball drone respects the 3-alley-oop per-period cap (plyr_alley_cnt)")
+	assert_true.call(not alley_jump, "Off-ball drones do not jump for lobs; TE has no alley-oop rate table")
 	s_aly.next_period()
 	assert_true.call(s_aly.players[1].alley_cnt == 0, "Period transition resets plyr_alley_cnt back to 0")
 
-	# Test 24: On-Fire ball-carrier drone hunts 3-pointers (DRONE.ASM:725-727)
+	# Test 23: On-Fire ball-carrier drone hunts 3-pointers (DRONE.ASM:725-727)
 	var s_fire3 = MatchState.new()
 	s_fire3.start(0, 1)
 	s_fire3.tipoff = {}
@@ -454,7 +471,7 @@ func _init() -> void:
 	var fire3_cmd = s_fire3.ai(0)
 	assert_true.call(fire3_cmd.shoot == true, "On-Fire ball-carrier drone immediately pulls up for 3-pointers in range")
 
-	# Test 25: ASM Coordinate Proportions & Dunk Restrictions (WORLD.EQU / PLYR.ASM:4679-4749)
+	# Test 24: ASM Coordinate Proportions & Dunk Restrictions (WORLD.EQU / PLYR.ASM:4679-4749)
 	var s_dim = MatchState.new()
 	s_dim.start(1, 0) # LAX (player 0 = HOLLYWOOD, dunk=7, power=5) vs CHI (player 3 = BRICK, def=10)
 	s_dim.tipoff = {}
@@ -465,17 +482,23 @@ func _init() -> void:
 	s_dim.players[0].vel = Vector2(120, 0)
 	s_dim.players[2].pos = Vector2(200, 200)
 	s_dim.players[3].pos = Vector2(200, 600)
-	# Normal in-bounds dunk position (center court Y, 100px from right hoop)
-	s_dim.players[0].pos = Vector2(MatchState.HOOPS[1].x - 100.0, MatchState.HOOPS[1].y)
-	assert_true.call(s_dim.finish_kind(0, true, false) == "turbo_dunk", "Dunk succeeds in open lane within scaled TAKEDUNK_T range")
-	# Sideline restriction: within 36px of top/bottom court boundary (CZMIN+34 / CZMAX-34, PLYR.ASM:4745-4749)
-	s_dim.players[0].pos = Vector2(MatchState.HOOPS[1].x - 80.0, MatchState.COURT.position.y + 20.0)
-	assert_true.call(s_dim.finish_kind(0, true, false) == "jumper", "Dunk is disallowed within 36px (CZMIN+34) of the sideline")
-	# Behind-the-hoop restriction: past HOOPLX/HOOPRX along baseline (PLYR.ASM:4679-4700)
-	s_dim.players[0].pos = Vector2(MatchState.HOOPS[1].x + 15.0, MatchState.HOOPS[1].y - 50.0)
-	assert_true.call(s_dim.finish_kind(0, true, false) == "jumper", "Dunk is disallowed from behind the hoop along baseline")
+	# 160px is inside the 170-unit dunk window and past the 80-unit turbo line.
+	s_dim.players[0].pos = Vector2(MatchState.HOOPS[1].x - 160.0, MatchState.HOOPS[1].y)
+	s_dim.players[0].vel = Vector2(200, 0)
+	assert_true.call(s_dim.finish_kind(0, true, false) == "turbo_dunk", "Turbo dunk succeeds in an open lane inside 170 ASM units")
+	# No sideline ban: the same window near the sideline still dunks when facing the hoop.
+	var side_pos = Vector2(MatchState.HOOPS[1].x - 150.0, MatchState.COURT.position.y + 30.0)
+	s_dim.players[0].pos = side_pos
+	s_dim.players[0].vel = (MatchState.HOOPS[1] - side_pos).normalized() * 200.0
+	assert_true.call(s_dim.finish_kind(0, true, false) == "turbo_dunk", "A facing turbo drive near the sideline can still dunk")
+	# Straight behind the right hoop is a jump shot even with turbo and speed.
+	var behind_pos = Vector2(MatchState.HOOPS[1].x + 40.0, MatchState.HOOPS[1].y)
+	s_dim.players[0].pos = behind_pos
+	s_dim.players[0].vel = Vector2(-200, 0)
+	assert_true.call(s_dim.finish_kind(0, true, false) == "jumper", "Dunk is disallowed from directly behind the hoop")
 	# Polar angle dunk cone (#width_t in 128-step circle, PLYR.ASM:4936-4945)
 	s_dim.players[0].pos = Vector2(MatchState.HOOPS[1].x - 100.0, MatchState.HOOPS[1].y)
+	s_dim.players[0].vel = Vector2(200, 0)
 	s_dim.players[3].pos = Vector2(MatchState.HOOPS[1].x - 50.0, MatchState.HOOPS[1].y)
 	var saw_layup_bailout = false
 	for trial in range(50):
@@ -485,7 +508,7 @@ func _init() -> void:
 			break
 	assert_true.call(saw_layup_bailout, "Defender inside scaled DEF_DIST_T and polar DEF_WIDTH_T cone triggers layup bailout")
 
-	# Test 26: Authentic Drone AI Skill Heat Boost (DRONE.ASM:2145-2156)
+	# Test 25: Authentic Drone AI Skill Heat Boost (DRONE.ASM:2145-2156)
 	var s_dheat = MatchState.new()
 	s_dheat.start(0, 1)
 	s_dheat.difficulty = 1 # Normal difficulty
@@ -494,11 +517,149 @@ func _init() -> void:
 	s_dheat.player_streak[1] = 2
 	s_dheat.refresh_heat_summary()
 	var team_hot_idx = s_dheat.drone_skill_index(0)
-	assert_true.call(team_hot_idx == base_idx + 2, "Drone gains +2 skill index when teammate heats up (DRONE.ASM:2148)")
-	# When this drone itself heats up or is on fire, drone gains authentic +8 skill boost
+	assert_true.call(team_hot_idx == base_idx, "Heating up does not change drone_getcurskillo")
 	s_dheat.player_streak[0] = 2
+	s_dheat.fire_player = 0
 	var self_hot_idx = s_dheat.drone_skill_index(0)
-	assert_true.call(self_hot_idx == base_idx + 8, "Drone gains +8 skill index when player itself heats up or is on fire (DRONE.ASM:2155)")
+	assert_true.call(self_hot_idx == base_idx, "On-fire does not add a drone skill index")
+
+	# Test 26: A flyback shove interrupts a dunk the dunker still holds (PLYR.ASM:1137, PLYR2.ASM:4576)
+	var stage_dunk = func(keep_ball: bool) -> MatchState:
+		var dunk = MatchState.new()
+		dunk.start(0, 1)
+		dunk.tipoff = {}
+		dunk.phase = "playing"
+		dunk.freeze = 0.0
+		dunk.maximum_power = true
+		dunk.owner = -1
+		dunk.score = [0, 0]
+		dunk.players[2].pos = Vector2(500, 400)
+		dunk.players[2].face = -1
+		dunk.players[0].pos = Vector2(450, 400)
+		dunk.players[0].jump = 0.70
+		dunk.players[0].push_keep_ball = 2.0 if keep_ball else 0.0
+		dunk.stats[0].attempts = 1
+		dunk.player_streak[0] = 2
+		dunk.flight = {
+			"kind": "shot", "start": Vector2(400, 400), "end": dunk.hoop_for(0),
+			"time": 0.20, "duration": 1.15, "shooter": 0, "points": 2,
+			"made": true, "dunk": true, "blocked": false, "super_dunk": false
+		}
+		return dunk
+
+	var s_keep = stage_dunk.call(true)
+	var keep_score = s_keep.score[0]
+	s_keep.resolve_steal(2, true)
+	assert_true.call(s_keep.flight.is_empty(), "Flyback shove before seq_slamball clears the dunk flight")
+	assert_true.call(s_keep.owner == 0, "Keeping the ball on a shoved dunk restores possession (FLYBACKWB)")
+	assert_true.call(s_keep.players[0].shove_kind == "flyback", "A dunk shove uses the full flyback, never the short stagger")
+	assert_true.call(s_keep.score[0] == keep_score and s_keep.stats[0].dunks == 0, "Interrupted dunk does not score")
+	assert_true.call(s_keep.stats[0].attempts == 1, "The dunk attempt counted at takeoff is kept")
+	assert_true.call(s_keep.stats[2].steals == 1, "Shoving a dunker credits the push-steal")
+	assert_true.call(s_keep.player_streak[0] == 2 and s_keep.brick_count[0] == 0, "A kept dunk is not a rim miss")
+	assert_true.call(s_keep.banner.contains("KEEPS THE BALL"), "Kept dunk announces the carrier still has the ball")
+	s_keep.tick_flight(1.0)
+	assert_true.call(s_keep.score[0] == keep_score, "A cleared dunk cannot score on a later flight tick")
+
+	var lost_dunk = false
+	var lost_seed = -1
+	for seed in range(1, 40):
+		var s_lose = stage_dunk.call(false)
+		s_lose.rng.seed = seed
+		s_lose.resolve_steal(2, true)
+		if s_lose.flight.get("kind", "") == "loose" and s_lose.owner == -1:
+			lost_dunk = true
+			lost_seed = seed
+			assert_true.call(s_lose.score[0] == 0 and s_lose.stats[0].dunks == 0, "A dunk knocked loose does not score")
+			assert_true.call(s_lose.stats[0].turnovers == 1, "Losing the ball on a dunk shove is a turnover")
+			assert_true.call(s_lose.stats[0].attempts == 1, "A loose dunk still counts the takeoff attempt")
+			assert_true.call(s_lose.banner.contains("LOOSE BALL"), "Lost dunk announces a loose ball")
+			break
+	assert_true.call(lost_dunk, "Keep-ball failure during a dunk becomes a loose ball (seed %d)" % lost_seed)
+
+	var s_high = stage_dunk.call(true)
+	s_high.flight.time = 0.95
+	s_high.players[2].jump = 0.0
+	s_high.resolve_steal(2, true)
+	assert_true.call(s_high.players[0].stun == 0.0 and s_high.flight.get("dunk", false), "A grounded shove misses a dunker more than 84px above (PLYR2.ASM:4963)")
+
+	var s_reach = stage_dunk.call(true)
+	s_reach.flight.time = 0.70
+	s_reach.players[2].jump = 0.35
+	s_reach.resolve_steal(2, true)
+	assert_true.call(s_reach.flight.is_empty() and s_reach.owner == 0, "A jumping defender who can reach the dunker still breaks up the dunk")
+
+	var s_slam = stage_dunk.call(true)
+	s_slam.flight.time = s_slam.flight.duration
+	s_slam.players[2].jump = 0.35
+	s_slam.resolve_steal(2, true)
+	assert_true.call(s_slam.flight.get("kind", "") == "shot" and s_slam.flight.get("dunk", false), "A shove after seq_slamball leaves the released dunk in the rim")
+	s_slam.flight.time = s_slam.flight.duration
+	s_slam.tick_flight(0.016)
+	assert_true.call(s_slam.score[0] == 2, "A dunk already through the rim still scores after a late shove")
+
+	var s_lay = stage_dunk.call(false)
+	s_lay.flight.dunk = false
+	s_lay.flight.layup = true
+	s_lay.players[0].jump = 0.0
+	s_lay.rng.seed = 1
+	s_lay.resolve_steal(2, true)
+	assert_true.call(s_lay.flight.get("kind", "") == "shot" and s_lay.flight.get("layup", false), "A released layup is not cancelled by the dunk-interrupt path")
+
+	# Test 27: Contact tables match PLYR2.ASM
+	assert_true.call(is_equal_approx(MatchState.STL1[10], 0.300) and is_equal_approx(MatchState.STL1[0], 0.160), "stl1 runs from 160 to 300 per thousand")
+	assert_true.call(is_equal_approx(MatchState.STL2[9], 0.235) and is_equal_approx(MatchState.STL2[10], 0.250), "stl2 keeps the 235 then 250 clean-steal entries")
+	assert_true.call(MatchState.INT_T[1] == 4 and MatchState.INT_T[15] == 30, "Intercept bonus table matches #int_t")
+	assert_true.call(MatchState.TAKEDUNK_T[10] == 0 and MatchState.TAKEDUNK_T[11] == 50 and MatchState.TAKEDUNK_T[20] == 999, "takedunk_t is zero through equal power, then climbs")
+
+	var s_apex = MatchState.new()
+	s_apex.start(0, 1)
+	s_apex.tipoff = {}
+	s_apex.maximum_power = true
+	s_apex.players[2].pos = Vector2(500, 400)
+	s_apex.players[2].face = -1
+	s_apex.players[2].jump = 0.0
+	s_apex.players[0].pos = Vector2(450, 400)
+	s_apex.players[0].jump = 0.28
+	s_apex.resolve_steal(2, true)
+	assert_true.call(s_apex.players[0].stun == 0.0, "A grounded shove misses a player at the top of a jump")
+
+	var s_strip = MatchState.new()
+	s_strip.start(5, 2) # DIESEL power 10 vs GHOST power 4
+	s_strip.tipoff = {}
+	s_strip.phase = "playing"
+	s_strip.freeze = 0.0
+	var hoop_s = s_strip.hoop_for(0)
+	s_strip.flight = {
+		"kind": "shot", "start": hoop_s + Vector2(-40, 0), "end": hoop_s,
+		"time": 0.20, "duration": 1.15, "shooter": 0, "points": 2,
+		"made": true, "dunk": true, "blocked": false, "release_height": 1.3, "arc_height": 1.6
+	}
+	s_strip.ball = s_strip.flight_position()
+	s_strip.players[2].pos = s_strip.ball
+	var saw_resist = false
+	var saw_strip = false
+	for seed in range(1, 40):
+		s_strip.rng.seed = seed
+		s_strip.flight.blocked = false
+		s_strip.flight.made = true
+		s_strip.stats[2].blocks = 0
+		s_strip.defend(2, false)
+		if s_strip.flight.blocked:
+			saw_strip = true
+		else:
+			saw_resist = true
+	assert_true.call(saw_resist and saw_strip, "A much stronger dunker sometimes keeps the ball through a block (takedunk_t)")
+
+	var s_even = MatchState.new()
+	s_even.start(0, 1)
+	s_even.maximum_power = true
+	s_even.rng.seed = 3
+	var even_resisted = false
+	for _n in range(30):
+		if s_even.dunk_strip_resisted(2, 0):
+			even_resisted = true
+	assert_true.call(not even_resisted, "A stronger or equal stripper is not resisted by takedunk_t")
 
 	print("\n--- RESULTS: %d checks, %d failures ---" % [results.checks, results.failures])
 	if results.failures == 0:

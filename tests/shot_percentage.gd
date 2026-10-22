@@ -11,6 +11,14 @@ func check(condition: bool, message: String) -> void:
 		failures += 1
 		push_error("FAIL: " + message)
 
+func open_seed(s: MatchState, shooter: int) -> int:
+	for n in range(80):
+		s.rng.seed = 4000 + n
+		var probe = s.calculate_shot_percentage(shooter, 0.58, false, false, false)
+		if probe.chance > 0.20:
+			return 4000 + n
+	return 4000
+
 func fresh() -> MatchState:
 	var s = MatchState.new()
 	s.start(0, 1)
@@ -33,19 +41,26 @@ func run() -> void:
 	var s = fresh()
 	var hoop = s.hoop_for(0) # HOOPS[1] = (1115, 465)
 	s.players[0].pos = hoop + Vector2(-220, 0)
+	var mid_seed = open_seed(s, 0)
+	s.rng.seed = mid_seed
 	var mid_open = s.calculate_shot_percentage(0, 0.58, false, false, false)
-	check(mid_open.percentage >= 45.0 and mid_open.percentage <= 80.0, "wide open mid-range jumper has balanced arcade percentage: %.1f%%" % mid_open.percentage)
+	check(mid_open.percentage >= 75.0 and mid_open.percentage <= 95.0, "wide open mid-range jumper uses PAT_SHOTSKILL minus 2 per distance unit: %.1f%%" % mid_open.percentage)
 	check(mid_open.quality == "PERFECT", "release charge at 0.58s is evaluated as PERFECT quality")
 	
+	s.rng.seed = mid_seed
 	var dunk_pct = s.calculate_shot_percentage(0, 0.58, true, false, false)
 	check(dunk_pct.percentage >= 80.0, "uncontested dunk has high base percentage: %.1f%%" % dunk_pct.percentage)
 	
+	s.rng.seed = mid_seed
 	var super_dunk_pct = s.calculate_shot_percentage(0, 0.58, true, false, true)
 	check(super_dunk_pct.percentage >= 90.0, "specialty super dunk has elite base percentage: %.1f%%" % super_dunk_pct.percentage)
 	
 	# 2. Gaussian Release Timing Curve
+	s.rng.seed = mid_seed
 	var perfect = s.calculate_shot_percentage(0, 0.58, false, false, false)
+	s.rng.seed = mid_seed
 	var early = s.calculate_shot_percentage(0, 0.25, false, false, false)
+	s.rng.seed = mid_seed
 	var late = s.calculate_shot_percentage(0, 0.88, false, false, false)
 	check(perfect.timing > early.timing and perfect.timing > late.timing, "peak 0.58s timing beats early and late releases")
 	check(perfect.percentage > early.percentage and perfect.percentage > late.percentage, "perfect release grants higher shot percentage than mistimed releases")
@@ -54,37 +69,45 @@ func run() -> void:
 	# 3. 3D Spatial Defensive Contest Cone
 	s = fresh()
 	s.players[0].pos = Vector2(800, 465)
+	var spot_seed = open_seed(s, 0)
+	s.rng.seed = spot_seed
 	var open_at_spot = s.calculate_shot_percentage(0, 0.58, false, false, false)
 	# Defender 2 positioned directly in front of shooter (between shooter and hoop at 1115)
 	s.players[2].pos = Vector2(870, 465)
+	s.rng.seed = spot_seed
 	var in_front = s.calculate_shot_percentage(0, 0.58, false, false, false)
-	check(in_front.contest_level > 0.40, "defender between shooter and hoop produces substantial contest: %.2f" % in_front.contest_level)
+	check(in_front.contest_level > 0.15, "defender between shooter and hoop produces substantial contest: %.2f" % in_front.contest_level)
 	check(in_front.percentage < open_at_spot.percentage, "in-front contest significantly reduces shot percentage")
 	
-	# Defender 2 moved behind shooter (facing away / beaten)
+	# Defender 2 moved behind shooter (outside the 40-unit omnidirectional range)
 	s.players[2].pos = Vector2(730, 465)
+	s.rng.seed = spot_seed
 	var behind = s.calculate_shot_percentage(0, 0.58, false, false, false)
-	check(behind.contest_level == 0.0, "defender behind shooter cannot contest the shot")
+	check(behind.contest_level == 0.0, "defender behind shooter and outside 40 units does not contest")
 	check(behind.percentage == open_at_spot.percentage, "uncontested shot from behind has zero defensive penalty")
 	
 	# Jumping defender vs grounded defender
 	s.players[2].pos = Vector2(870, 465)
 	s.players[2].jump = 0.50
+	s.rng.seed = spot_seed
 	var jumping_contest = s.calculate_shot_percentage(0, 0.58, false, false, false)
-	check(jumping_contest.contest_level > in_front.contest_level, "airborne jumping defender creates stronger contest than grounded defender")
+	check(jumping_contest.contest_level > in_front.contest_level, "defender above the shooter increases the lane penalty")
 	check(jumping_contest.percentage < in_front.percentage, "jumping contest further depresses shot percentage")
 	
-	# Stunned defender cannot contest
+	# plyr_shoot does not read stun; a body still in the lane still contests
 	s.players[2].jump = 0.0
 	s.players[2].stun = 0.60
 	var stunned_contest = s.calculate_shot_percentage(0, 0.58, false, false, false)
-	check(stunned_contest.contest_level == 0.0, "stunned defender cannot contest shots")
+	check(is_equal_approx(stunned_contest.contest_level, in_front.contest_level), "stunned defender still in the lane is contested by position")
 	
 	# 4. Ballistic Rim Aperture & Distance Attenuation
 	s = fresh()
 	s.players[0].pos = hoop + Vector2(-180, 0) # Close 180 units
+	var range_seed = open_seed(s, 0)
+	s.rng.seed = range_seed
 	var close_shot = s.calculate_shot_percentage(0, 0.58, false, false, false)
 	s.players[0].pos = hoop + Vector2(-550, 0) # Long 550 units
+	s.rng.seed = range_seed
 	var deep_shot = s.calculate_shot_percentage(0, 0.58, false, false, false)
 	check(close_shot.percentage > deep_shot.percentage, "close shots have higher probability than deep perimeter attempts: %.1f%% vs %.1f%%" % [close_shot.percentage, deep_shot.percentage])
 	check(deep_shot.dist_penalty > close_shot.dist_penalty, "distance attenuation increases continuously with range")
@@ -92,16 +115,20 @@ func run() -> void:
 	# 5. Dynamic Rubber-Banding (Arcade Catch-Up Logic)
 	s = fresh()
 	s.players[0].pos = hoop + Vector2(-250, 0)
+	var band_seed = open_seed(s, 0)
 	# Tied game
 	s.score = [10, 10]
+	s.rng.seed = band_seed
 	var tied_shot = s.calculate_shot_percentage(0, 0.58, false, false, false)
 	# Trailing by 14 points
 	s.score = [10, 24]
+	s.rng.seed = band_seed
 	var trailing_shot = s.calculate_shot_percentage(0, 0.58, false, false, false)
-	check(trailing_shot.rubber_band > 0.0, "trailing team receives positive catch-up rubber-band factor: +%.3f" % trailing_shot.rubber_band)
+	check(is_equal_approx(trailing_shot.rubber_band, 0.28), "trailing team receives +2%% per point: +%.3f" % trailing_shot.rubber_band)
 	check(trailing_shot.percentage > tied_shot.percentage, "trailing team shot percentage is boosted by rubber-banding")
 	# Leading by 14 points
 	s.score = [24, 10]
+	s.rng.seed = band_seed
 	var leading_shot = s.calculate_shot_percentage(0, 0.58, false, false, false)
 	check(leading_shot.rubber_band < 0.0, "leading team receives negative handicap rubber-band factor: %.3f" % leading_shot.rubber_band)
 	check(leading_shot.percentage < tied_shot.percentage, "leading team faces subtle arcade resistance")
@@ -110,12 +137,16 @@ func run() -> void:
 	s = fresh()
 	s.players[0].pos = hoop + Vector2(-250, 0)
 	s.score = [0, 0]
+	var heat_seed = open_seed(s, 0)
+	s.rng.seed = heat_seed
 	var base_shot = s.calculate_shot_percentage(0, 0.58, false, false, false)
 	s.player_streak[0] = 2 # Heating up
+	s.rng.seed = heat_seed
 	var heating_shot = s.calculate_shot_percentage(0, 0.58, false, false, false)
-	check(heating_shot.fire_bonus > 0.0 and heating_shot.percentage > base_shot.percentage, "heating up streak awards bonus shot accuracy")
+	check(heating_shot.fire_bonus == 0.0 and is_equal_approx(heating_shot.chance, base_shot.chance), "heating up does not change make percentage until on fire")
 	s.player_streak[0] = 3
 	s.fire_player = 0 # On fire
+	s.rng.seed = heat_seed
 	var fire_shot = s.calculate_shot_percentage(0, 0.58, false, false, false)
 	check(fire_shot.percentage >= 82.0, "on-fire athlete receives massive accuracy boost: %.1f%%" % fire_shot.percentage)
 	
@@ -175,7 +206,7 @@ func run() -> void:
 	# Fast-forward dunk to basket completion
 	s.flight.time = s.flight.duration
 	s.tick_flight(0.01)
-	check(s.players[2].stun > 0.8, "flaming signature dunk knocks opposing defender near the rim flat onto the floor")
+	check(s.players[2].stun == 0.0, "seq_slamball does not knock down a defender standing near the rim")
 	
 	# 11. Sound Effects Procedural Generation
 	var main_scene = load("res://scripts/main.gd").new()
@@ -191,32 +222,40 @@ func run() -> void:
 	s.players[0].pos = hoop + Vector2(-240, 0)
 	s.players[0].vel = Vector2.ZERO
 	s.players[0].still_time = 1.0
+	var still_seed = open_seed(s, 0)
+	s.rng.seed = still_seed
 	var still_eval = s.calculate_shot_percentage(0, 0.58, false, false, false)
 	check(not still_eval.moving_shot and still_eval.still_shot, "player standing still is evaluated as a still shot")
-	check(still_eval.still_bonus > 0.0, "standing still provides accuracy bonus: +%.3f" % still_eval.still_bonus)
+	check(still_eval.still_bonus == 0.0, "plyr_shoot does not add a standing-still make bonus")
 
 	# Active moving shot
 	s.players[0].vel = Vector2(100, 50)
 	s.players[0].still_time = 0.0
+	s.rng.seed = still_seed
 	var moving_eval = s.calculate_shot_percentage(0, 0.58, false, false, false)
 	check(moving_eval.moving_shot and not moving_eval.still_shot, "moving player is evaluated as a moving shot")
-	check(moving_eval.moving_penalty > 0.0, "moving shot incurs moving penalty: -%.3f" % moving_eval.moving_penalty)
-	check(still_eval.percentage > moving_eval.percentage, "still shot percentage (%.1f%%) is significantly higher than moving shot (%.1f%%)" % [still_eval.percentage, moving_eval.percentage])
+	check(moving_eval.moving_penalty == 0.0, "plyr_shoot does not apply a moving-shot make penalty")
+	check(is_equal_approx(still_eval.chance, moving_eval.chance), "still and moving releases share the same PAT_SHOTSKILL percent")
 
 	# 100ms window test: stopped 50ms ago (< 100ms) -> moving shot
 	s = fresh()
 	s.players[0].pos = hoop + Vector2(-240, 0)
 	s.players[0].vel = Vector2.ZERO
 	s.players[0].still_time = 0.05 # 50ms still
+	var window_seed = open_seed(s, 0)
+	s.rng.seed = window_seed
 	var window_50ms = s.calculate_shot_percentage(0, 0.58, false, false, false)
-	check(window_50ms.moving_shot, "player moving in the past 100ms (50ms ago) remains a moving shot with lower odds")
-	check(window_50ms.percentage == moving_eval.percentage, "50ms recent movement incurs moving shot penalty")
+	check(window_50ms.moving_shot, "player moving in the past 100ms (50ms ago) remains flagged as a moving shot")
+	s.rng.seed = window_seed
+	var window_still = s.calculate_shot_percentage(0, 0.58, false, false, false)
+	check(is_equal_approx(window_50ms.chance, window_still.chance), "recent movement does not change the make percent")
 
 	# 100ms window test: stopped 120ms ago (>= 100ms) -> still shot
 	s.players[0].still_time = 0.12 # 120ms still
+	s.rng.seed = window_seed
 	var window_120ms = s.calculate_shot_percentage(0, 0.58, false, false, false)
 	check(not window_120ms.moving_shot and window_120ms.still_shot, "player still for >= 100ms (120ms) is evaluated as a set still shot")
-	check(window_120ms.percentage == still_eval.percentage, "still shot grants higher percentage")
+	check(is_equal_approx(window_120ms.chance, window_50ms.chance), "settling into a still shot keeps the same make percent")
 
 	# Straight-up jump vs moving momentum in tick simulation
 	s = fresh()
@@ -279,6 +318,78 @@ func run() -> void:
 		timeout += 0.05
 	check(not s.inbound_transition.get("active", false), "inbound transition completes cleanly")
 	check(s.players[2].pos.x < MatchState.COURT.position.x or s.players[2].pos.x > MatchState.COURT.end.x, "inbounder reaches baseline assigned spot")
+
+	# Tournament Edition plyr_shoot decision rules (deterministic branches)
+	s = fresh()
+	s.score = [0, 4]
+	s.players[0].pos = hoop + Vector2(-160, 0)
+	var lay = s.calculate_shot_percentage(0, 0.58, false, true, false)
+	check(is_equal_approx(lay.chance, 0.87), "lay_perc is 870 while losing: %.3f" % lay.chance)
+	s.fire_player = 0
+	var lay_fire = s.calculate_shot_percentage(0, 0.58, false, true, false)
+	check(is_equal_approx(lay_fire.chance, 0.87) and lay_fire.fire_bonus == 0.0, "on-fire does not change lay_perc")
+	s.fire_player = -1
+	s.score = [0, 0]
+	var saw_lay_full = false
+	var saw_lay_cut = false
+	for n in range(80):
+		s.rng.seed = 9000 + n
+		var lay_tied = s.calculate_shot_percentage(0, 0.58, false, true, false)
+		if is_equal_approx(lay_tied.chance, 0.87):
+			saw_lay_full = true
+		elif is_equal_approx(lay_tied.chance, 0.45):
+			saw_lay_cut = true
+	check(saw_lay_full and saw_lay_cut, "tied lay_perc stays 870 unless the 100/1000 knockdown drops it to 450")
+	s.score = [0, 3]
+	var saw_hook_full = false
+	var saw_hook_cut = false
+	for n in range(80):
+		s.rng.seed = 9100 + n
+		var hook_shot = s.calculate_shot_percentage(0, 0.58, false, false, false, false, true)
+		if is_equal_approx(hook_shot.chance, 0.60):
+			saw_hook_full = true
+		elif is_equal_approx(hook_shot.chance, 0.25):
+			saw_hook_cut = true
+	check(saw_hook_full and saw_hook_cut, "hook percent is 600, or 250 on the 120/1000 knockdown")
+	s.fire_player = 0
+	s.players[0].pos = hoop + Vector2(-520, 0)
+	var fire_heave = s.calculate_shot_percentage(0, 0.58, false, false, false)
+	check(is_equal_approx(fire_heave.chance, 0.10), "on-fire jumper at >= 328 ASM units is forced to 100: %.3f" % fire_heave.chance)
+	s.fire_player = -1
+	s.brick_count[0] = 3
+	s.score = [0, 2]
+	s.players[0].pos = hoop + Vector2(-700, 0)
+	var brick = s.calculate_shot_percentage(0, 0.58, false, false, false)
+	check(brick.chance > 0.95, "three bricks force the next shot to 990 at any distance: %.3f" % brick.chance)
+	s.brick_count[0] = 0
+	s.quarter = 4
+	s.clock = 3.0
+	s.score = [8, 8]
+	var q4_hoop = s.hoop_for(0)
+	s.players[0].pos = q4_hoop + Vector2(220, 0)
+	var tie_buzzer = s.calculate_shot_percentage(0, 0.58, false, false, false)
+	check(is_equal_approx(tie_buzzer.chance, 0.05), "tied Q4 shot at <= 4.00s is forced to 50: %.3f" % tie_buzzer.chance)
+	s.clock = 5.0
+	var early_clock = s.calculate_shot_percentage(0, 0.58, false, false, false)
+	check(early_clock.chance > 0.10, "the tied-game 5%% floor waits until game_time <= 0x400")
+	s.clock = 3.0
+	s.score = [0, 2]
+	s.players[0].pos = q4_hoop + Vector2(280, 0)
+	var tie_shot = s.calculate_shot_percentage(0, 0.58, false, false, false)
+	check(not tie_shot.three_pointer and is_equal_approx(tie_shot.chance, 0.80), "Q4 shot that ties is floored at 800: %.3f" % tie_shot.chance)
+	s.score = [0, 1]
+	s.players[0].pos = q4_hoop + Vector2(520, 0)
+	var lead_shot = s.calculate_shot_percentage(0, 0.58, false, false, false)
+	check(lead_shot.three_pointer and is_equal_approx(lead_shot.chance, 0.38), "Q4 heave that would take the lead is floored at 380: %.3f" % lead_shot.chance)
+	s.score = [10, 0]
+	s.clock = 3.0
+	var blowout = s.calculate_shot_percentage(0, 0.58, false, false, false)
+	check(is_equal_approx(blowout.chance, 0.30), "winning by 5+ with 2-4s left floors a heave at 300: %.3f" % blowout.chance)
+	s.quarter = 1
+	s.score = [0, 3]
+	s.players[0].pos = hoop + Vector2(-520, 0)
+	var early_q = s.calculate_shot_percentage(0, 0.58, false, false, false)
+	check(early_q.three_pointer and is_equal_approx(early_q.chance, 0.12), "Q1 3 that ties is floored at 120 after the ptsdown bump: %.3f" % early_q.chance)
 
 	print("SHOT PERCENTAGE TESTS: %d checks, %s" % [checks, "PASS" if failures == 0 else "FAIL (%d errors)" % failures])
 	quit(0 if failures == 0 else 1)

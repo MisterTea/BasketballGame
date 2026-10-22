@@ -4,6 +4,10 @@ const HYMotionRig = preload("res://scripts/hy_motion_rig.gd")
 
 # Presentation only: simulation coordinates, inputs, and network state stay unchanged.
 const COURT_SCALE = Vector2(28.0 / 1050.0, 15.0 / 410.0)
+# World units per second. Continuous motion stays inside one step and tracks
+# exactly. A relocation larger than that step slides instead of popping.
+const PLAYER_SLIDE = 110.0
+const BALL_SLIDE = 160.0
 const GOLD = Color("ffcb68")
 const BASE_CAM_Y = 10.6
 const BASE_CAM_Z = 18.6
@@ -22,6 +26,8 @@ var last_teams: Array = []
 var time = 0.0
 var materials: Dictionary = {}
 var camera_initialized = false
+var visuals_ready = false
+var visual_ball = Vector3.ZERO
 var camera_focus = 0.0
 var dunk_cam_lift: float = 0.0
 var dunk_cam_zoom: float = 0.0
@@ -880,9 +886,15 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   for part in actor.mesh_parts:
    part.mesh.material_override = possession_flash_material if flash_white else part.material
   var point: Vector2 = positions[i] if positions.size() == 4 else p.pos
-  actor.root.position = court_point(point)
+  var target_root = court_point(point)
+  if not visuals_ready or paused:
+   actor.root.position = target_root
+  else:
+   var stepped = actor.root.position.move_toward(target_root, PLAYER_SLIDE * delta)
+   actor.root.position = Vector3(stepped.x, target_root.y, stepped.z)
   var jump = 0.0
-  if not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.shooter == i and state.flight.has("player_start"):
+  var finish_blocked = not state.flight.is_empty() and state.flight.get("blocked", false)
+  if not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.shooter == i and state.flight.has("player_start") and not finish_blocked:
    var progress = clampf(state.flight.time/state.flight.duration,0,1)
    var launch: float = state.flight.get("player_launch_height",0.0)
    var peak = 4.2 if state.is_player_on_fire(i) else (2.85 if state.flight.get("super_dunk",false) else 1.8 if state.flight.dunk else 1.15)
@@ -913,7 +925,7 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   var running = clampf(p.vel.length() / 420.0, 0, 1)
   var is_stunned = p.stun > 0.0
   var is_running = p.vel.length() > 8 and not is_stunned
-  var is_shot_actor = not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.shooter == i
+  var is_shot_actor = not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.shooter == i and not state.flight.get("blocked", false)
   var is_dunking = (is_shot_actor and state.flight.get("dunk", false)) or p.get("rim_hang", 0.0) > 0.0
   var dunk_style = state.flight.get("dunk_style", "standard") if (not state.flight.is_empty() and state.flight.get("dunk", false)) else "standard"
   var dunk_p = clampf(state.flight.time / state.flight.duration, 0.0, 1.0) if not state.flight.is_empty() else 1.0
@@ -1009,7 +1021,7 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
    next_action = "block"
    var progress = 1.0-clampf(p.receive_jump/0.7,0,1)
    phase = progress*0.64 if progress <= 0.5 else 0.32+(progress-0.5)*1.36
-  elif not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.shooter == i:
+  elif not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.shooter == i and not state.flight.get("blocked", false):
    next_action = "dunk" if state.flight.dunk else "layup" if (state.flight.get("layup",false) or state.flight.get("hook",false)) else "shoot"
    phase = clampf(state.flight.time/state.flight.duration,0,1) if state.flight.dunk else 0.45+0.55*clampf(state.flight.time/state.flight.duration,0,1)
    if state.flight.get("finish","") == "alley_oop":
@@ -1028,6 +1040,9 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
    else:
     next_action = "steal"
     phase = 1.0 - clampf(p.swipe / 0.45, 0.0, 1.0)
+  elif p.get("elbow",0.0) > 0:
+   next_action = "elbow"
+   phase = 1.0 - clampf(p.elbow / 0.50, 0.0, 1.0)
   elif not state.flight.is_empty() and state.flight.kind == "pass" and not state.flight.get("tip",false) and (int(state.flight.target)/2)*2+(1-int(state.flight.target)%2) == i:
    next_action = "pass"
    phase = clampf(state.flight.time/state.flight.duration,0,1)
@@ -1142,7 +1157,27 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   var shadow_alpha = clampf(0.60 - h * 0.11, 0.12, 0.60)
   actor.shadow_mat.albedo_color.a = shadow_alpha
  var ball_height = state.ball_height()
+ var ball_glued = false
  basketball.position = court_point(ball,ball_height)
+ # Simulation passes remain center-to-center for deterministic catches and
+ # interceptions. Render their endpoints at the animated hands so releasing
+ # and receiving the ball is continuous instead of visibly snapping.
+ if not state.flight.is_empty() and state.flight.kind == "pass" and not state.flight.get("tip", false):
+  var passer_id = int(state.flight.get("passer", -1))
+  var receiver_id = int(state.flight.get("target", -1))
+  if passer_id >= 0 and passer_id < athletes.size() and receiver_id >= 0 and receiver_id < athletes.size():
+   var passer = athletes[passer_id]
+   var receiver = athletes[receiver_id]
+   var passer_l: Transform3D = passer.skeleton.global_transform * passer.skeleton.get_bone_global_pose(20)
+   var passer_r: Transform3D = passer.skeleton.global_transform * passer.skeleton.get_bone_global_pose(21)
+   var receiver_l: Transform3D = receiver.skeleton.global_transform * receiver.skeleton.get_bone_global_pose(20)
+   var receiver_r: Transform3D = receiver.skeleton.global_transform * receiver.skeleton.get_bone_global_pose(21)
+   var release_point = (passer_l.origin + passer_r.origin) * 0.5
+   var catch_point = (receiver_l.origin + receiver_r.origin) * 0.5
+   var pass_t = clampf(state.flight.time / maxf(state.flight.duration, 0.01), 0.0, 1.0)
+   var pass_arc = 1.4 if state.flight.get("alley", false) else 0.5
+   basketball.global_position = release_point.lerp(catch_point, pass_t) + Vector3.UP * sin(pass_t * PI) * pass_arc
+   ball_glued = true
  if state.flight.is_empty() and state.owner >= 0:
   var carrier = athletes[state.owner]
   var p_carrier: Dictionary = state.players[state.owner]
@@ -1153,7 +1188,8 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
    var hands_mid = (hand_l.origin + hand_r.origin) * 0.5
    var forward_dir = -carrier.body.global_transform.basis.z
    basketball.global_position = hands_mid + forward_dir * 0.12
- if not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.dunk:
+   ball_glued = true
+ if not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.dunk and not state.flight.get("blocked", false):
   var dunker = athletes[state.flight.shooter]
   var dunk_style = state.flight.get("dunk_style", "standard")
   var dunk_p = clampf(state.flight.time / state.flight.duration, 0.0, 1.0)
@@ -1181,6 +1217,7 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   else:
    var net_drop = (dunk_p - 0.94) / 0.06 * 0.38
    basketball.global_position = rim_target - Vector3(0, net_drop, 0)
+  ball_glued = true
   if dunk_p >= 0.90 and not dunk_slam_shaken:
    dunk_slam_shaken = true
    var is_super = state.flight.get("super_dunk", false) or state.is_player_on_fire(state.flight.shooter)
@@ -1237,7 +1274,20 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
     var ball_drop_y = lerpf(3.12, 2.25, drop_p)
     var drop_dir = net_data.swish_dir if net_data.swish_dir.length() > 0.01 else Vector3(net_data.side, 0, 0)
     basketball.position = net_data.center + Vector3(0, ball_drop_y - 3.05, 0) + drop_dir * (sin(drop_p * PI) * 0.08)
+    ball_glued = true
     break
+ var ball_target = basketball.global_position
+ if visuals_ready and not paused and not ball_glued:
+  basketball.global_position = visual_ball.move_toward(ball_target, BALL_SLIDE * delta)
+ visual_ball = basketball.global_position
+ visuals_ready = true
+ ball_shadow.position = Vector3(basketball.position.x, 0.006, basketball.position.z)
+ b_h = basketball.position.y
+ b_spread = 1.0 + minf(b_h * 0.35, 1.8)
+ ball_shadow.scale = Vector3(b_spread, 1.0, b_spread)
+ b_alpha = clampf(0.55 - b_h * 0.09, 0.06, 0.55)
+ ball_shadow.material_override.albedo_color.a = b_alpha
+ ball_shadow.visible = b_h < 8.5
  var is_dunk_flight = not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.dunk
  var dunk_basket_idx = -1
  var dunk_dip_target = 0.0

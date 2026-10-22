@@ -27,7 +27,7 @@ func setup() -> void:
   state.apply_snapshot(data)
   if state.tipoff.active:
    saw_toss = true
-   if state.clock != 30 or state.shot_clock != 24 or state.owner != -1:
+   if state.clock != 30 or not is_equal_approx(state.shot_clock, MatchState.SHOT_CLOCK_SECONDS) or state.owner != -1:
     push_error("Tip-off leaked match time or possession")
     quit(1)
   saw_jump = saw_jump or state.tipoff.jumps[1] >= 0

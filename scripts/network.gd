@@ -27,9 +27,19 @@ func _ready() -> void:
  multiplayer.connection_failed.connect(func(): leave(); status_changed.emit("Connection failed. Check address, firewall and UDP port 27888."))
  multiplayer.server_disconnected.connect(func(): leave(); status_changed.emit("The host disconnected. Return to the menu to play again."))
 
+# The web export does not compile ENet. Looking the class up by name lets that
+# build load; host and join report that UDP play is desktop-only.
+func udp_peer():
+ if not ClassDB.class_exists("ENetMultiplayerPeer"):
+  return null
+ return ClassDB.instantiate("ENetMultiplayerPeer")
+
 func host_game(player_name: String) -> Error:
  leave()
- var peer = ENetMultiplayerPeer.new()
+ var peer = udp_peer()
+ if peer == null:
+  status_changed.emit("Online play uses UDP and is in the desktop build.")
+  return ERR_UNAVAILABLE
  var error = peer.create_server(PORT, 3)
  if error != OK:
   return error
@@ -44,7 +54,10 @@ func host_game(player_name: String) -> Error:
 
 func join_game(address: String, player_name: String) -> Error:
  leave()
- var peer = ENetMultiplayerPeer.new()
+ var peer = udp_peer()
+ if peer == null:
+  status_changed.emit("Online play uses UDP and is in the desktop build.")
+  return ERR_UNAVAILABLE
  var error = peer.create_client(address, PORT)
  if error != OK:
   return error
@@ -222,7 +235,7 @@ func broadcast(data: Dictionary) -> void:
   var payload = var_to_bytes(data).compress(FileAccess.COMPRESSION_DEFLATE)
   receive_state.rpc(payload)
 
-@rpc("authority", "call_remote", "unreliable_ordered", 1)
+@rpc("authority", "call_remote", "reliable", 1)
 func receive_state(payload: PackedByteArray) -> void:
  if not hosting and active_match and payload.size() < 65536:
   var decoded = payload.decompress_dynamic(65536,FileAccess.COMPRESSION_DEFLATE)

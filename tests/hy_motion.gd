@@ -135,6 +135,18 @@ func run() -> void:
    shove_never_behind = false
  check(shove_smooth,"shove animation maintains smooth continuous frame-to-frame shoulder rotations without flipping")
  check(shove_reaches_forward and shove_never_behind,"shove thrusts both arms forward at chest level without wrapping behind the body")
+ state.players[0].swipe = 0.0
+ state.players[0].swipe_shove = false
+ state.players[0].elbow = 0.25
+ before = state.snapshot()
+ arena.present(state,[],state.ball,[0],0.1,false)
+ check(actor.body.action == "elbow","standing clearout selects the dedicated elbow action")
+ unchanged = unchanged and state.snapshot() == before
+ var left_elbow = rig.skeleton.get_bone_global_pose(18).origin
+ var right_elbow = rig.skeleton.get_bone_global_pose(19).origin
+ var left_wrist = rig.skeleton.get_bone_global_pose(20).origin
+ var right_wrist = rig.skeleton.get_bone_global_pose(21).origin
+ check(absf(left_elbow.x) > absf(left_wrist.x) and absf(right_elbow.x) > absf(right_wrist.x),"elbow clearout extends both elbows beyond the folded-in hands")
  check(unchanged,"animation does not alter movement, scoring or simulation data")
  var record: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://animations/hy_motion/provenance.json"))
  check(record.executed_locally and record.clips.size() == 11 and record.generator.contains("1B"),"provenance records a completed local standard-model run")

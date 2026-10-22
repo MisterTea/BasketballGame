@@ -15,7 +15,7 @@ func _initialize() -> void:
 	call_deferred("run")
 
 func run() -> void:
-	print("--- TESTING ARCADE MECHANICS PASS 2 (ALL 8 MECHANICS) ---")
+	print("--- TESTING ARCADE MECHANICS PASS 2 (ALL 7 MECHANICS) ---")
 
 	# ==========================================
 	# 1. MECHANIC 1: SPIN MOVE & ELBOW CLEAROUT
@@ -46,6 +46,11 @@ func run() -> void:
 
 	var cmd = main_scene.read_command(0)
 	check(cmd.has("spin"), "read_command(0) includes spin in command dictionary")
+	check(cmd.has("shove"), "read_command(0) includes shove in command dictionary")
+	check(main_scene.athlete_for_input(0) == 0, "athlete_for_input(0) returns default athlete 0")
+	main_scene.controlled[0] = 1
+	check(main_scene.athlete_for_input(0) == 1, "athlete_for_input(0) tracks switched athlete 1")
+	main_scene.controlled[0] = 0
 
 	main_scene.queue_free()
 	await process_frame
@@ -60,15 +65,15 @@ func run() -> void:
 	state.players[0].pos = Vector2(500, 450)
 	state.players[0].turbo = 1.0
 
-	# Moving + Spin -> Spin Move
+	# Turbo + L -> Spin Move
 	var spin_cmd = {
-		0: {"move": Vector2(1, 0), "turbo": false, "shoot": false, "pass": false, "shove": false, "spin": true}
+		0: {"move": Vector2(1, 0), "turbo": true, "shoot": false, "pass": false, "shove": false, "spin": true}
 	}
 	state.tick(0.016, spin_cmd)
-	check(state.players[0].spin > 0.35, "Moving with spin input triggers Spin Move (spin timer active)")
+	check(state.players[0].spin > 0.35, "Turbo + L triggers Spin Move (spin timer active)")
 	check(state.players[0].spin_cooldown > 1.5, "Spin Move sets cooldown (~2.0s)")
 	check(state.players[0].steal_immune > 0.8, "Spin Move grants steal immunity (~1.0s)")
-	check(state.players[0].turbo < 1.0, "Spin Move consumes 2/7 of turbo meter")
+	check(state.players[0].turbo < 1.0, "ELBO2 spends four turbo units while the button is held")
 	check(state.players[0].vel.x > 200, "Spin Move surges velocity forward in movement direction")
 
 	# Verify steal immunity prevents opponent steal
@@ -77,7 +82,7 @@ func run() -> void:
 	state.resolve_steal(2, false)
 	check(state.owner == 0, "Steal attempt while steal_immune fails to steal the ball")
 
-	# Test Elbow Clearout (stationary + spin)
+	# Test Elbow Clearout (L without Turbo, even while moving)
 	var state2 = MatchState.new()
 	state2.start(0, 1)
 	state2.tipoff = {}
@@ -90,46 +95,70 @@ func run() -> void:
 	state2.players[2].stun = 0.0
 
 	var elbow_cmd = {
-		0: {"move": Vector2.ZERO, "turbo": false, "shoot": false, "pass": false, "shove": false, "spin": true}
+		0: {"move": Vector2.RIGHT, "turbo": false, "shoot": false, "pass": false, "shove": false, "spin": true},
+		1: {}, 2: {}, 3: {}
 	}
-	state2.tick(0.016, elbow_cmd)
-	check(state2.players[0].elbow > 0.35, "Stationary with spin input triggers Elbow Clearout (elbow timer active)")
-	check(state2.players[2].stun > 0.5, "Elbow Clearout staggers nearby opponent defender")
-	check(state2.players[2].pos.x > 540, "Elbow Clearout pushes opponent defender backward")
+	var elbow_hit_seen = false
+	var elbow_miss_seen = false
+	var elbow_push_seen = false
+	for trial in range(24):
+		state2.rng.seed = trial + 1
+		state2.players[0].elbow = 0.0
+		state2.players[0].spin = 0.0
+		state2.players[0].cooldown = 0.0
+		state2.players[0].spin_cooldown = 0.0
+		state2.players[0].turbo = 1.0
+		state2.players[0].pos = Vector2(500, 450)
+		state2.players[2].pos = Vector2(530, 450)
+		state2.players[2].stun = 0.0
+		state2.players[2].vel = Vector2.ZERO
+		state2.tick(0.016, elbow_cmd)
+		elbow_hit_seen = elbow_hit_seen or state2.players[2].stun > 0.5
+		elbow_miss_seen = elbow_miss_seen or state2.players[2].stun == 0.0
+		elbow_push_seen = elbow_push_seen or state2.players[2].pos.x > 540
+	check(state2.players[0].elbow > 0.35 and state2.players[0].spin == 0.0, "L without Turbo triggers Elbow Clearout even while moving")
+	check(elbow_hit_seen and elbow_miss_seen, "TE Elbow Clearout uses its 50% shared contact roll")
+	check(elbow_push_seen, "A connecting Elbow Clearout pushes the nearby defender backward")
+
+	# Test L with shove flag when holding the ball:
+	# Without Turbo -> Elbow
+	var state_shove_elbo = MatchState.new()
+	state_shove_elbo.start(0, 1)
+	state_shove_elbo.tipoff = {}
+	state_shove_elbo.freeze = 0
+	state_shove_elbo.inbounding_team = -1
+	state_shove_elbo.owner = 0
+	state_shove_elbo.players[0].pos = Vector2(500, 450)
+	state_shove_elbo.players[0].turbo = 1.0
+	state_shove_elbo.tick(0.016, {0: {"move": Vector2.ZERO, "turbo": false, "shoot": false, "pass": false, "shove": true, "spin": false}})
+	check(state_shove_elbo.players[0].elbow > 0.35 and state_shove_elbo.players[0].spin == 0.0, "Pressing L (shove) when having ball without turbo triggers elbow")
+
+	# With Turbo -> Spin Move
+	var state_shove_spin = MatchState.new()
+	state_shove_spin.start(0, 1)
+	state_shove_spin.tipoff = {}
+	state_shove_spin.freeze = 0
+	state_shove_spin.inbounding_team = -1
+	state_shove_spin.owner = 0
+	state_shove_spin.players[0].pos = Vector2(500, 450)
+	state_shove_spin.players[0].turbo = 1.0
+	state_shove_spin.tick(0.016, {0: {"move": Vector2(1, 0), "turbo": true, "shoot": false, "pass": false, "shove": true, "spin": false}})
+	check(state_shove_spin.players[0].spin > 0.35 and state_shove_spin.players[0].elbow == 0.0, "Pressing Turbo + L (shove) when having ball triggers spin move")
+
+	# Without ball (defense) -> Shove knockdown
+	var state_def_shove = MatchState.new()
+	state_def_shove.start(0, 1)
+	state_def_shove.tipoff = {}
+	state_def_shove.freeze = 0
+	state_def_shove.inbounding_team = -1
+	state_def_shove.owner = 0
+	state_def_shove.players[2].pos = Vector2(510, 450)
+	state_def_shove.players[2].turbo = 1.0
+	state_def_shove.tick(0.016, {2: {"move": Vector2.LEFT, "turbo": false, "shoot": false, "pass": false, "shove": true, "spin": false}})
+	check(state_def_shove.players[2].swipe > 0.0 and state_def_shove.players[2].swipe_shove == true, "Pressing L (shove) on defense triggers defensive shove")
 
 	# ==========================================
-	# 2. MECHANIC 2: TEAM FIRE ("TEAM IN THE ZONE")
-	# ==========================================
-	var state_team = MatchState.new()
-	state_team.start(0, 1)
-	state_team.freeze = 0
-	check(state_team.team_streak[0] == 0 and state_team.team_fire_timer[0] == 0.0, "Team streak and team fire timer initialized to 0")
-
-	# Complete 3 assisted team baskets for team 0
-	for basket in range(3):
-		state_team.flight = {"kind":"pass", "start":Vector2(400,400), "end":Vector2(500,400), "time":0.3, "duration":0.3, "target":1, "passer":0, "alley":false}
-		state_team.tick_flight(0.1) # completes pass, setting last_passer = 0, assist_window = 3.5
-		# Player 1 scores assisted basket
-		state_team.flight = {"kind":"shot", "start":Vector2(500,400), "end":state_team.hoop_for(0), "time":0.8, "duration":0.8, "shooter":1, "points":2, "made":true, "dunk":false, "blocked":false}
-		state_team.tick_flight(0.1)
-
-	check(state_team.team_fire_timer[0] == 25.0, "3 consecutive team-play baskets ignites TEAM FIRE (25.0s timer)")
-	check(state_team.is_player_on_fire(0), "Team Fire puts player 0 on fire")
-	check(state_team.is_player_on_fire(1), "Team Fire puts player 1 on fire")
-	check(state_team.on_fire(0), "Team Fire marks entire team 0 on fire")
-
-	# Opponent scores a basket: team fire must NOT be extinguished!
-	state_team.flight = {"kind":"shot", "start":Vector2(800,400), "end":state_team.hoop_for(1), "time":0.8, "duration":0.8, "shooter":2, "points":2, "made":true, "dunk":false, "blocked":false}
-	state_team.tick_flight(0.1)
-	check(state_team.team_fire_timer[0] > 20.0, "Opponent basket does NOT extinguish TEAM FIRE (timer persists)")
-	check(state_team.is_player_on_fire(0), "Team 0 players remain on fire after opponent scores")
-
-	# Countdown of Team Fire
-	state_team.tick(5.0, {})
-	check(state_team.team_fire_timer[0] < 21.0, "Team Fire timer counts down during match tick")
-
-	# ==========================================
-	# 3. MECHANIC 3: ASSIST STAT TRACKING
+	# 2. MECHANIC 2: ASSIST STAT TRACKING
 	# ==========================================
 	var state_ast = MatchState.new()
 	state_ast.start(0, 1)
@@ -137,11 +166,14 @@ func run() -> void:
 	check(state_ast.stats[0].has("assists"), "stats dictionary tracks assists")
 	check(state_ast.stats[0].assists == 0, "initial assists is 0")
 
-	# Player 0 passes to Player 1
-	state_ast.flight = {"kind":"pass", "start":Vector2(400,400), "end":Vector2(500,400), "time":0.3, "duration":0.3, "target":1, "passer":0, "alley":false}
-	state_ast.tick_flight(0.1) # completes pass
-	check(state_ast.last_passer == 0, "completed pass sets last_passer")
-	check(state_ast.assist_window == 3.5, "completed pass opens 3.5s assist window")
+	# Player 0 starts a pass. assist_delay begins here, before the catch.
+	state_ast.owner = 0
+	state_ast.players[0].pos = Vector2(400, 400)
+	state_ast.players[1].pos = Vector2(560, 400)
+	state_ast.ball = state_ast.players[0].pos
+	state_ast.pass_ball(0, false)
+	check(state_ast.last_passer == 0, "pass start sets last_passer")
+	check(is_equal_approx(state_ast.assist_window, 210.0 / MatchState.ARCADE_TSEC), "pass start opens the 210-tick assist window")
 
 	# Player 1 makes a shot within the window
 	state_ast.flight = {"kind":"shot", "start":Vector2(500,400), "end":state_ast.hoop_for(0), "time":0.8, "duration":0.8, "shooter":1, "points":2, "made":true, "dunk":false, "blocked":false}
@@ -149,7 +181,7 @@ func run() -> void:
 	check(state_ast.stats[0].assists == 1, "passer awarded assist upon teammate made basket")
 
 	# ==========================================
-	# 4. MECHANIC 4: SHOT CLOCK DEACTIVATION UNDER 24S
+	# 3. MECHANIC 3: SHOT CLOCK DEACTIVATION UNDER 24S
 	# ==========================================
 	var state_sc = MatchState.new()
 	state_sc.start(0, 1, 15.0) # 15s quarter
@@ -158,13 +190,14 @@ func run() -> void:
 	state_sc.inbounding_team = -1
 	state_sc.owner = 0
 	state_sc.clock = 10.0
-	state_sc.shot_clock = 0.5
+	state_sc.reset_shot_clock()
+	var held_shot_clock = state_sc.shot_clock
 	state_sc.tick(1.0, {})
-	check(state_sc.shot_clock == 24.0, "Shot clock does not count down when game clock < 24.0s")
-	check(state_sc.banner != "SHOT CLOCK VIOLATION", "No shot clock violation triggered when period clock < 24.0s")
+	check(held_shot_clock < 0.0 and state_sc.shot_clock == held_shot_clock, "A new shot clock is not armed at or under 0:15")
+	check(state_sc.banner != "SHOT CLOCK VIOLATION", "No shot clock violation when the period is already under 0:15")
 
 	# ==========================================
-	# 5. MECHANIC 5: DEFENSIVE RUBBER-BANDING (GOALTEND & INTERCEPT)
+	# 4. MECHANIC 4: DEFENSIVE RUBBER-BANDING (GOALTEND & INTERCEPT)
 	# ==========================================
 	var state_rb = MatchState.new()
 	state_rb.start(0, 1)
@@ -184,14 +217,17 @@ func run() -> void:
 	check(pts_down == 10, "Team 1 trailing by 10 points for defensive rubber-band checks")
 
 	# ==========================================
-	# 6. MECHANIC 6: NATURAL MISSED DUNK CLANK
+	# 5. MECHANIC 5: NATURAL MISSED DUNK CLANK
 	# ==========================================
 	var state_clank = MatchState.new()
 	state_clank.start(0, 1)
 	state_clank.freeze = 0
 	state_clank.score = [10, 10] # Tied game
-	state_clank.players[0].pos = state_clank.hoop_for(0) + Vector2(50, 0)
-	state_clank.players[0].vel = Vector2(-100, 0)
+	state_clank.players[0].pos = state_clank.hoop_for(0) + Vector2(-70, 0)
+	state_clank.players[1].pos = state_clank.hoop_for(0) + Vector2(-400, 180)
+	state_clank.players[2].pos = state_clank.hoop_for(0) + Vector2(-400, -180)
+	state_clank.players[3].pos = state_clank.hoop_for(0) + Vector2(-250, 200)
+	state_clank.players[0].vel = Vector2(100, 0)
 	state_clank.players[0].charge = 0.5
 
 	# Seed to find natural dunk clank
@@ -220,7 +256,7 @@ func run() -> void:
 	check(clank_suppressed, "Natural dunk clank strictly suppressed when dunker's team is trailing by 2+ points")
 
 	# ==========================================
-	# 7. MECHANIC 7: DUNK FACIAL DEFENDER STAGGER
+	# 6. MECHANIC 6: DUNK FACIAL DEFENDER STAGGER
 	# ==========================================
 	var state_facial = MatchState.new()
 	state_facial.start(0, 1)
@@ -232,10 +268,10 @@ func run() -> void:
 	# Standard made dunk
 	state_facial.flight = {"kind":"shot", "start":rim + Vector2(60,0), "end":rim, "time":0.6, "duration":0.6, "shooter":0, "points":2, "made":true, "dunk":true, "blocked":false}
 	state_facial.tick_flight(0.1)
-	check(state_facial.players[2].stun >= 0.75, "Standard made dunk staggers opposing defender caught near rim (facial)")
+	check(state_facial.players[2].stun == 0.0, "seq_slamball facial does not stun a nearby defender")
 
 	# ==========================================
-	# 8. MECHANIC 8: TIPPED PASS ROOF DEFLECTION
+	# 7. MECHANIC 7: TIPPED PASS ROOF DEFLECTION
 	# ==========================================
 	var state_tip = MatchState.new()
 	state_tip.start(0, 1)

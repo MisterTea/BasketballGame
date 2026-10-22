@@ -11,6 +11,9 @@ const REBOUND_GLIDE_DURATION = 0.50
 const POSSESSION_FLASH_DURATION = 0.60
 const BULLET_TIME_DURATION = 0.50
 const BULLET_TIME_SCALE = 0.30
+const TE_SHOVE_RANGE = 65.0
+# seq_elbo reaches opponents inside 40 world units (PLYR2.ASM:5174).
+const TE_ELBOW_RANGE = 40.0 * (950.0 / 640.0)
 const SIGNATURE_DUNKS = ["helicopter", "frontflip", "spin_360", "between_legs", "behind_back"]
 const QUARTER_SECONDS = 180.0
 const TIP_TOSS = 1.0
@@ -18,42 +21,92 @@ const TIP_IDEAL_JUMP = 1.42
 const TIP_DECISION = 2.05
 # Master arcade hardware refresh rate (DISP.EQU:36, TSEC .equ 53)
 const ARCADE_TSEC = 53.20488
+# push_t cardinal entries (#1/#3/#5) run 24 ticks and call seq_push on frame 12.
+# Diagonal entries (#2/#4) run 20 ticks and call seq_push on frame 8.
+# Both leave 12 ticks after contact.
+const TE_SHOVE_DURATION = 24.0 / ARCADE_TSEC
+const TE_SHOVE_DIAGONAL_DURATION = 20.0 / ARCADE_TSEC
+const TE_SHOVE_CONTACT_REMAINING = 12.0 / ARCADE_TSEC
+const TE_PUSH_PROTECTION = 80.0 / ARCADE_TSEC
+# seq_strtdunk's tick argument is the frame sum until seq_slamball (PLYR2.ASM:4359, 4573).
+# The dunker still owns the ball until that rim frame, so the release is the end of the flight.
+const DUNK_RELEASE_FRACTION = 1.0
+# The dunk keeps the ball on the hands until the slam. seq_slamball is that
+# release; the view lets go of the ball at 0.88 of the trip to the rim.
+const DUNK_HAND_RELEASE = 0.88
+# The player loop will not call plyr_shoot before 12 jump ticks, and a pass
+# edge is checked before that release. A jumper, layup, or hook can still be
+# dished during that window.
+const SHOT_HAND_TICKS = 12.0
+# PLYR2.ASM:4963 rejects a target more than 0x54 pixels above the pusher.
+# Ground is 0 and HOOPY is -120, and a dunk climbs that full rim rise (1.8m).
+const TE_SHOVE_ABOVE = 1.8 * (84.0 / 120.0)
 # Arcade quarter timer speedup factor: BASETM = 0x5100 per tick (SCORE.ASM:196)
 # 65536 / 20736 = 3.1604 ticks per 0.1s = 31.604 ticks/s -> 31.604 / 53.20488 = 0.5940 real sec per clock sec
 const CLOCK_TIME_SCALE = 1.6835
-# Arcade shot clock speedup factor: 32 ticks per decrement (SCORE.ASM:3235)
-# 32 / 53.20488 = 0.60145 real sec per shot clock sec
+# Visible shot-clock digits decrement every SLEEP 32 (SCORE.ASM clock24).
+# 32 / 53.20488 = 0.60145 real sec per displayed shot-clock second.
 const SHOT_CLOCK_TIME_SCALE = 1.6628
+# clock24 waits 7*40 ticks, two SLEEPK 10s, then 11*32 ticks from the [1,0] start.
+# 652 ticks / 32 = 20.375 displayed seconds. shot_clock() does not start at 24.
+const SHOT_CLOCK_SECONDS = 652.0 / 32.0
 # Authentic NBA Jam arcade tables
 # Base velocity table (PLYRAT.ASM:390-400 BV..BV10)
 const BV_TABLE = [0x1002, 0x1044, 0x1086, 0x10c8, 0x110a, 0x114c, 0x118e, 0x11d0, 0x1274, 0x12c6, 0x1318]
-# Base shooting skill table (PLYRAT.ASM:476-486 SHT0..SHT10)
-const SHT_TABLE = [0.860, 0.890, 0.920, 0.970, 1.040, 1.070, 1.080, 1.100, 1.130, 1.150, 1.200]
+# Base shooting skill (PLYRAT.ASM SHT0..SHT10). plyr_shoot uses these per-thousand values directly.
+const SHT_PERMILLE = [860, 890, 920, 970, 1040, 1070, 1080, 1100, 1130, 1150, 1200]
+# HOOPRX-HOOPLX is 640 (PLYR.EQU). Our rims are 950px apart.
+const PX_PER_ASM = 950.0 / 640.0
 # Power dunk-through defender table (PLYR.ASM:5363 dnkthru_t)
 const DNKTHRU_T = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.10, 0.15, 0.25, 0.35]
-# Dunk lane defense distance and width tables (PLYR.ASM:5367-5380 #dist_t, #width_t; 12th entry is On-Fire defender)
-const DEF_DIST_T = [34, 36, 39, 41, 42, 44, 45, 47, 57, 59, 61, 80]
+# Dunk-lane distance and width (PLYR.ASM plyr_startjmp #dist_t / #width_t). The 12th entry is an on-fire defender.
+const DEF_DIST_T = [40, 43, 46, 49, 50, 52, 54, 56, 68, 70, 72, 95]
 const DEF_WIDTH_T = [27, 29, 31, 33, 36, 37, 38, 39, 40, 43, 45, 70]
-# Mid-air dunk block & strip tables (PLYR.ASM:4388 tryblk_t, PLYR2.ASM:2525 takedunk_t)
+# Mid-air dunk block & strip tables (PLYR.ASM tryblk_t, PLYR2.ASM takedunk_t).
+# takedunk_t is indexed by (dunker power - stripper power) + 10 and is the
+# chance the dunker keeps the ball. Power 3 and below can never strip a dunk.
 const TRYBLK_T = [1, 2, 3, 10, 15, 18, 22, 23, 24, 25, 25]
-const TAKEDUNK_T = [0, 0, 0, 0, 0, 0, 0, 100, 130, 170, 200, 300, 400, 600, 800, 800, 999, 999, 999, 999, 999, 999]
-# Ball retention on shove knockdown tables (PLYR.ASM:3454 #kpball_t, 3481 #flyb_t)
-const KPBALL_T = [0.080, 0.104, 0.128, 0.152, 0.160, 0.176, 0.224, 0.240, 0.360, 0.360, 0.360]
-const FLYB_T = [0.0, 0.02, 0.04, 0.06, 0.08, 0.10, 0.12, 0.14, 0.16, 0.18, 0.20, 0.22, 0.22, 0.22, 0.22, 0.22]
+const TAKEDUNK_T = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 50, 100, 150, 300, 400, 500, 600, 700, 800, 999, 999]
+# Tournament Edition ball-retention tables (PLYR.ASM:2569-2591).
+const KPBALL_T = [0.190, 0.200, 0.220, 0.280, 0.300, 0.450, 0.550, 0.600, 0.650, 0.650, 0.650]
+const FLYB_T = [0.0, 0.025, 0.050, 0.075, 0.100, 0.125, 0.150, 0.175, 0.200, 0.225, 0.250, 0.275, 0.275, 0.275, 0.275, 0.275]
+# PLYR.ASM #shortfly_t / #winshortfly_t. A hit quarters the flyback that seq_push already applied.
+const SHORTFLY_T = [0.140, 0.160, 0.180, 0.200, 0.250, 0.300, 0.400, 0.550, 0.650, 0.650, 0.650]
+const WINSHORTFLY_T = [0.025, 0.050, 0.050, 0.060, 0.075, 0.075, 0.100, 0.150, 0.225, 0.275, 0.275]
+const NOBLFLAIL_T = [0.085, 0.100, 0.105, 0.110, 0.115, 0.120, 0.150, 0.190, 0.250, 0.250, 0.300]
+const TE_SHORT_FLY_TICKS = 35.0
 # Pass speed tables indexed by PAT_PASS (PLYR.ASM:8409-8417 #longpas_t, #shortpas_t, #turbopas_t)
 const LONGPAS_T = [103, 101, 99, 97, 95, 93, 91, 89, 87, 85, 83]
 const SHORTPAS_T = [127, 124, 121, 118, 115, 112, 109, 106, 103, 100, 97]
 const TURBOPAS_T = [28, 29, 30, 31, 32, 33, 35, 38, 41, 44, 44]
-# Defensive steal ability table (PLYR2.ASM:3134 stl1) scaled to 0-1 probability
-const STL1 = [0.120, 0.127, 0.135, 0.146, 0.150, 0.157, 0.168, 0.183, 0.195, 0.213, 0.225]
-# Clean steal vs loose ball deflection table (PLYR2.ASM:3144 stl2)
-const STL2 = [0.160, 0.170, 0.180, 0.195, 0.200, 0.205, 0.215, 0.225, 0.230, 0.240, 0.250]
-# Interception bonus percentage for losing team (PLYR2.ASM:3496 int_t)
-const INT_T = [0, 3, 5, 6, 8, 9, 10, 11, 12, 12, 12, 13, 14, 15, 17, 19]
-# Uncalled goaltend probability table for losing team (PLYR2.ASM:3490 #goalt_t)
+# Defensive steal ability (PLYR2.ASM stl1), per-thousand RNDPER scaled to 0-1.
+const STL1 = [0.160, 0.170, 0.180, 0.195, 0.200, 0.205, 0.215, 0.245, 0.260, 0.285, 0.300]
+# Clean steal vs knockaway (PLYR2.ASM stl2). A successful roll sticks the ball.
+const STL2 = [0.160, 0.170, 0.180, 0.195, 0.200, 0.205, 0.215, 0.225, 0.230, 0.235, 0.250]
+# Intercept bonus for the losing team (PLYR2.ASM #int_t), added to the percent gate.
+const INT_T = [0, 4, 7, 10, 12, 15, 19, 20, 20, 20, 20, 20, 22, 25, 27, 30]
+const TE_STEAL_LOCKOUT = 30.0 / ARCADE_TSEC
+const TE_PASS_OFF = 25.0 / ARCADE_TSEC
+const TE_POKE_DELAY = 15.0 / ARCADE_TSEC
+# lay_perc: RNDPER(700) sets every player's shtdly to TSEC*2 so the ball cannot be touched.
+const TE_LAYUP_TOUCH_LOCK = 106.0 / ARCADE_TSEC
+# ply_turbo is 0..0x2f. Holding turbo subtracts one unit every 8 ticks
+# (PLYR.ASM:1848). Replenish adds one unit every 6 ticks once used_turbo
+# (set to 4 on each drain) has counted down (SCORE.ASM:237-291).
+const TE_TURBO_UNITS = 47.0
+const TE_TURBO_DRAIN_PER_SEC = ARCADE_TSEC / (TE_TURBO_UNITS * 8.0)
+const TE_TURBO_RECHARGE_PER_SEC = ARCADE_TSEC / (TE_TURBO_UNITS * 6.0)
+const TE_TURBO_RECOVER = 24.0 / ARCADE_TSEC
+# #goalt_t is assembled beside #int_t but ball_chkpcollide never reads it.
+# A fast downward swat is a goaltend only when rnd's mask of 6 is zero.
 const GOALT_T = [0, 35, 45, 55, 60, 65, 70, 75, 75, 75, 80, 90, 90, 90, 90, 90]
-# Horizontal block reach scaling by PAT_DEFSKILL (PLYR2.ASM:3480 tbl4)
+# ball_chkpcollide Z radii and BLOCKREB hand reach (PLYR2.ASM:2960-2965).
+# tbl1 is the high or fast ball. tbl2 is the low, slow ball. tbl4 is the hand X limit.
+const TBL1_Z = [16, 17, 18, 18, 18, 18, 18, 19, 20, 21, 22]
+const TBL2_Z = [32, 33, 34, 35, 35, 35, 35, 36, 37, 38, 39]
 const BLK_REACH_T = [11, 12, 12, 12, 12, 12, 12, 13, 14, 15, 16]
+# seq_block clamps the intercept slide to 30 pixels (PLYR2.ASM:4149).
+const BLOCK_GLIDE_ASM = 30.0
 # Drone AI 31-entry skill tables (DRONE.ASM:1047-1065, 1642-1684)
 const DRONE_P_T = [1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 4, 4, 5, 5, 5, 6, 8, 10, 13, 15, 17, 18, 20, 20, 25, 30, 35, 40, 50]
 const DRONE_ALY_T = [1, 2, 3, 4, 5, 15, 20, 25, 25, 30, 30, 30, 30, 32, 35, 35, 35, 36, 38, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 100, 109]
@@ -67,8 +120,6 @@ var teams: Array = [0, 1]
 var score: Array = [0, 0]
 var streak: Array = [0, 0]
 var player_streak: Array = [0, 0, 0, 0]
-var team_streak: Array = [0, 0]
-var team_fire_timer: Array = [0.0, 0.0]
 var fire_player = -1
 var last_passer: int = -1
 var assist_window: float = 0.0
@@ -78,7 +129,7 @@ var ball = Vector2.ZERO
 var owner = 0
 var flight: Dictionary = {}
 var clock = QUARTER_SECONDS
-var shot_clock = 24.0
+var shot_clock = -1.0
 var quarter = 1
 var overtime = 0
 var phase = "playing"
@@ -104,6 +155,7 @@ var fire_shots: int = 0
 var brick_count: Array = [0, 0, 0, 0]
 var inbounding_team: int = -1
 var loose_ball_timer: float = 0.0
+var ball_touch_lock: float = 0.0
 var in_cylinder_timer: float = 0.0
 var must_rebound_timer: float = 0.0
 var bullet_time_remaining: float = 0.0
@@ -120,8 +172,6 @@ func start(a: int, b: int, seconds: float = QUARTER_SECONDS, level: int = 1) -> 
  score = [0, 0]
  streak = [0, 0]
  player_streak = [0, 0, 0, 0]
- team_streak = [0, 0]
- team_fire_timer = [0.0, 0.0]
  fire_player = -1
  fire_points = 0
  fire_shots = 0
@@ -130,6 +180,7 @@ func start(a: int, b: int, seconds: float = QUARTER_SECONDS, level: int = 1) -> 
  brick_count = [0, 0, 0, 0]
  inbounding_team = -1
  loose_ball_timer = 0.0
+ ball_touch_lock = 0.0
  in_cylinder_timer = 0.0
  must_rebound_timer = 0.0
  bullet_time_remaining = 0.0
@@ -151,7 +202,7 @@ func start(a: int, b: int, seconds: float = QUARTER_SECONDS, level: int = 1) -> 
  difficulty = level
  period_length = seconds
  clock = seconds
- shot_clock = 24.0
+ reset_shot_clock()
  quarter = 1
  overtime = 0
  phase = "playing"
@@ -160,9 +211,13 @@ func start(a: int, b: int, seconds: float = QUARTER_SECONDS, level: int = 1) -> 
  flight = {}
  for i in range(4):
   var t = i / 2
-  players.append({"pos":Vector2(420 if t == 0 else 860, 400 + (i % 2) * 140), "vel":Vector2.ZERO, "turbo":1.0, "turbo_burnout":0.0, "jump":0.0, "receive_jump":0.0, "stun":0.0, "cooldown":0.0, "charge":0.0, "fake":0.0, "drive":0.0, "swipe":0.0, "swipe_resolved":false, "swipe_shove":false, "rebound_glide":0.0, "possession_flash":0.0, "shoot_held":false, "face":1 if t == 0 else -1, "spin":0.0, "spin_cooldown":0.0, "elbow":0.0, "steal_immune":0.0, "push_keep_ball":0.0, "pass_off":0.0, "alley_cnt":0, "hold_time":0.0, "nasty_timer":0.0, "rim_hang":0.0, "still_time":1.0, "shot_is_moving":false, "shot_drift_vel":Vector2.ZERO, "last_move_vel":Vector2.ZERO, "pickup_delay":0.0, "turbo_flash":0.0, "shove_kind":"", "shove_time":0.0})
+  players.append({"pos":Vector2(420 if t == 0 else 860, 400 + (i % 2) * 140), "vel":Vector2.ZERO, "turbo":1.0, "turbo_burnout":0.0, "jump":0.0, "receive_jump":0.0, "stun":0.0, "cooldown":0.0, "charge":0.0, "fake":0.0, "dribble_locked":false, "drive":0.0, "swipe":0.0, "swipe_resolved":false, "swipe_shove":false, "swipe_dir":Vector2.ZERO, "rebound_glide":0.0, "possession_flash":0.0, "shoot_held":false, "face":1 if t == 0 else -1, "spin":0.0, "spin_cooldown":0.0, "elbow":0.0, "steal_immune":0.0, "push_keep_ball":0.0, "pass_off":0.0, "alley_cnt":0, "hold_time":0.0, "nasty_timer":0.0, "rim_hang":0.0, "still_time":1.0, "shot_is_moving":false, "shot_drift_vel":Vector2.ZERO, "last_move_vel":Vector2.ZERO, "pickup_delay":0.0, "turbo_flash":0.0, "shove_kind":"", "shove_time":0.0, "dir_time":0.0, "dir_sector":-1, "human":false, "shot_finish":""})
   stats.append({"points":0, "attempts":0, "made":0, "dunks":0, "steals":0, "blocks":0, "rebounds":0, "goaltends":0, "assists":0, "injury":0, "turnovers":0})
  begin_tipoff()
+
+# clock24 dies immediately when the period is already at or under 0:15 (SCORE.ASM).
+func reset_shot_clock() -> void:
+ shot_clock = -1.0 if clock <= 15.0 else SHOT_CLOCK_SECONDS
 
 func begin_tipoff() -> void:
  owner = -1
@@ -229,6 +284,7 @@ func acquire_possession(player: int, dramatic: bool = false) -> void:
  owner = player
  players[player].possession_flash = POSSESSION_FLASH_DURATION
  players[player].hold_time = 0.0
+ players[player].dribble_locked = false
  if dramatic:
   bullet_time_remaining = BULLET_TIME_DURATION
 
@@ -237,6 +293,15 @@ func hoop_for(team: int) -> Vector2:
  if quarter >= 3:
   right = not right
  return HOOPS[1 if right else 0]
+
+# Intentional discrepancy with NBA Jam TE. plyr_shoot takes the shot from
+# anywhere, and a full-court heave only changes the make chance. This game
+# ignores a shot taken on the far side of midcourt.
+func shot_past_half_court(team: int, pos: Vector2) -> bool:
+ var mid = COURT.position.x + COURT.size.x * 0.5
+ if hoop_for(team).x > mid:
+  return pos.x < mid
+ return pos.x > mid
 
 func rating(i: int, stat: int) -> float:
  var r: Array = Teams.DATA[teams[i / 2]].ratings[i % 2]
@@ -247,57 +312,63 @@ func rating(i: int, stat: int) -> float:
  return float(r[stat])
 
 func on_fire(team: int) -> bool:
- return (fire_player >= 0 and fire_player / 2 == team) or (team >= 0 and team < 2 and team_fire_timer[team] > 0.0)
+ return fire_player >= 0 and fire_player / 2 == team
 
 func is_player_on_fire(index: int) -> bool:
- return fire_player == index or (index >= 0 and index < 4 and team_fire_timer[index / 2] > 0.0)
+ return fire_player == index
 
 func refresh_heat_summary() -> void:
  for team in range(2):
   streak[team] = maxi(player_streak[team*2],player_streak[team*2+1])
 
 func record_natural_basket(shooter: int, points: int = 2) -> void:
- var previous_fire = fire_player
  var team = shooter / 2
- var opp_team = 1 - team
- team_streak[opp_team] = 0
+ brick_count[shooter] = 0
+ # ballnumscored is one shared make-counter (PLYR2.ASM score path). A miss does not touch it.
+ # fire_flags is never stored, so ignition stays at 3. The ball loop then forces the count to 4,
+ # and the same player making a basket that would push it to 8 extinguishes fire and leaves 1.
  if fire_player >= 0 and fire_player / 2 != team:
   fire_player = -1
   fire_points = 0
   fire_shots = 0
- for i in range(4):
-  if i != shooter and i != fire_player:
-   player_streak[i] = 0
- brick_count[shooter] = 0
+  for i in range(4):
+   player_streak[i] = 1 if i == shooter else 0
+  refresh_heat_summary()
+  return
+ if fire_player >= 0 and fire_player != shooter:
+  refresh_heat_summary()
+  return
  if fire_player == shooter:
   fire_points += points
   fire_shots += 1
   if fire_shots >= 4:
    fire_player = -1
-   player_streak[shooter] = 0
+   player_streak[shooter] = 1
    fire_points = 0
    fire_shots = 0
    announce("HE'S COOLED OFF!", "whistle")
- elif not is_player_on_fire(shooter):
-  player_streak[shooter] = mini(3,player_streak[shooter]+1)
-  if player_streak[shooter] >= 3:
-   fire_player = shooter
-   fire_points = 0
-   fire_shots = 0
-   if previous_fire >= 0 and previous_fire != shooter:
-    player_streak[previous_fire] = 0
+  refresh_heat_summary()
+  return
+ for i in range(4):
+  if i != shooter:
+   player_streak[i] = 0
+ player_streak[shooter] = mini(3, player_streak[shooter] + 1)
+ if player_streak[shooter] >= 3:
+  fire_player = shooter
+  fire_points = 0
+  fire_shots = 0
  refresh_heat_summary()
 
 func record_miss(shooter: int) -> void:
  brick_count[shooter] += 1
- # Once ignited, missed shots do not extinguish fire; an opponent's basket does.
- if not is_player_on_fire(shooter):
-  player_streak[shooter] = 0
  refresh_heat_summary()
 
 func award_basket(shooter: int, points: int, dunk: bool, natural: bool = true, specialty: bool = false) -> bool:
  var team = shooter / 2
  score[team] += points
+ # score_add credits assist_plyr on every basket until the 210-frame window ends.
+ if assist_window > 0.0 and last_passer >= 0:
+  stats[last_passer].assists += 1
  stats[shooter].points += points
  stats[shooter].made += 1
  if dunk:
@@ -357,10 +428,15 @@ func ball_height() -> float:
 
 func teammate_commands(commands: Dictionary) -> Dictionary:
  var effective = commands.duplicate(true)
- if owner < 0 or commands.has(owner):
+ # A dunk or shot still in the shooter's hand counts as possession. owner is
+ # cleared when the attempt starts, which was dropping the partner's pass order.
+ var carrier = owner
+ if carrier < 0 and shot_still_in_hand():
+  carrier = int(flight.get("shooter", -1))
+ if carrier < 0 or commands.has(carrier):
   teammate_shot_order = -1
   return effective
- var partner = (owner/2)*2+(1-owner%2)
+ var partner = (carrier / 2) * 2 + (1 - carrier % 2)
  if not commands.has(partner):
   teammate_shot_order = -1
   return effective
@@ -369,23 +445,39 @@ func teammate_commands(commands: Dictionary) -> Dictionary:
  var pass_request: bool = request.get("pass",false)
  var turbo: bool = request.get("turbo",false)
  if pass_request:
-  var cpu = ai(owner)
+  var cpu = ai(carrier)
   cpu["pass"] = true
   cpu.shoot = false
   cpu.turbo = turbo
-  effective[owner] = cpu
+  effective[carrier] = cpu
   teammate_shot_order = -1
-  announce("CALL FOR PASS!", "pass")
- elif shoot or teammate_shot_order == owner:
-  var cpu = ai(owner)
+  if owner >= 0:
+   announce("CALL FOR PASS!", "pass")
+ elif shoot or teammate_shot_order == carrier:
+  var cpu = ai(carrier)
   cpu.shoot = shoot and not pass_request
   cpu["pass"] = false
   cpu.turbo = turbo
-  effective[owner] = cpu
-  if shoot and teammate_shot_order != owner:
+  effective[carrier] = cpu
+  if shoot and teammate_shot_order != carrier:
    announce("TAKE THE SHOT!", "shot")
-  teammate_shot_order = owner if cpu.shoot else -1
+  teammate_shot_order = carrier if cpu.shoot else -1
  return effective
+
+# True while this shot's ball is still in the shooter's hand.
+func shot_still_in_hand() -> bool:
+ if flight.is_empty() or str(flight.get("kind", "")) != "shot":
+  return false
+ if flight.get("blocked", false):
+  return false
+ return float(flight.time) < float(flight.get("in_hand_until", 0.0))
+
+func controls_ball(i: int) -> bool:
+ if i < 0 or i >= players.size():
+  return false
+ if owner == i:
+  return true
+ return shot_still_in_hand() and int(flight.get("shooter", -1)) == i
 
 func receive_height(i: int) -> float:
  return sin(clampf(1.0-players[i].receive_jump/0.7,0,1)*PI)*1.65
@@ -417,21 +509,53 @@ func prepare_receivers(delta: float, commands: Dictionary, effective: Dictionary
   start_receive_jump(receiver)
   effective[receiver].move = Vector2.ZERO
 
-func get_inbound_spots(team: int, after_goal: bool = false) -> Array:
+# WRLDMID/CZMID map to our center. Offsets are the signed world deltas in PLYR.ASM.
+func asm_spot(x_asm: float, z_asm: float) -> Vector2:
+ return Vector2(640.0 + x_asm * PX_PER_ASM, 465.0 + z_asm * PX_PER_ASM)
+
+func choose_inbounder(team: int, mode: String) -> int:
+ if mode == "roster" or mode == "fixed":
+  return team * 2 if mode == "roster" else (0 if team == 0 else 3)
+ var first = team * 2
+ var second = first + 1
+ var target = ball if mode == "ball" else hoop_for(1 - team)
+ if players[first].pos.distance_to(target) <= players[second].pos.distance_to(target):
+  return first
+ return second
+
+# plyr_takeoutball2 teleports to #t1_setup_table / #t2_setup_table.
+# plyrtob_moveo3 walks a made basket, a shot-clock turnover, and the halftime inbound.
+func inbound_spots_for(team: int, inbounder: int, teleport: bool) -> Array:
  var own_hoop = hoop_for(1 - team)
- var left_side = own_hoop.x < 640
- var inbound_pos = Vector2(75.0 if left_side else 1205.0, own_hoop.y) if after_goal else (own_hoop + Vector2(85 if left_side else -85, 0))
+ var toward_baseline = -1.0 if own_hoop.x < 640.0 else 1.0
+ var in_x = 365.0 if teleport else 355.0
+ var mate_x = 280.0 if teleport else 270.0
+ var def_x = 160.0 if teleport else 150.0
+ var mate_z = 15.0 if teleport else 10.0
+ var spots = [Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO]
+ var mate = inbounder ^ 1
+ var opp = (1 - team) * 2
+ spots[inbounder] = asm_spot(toward_baseline * in_x, -20.0)
+ spots[mate] = asm_spot(toward_baseline * mate_x, mate_z)
+ spots[opp] = asm_spot(toward_baseline * def_x, -50.0)
+ spots[opp + 1] = asm_spot(toward_baseline * def_x, 70.0)
+ return spots
+
+# A bare inbound() puts the ball in play. Scored baskets, period openings, and
+# shot-clock turnovers use the PLYR.ASM take-out tables instead.
+func resume_spots(team: int) -> Array:
+ var own_hoop = hoop_for(1 - team)
+ var left_side = own_hoop.x < 640.0
  var spots = [Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO]
  for i in range(4):
-  var side = i / 2
-  var h = hoop_for(1 - side)
-  spots[i] = Vector2(h.x + (190 if h.x < 640 else -190), 390 + (i % 2) * 145)
- var teammate = (team * 2) + 1
- spots[teammate] = Vector2(own_hoop.x + (115.0 if left_side else -115.0), own_hoop.y + 15.0) if after_goal else Vector2(own_hoop.x + (140 if left_side else -140), own_hoop.y + 40)
- var opp_team = 1 - team
- spots[opp_team * 2] = Vector2(640.0 + (-150.0 if left_side else 150.0), 405.0) if after_goal else Vector2(640 + (-90 if left_side else 90), 380)
- spots[opp_team * 2 + 1] = Vector2(640.0 + (-150.0 if left_side else 150.0), 535.0) if after_goal else Vector2(640 + (-90 if left_side else 90), 520)
- spots[team * 2] = inbound_pos
+  var h = hoop_for(1 - i / 2)
+  spots[i] = Vector2(h.x + (190.0 if h.x < 640.0 else -190.0), 390.0 + float(i % 2) * 145.0)
+ var mate = team * 2 + 1
+ spots[mate] = Vector2(own_hoop.x + (140.0 if left_side else -140.0), own_hoop.y + 40.0)
+ var opp = (1 - team) * 2
+ spots[opp] = Vector2(640.0 + (-90.0 if left_side else 90.0), 380.0)
+ spots[opp + 1] = Vector2(640.0 + (-90.0 if left_side else 90.0), 520.0)
+ spots[team * 2] = own_hoop + Vector2(85.0 if left_side else -85.0, 0.0)
  return spots
 
 func start_goal_inbound(team: int) -> void:
@@ -442,15 +566,16 @@ func start_goal_inbound(team: int) -> void:
  shatter_shooter = -1
  teammate_shot_order = -1
  flight = {}
- shot_clock = 24.0
- acquire_possession(team * 2)
+ reset_shot_clock()
  for i in range(4):
   players[i].charge = 0.0
   players[i].fake = 0.0
+  players[i].dribble_locked = false
   players[i].drive = 0.0
   players[i].swipe = 0.0
   players[i].swipe_resolved = false
   players[i].swipe_shove = false
+  players[i].swipe_dir = Vector2.ZERO
   players[i].shoot_held = false
   players[i].spin = 0.0
   players[i].elbow = 0.0
@@ -459,8 +584,12 @@ func start_goal_inbound(team: int) -> void:
   players[i].shot_is_moving = false
   players[i].shot_drift_vel = Vector2.ZERO
   players[i].last_move_vel = Vector2.ZERO
- players[team * 2].cooldown = 0.40
- var spots = get_inbound_spots(team, true)
+  players[i].dir_time = 0.0
+  players[i].dir_sector = -1
+ var inbounder = choose_inbounder(team, "ball")
+ acquire_possession(inbounder)
+ players[inbounder].cooldown = 0.40
+ var spots = inbound_spots_for(team, inbounder, false)
  inbound_transition = {
   "active": true,
   "team": team,
@@ -589,7 +718,7 @@ func tick_quarter_transition(delta: float) -> void:
  if t >= dur:
   quarter_transition = {}
 
-func inbound(team: int, after_goal: bool = false, animated: bool = false) -> void:
+func inbound(team: int, after_goal: bool = false, animated: bool = false, quarter_opening: bool = false, shot_clock: bool = false) -> void:
  if animated:
   start_goal_inbound(team)
   return
@@ -600,22 +729,33 @@ func inbound(team: int, after_goal: bool = false, animated: bool = false) -> voi
  shatter_shooter = -1
  teammate_shot_order = -1
  inbound_transition = {}
- acquire_possession(team * 2)
+ var teleport = quarter_opening and quarter != 3
+ var mode = "roster"
+ if teleport:
+  mode = "fixed"
+ elif after_goal or (quarter_opening and quarter == 3):
+  mode = "ball"
+ elif shot_clock:
+  mode = "hoop"
+ var inbounder = choose_inbounder(team, mode)
+ acquire_possession(inbounder)
  flight = {}
- shot_clock = 24.0
+ reset_shot_clock()
  var own_hoop = hoop_for(1 - team)
  var left_side = own_hoop.x < 640
- var spots = get_inbound_spots(team, after_goal)
+ var spots = resume_spots(team) if mode == "roster" else inbound_spots_for(team, inbounder, teleport)
  for i in range(4):
   players[i].pos = spots[i]
   players[i].cooldown = 0.0
   players[i].stun = 0.0
   players[i].charge = 0.0
   players[i].fake = 0.0
+  players[i].dribble_locked = false
   players[i].drive = 0.0
   players[i].swipe = 0.0
   players[i].swipe_resolved = false
   players[i].swipe_shove = false
+  players[i].swipe_dir = Vector2.ZERO
   players[i].shoot_held = false
   if players[i].get("rim_hang", 0.0) <= 0.0:
    players[i].jump = 0.0
@@ -625,7 +765,9 @@ func inbound(team: int, after_goal: bool = false, animated: bool = false) -> voi
   players[i].shot_is_moving = false
   players[i].shot_drift_vel = Vector2.ZERO
   players[i].last_move_vel = Vector2.ZERO
- var teammate = (team * 2) + 1
+  players[i].dir_time = 0.0
+  players[i].dir_sector = -1
+ var teammate = owner ^ 1
  players[teammate].face = -1 if left_side else 1
  var opp_team = 1 - team
  players[opp_team * 2].face = -1 if left_side else 1
@@ -649,12 +791,6 @@ func tick(delta: float, commands: Dictionary) -> void:
   assist_window = maxf(0.0, assist_window - delta)
   if assist_window <= 0.0:
    last_passer = -1
- var ctrl_team = owner / 2 if owner >= 0 else -1
- for t in range(2):
-  if team_fire_timer[t] > 0.0 and (ctrl_team < 0 or ctrl_team == t):
-   team_fire_timer[t] = maxf(0.0, team_fire_timer[t] - delta)
-   if team_fire_timer[t] <= 0.0:
-    announce("TEAM ZONE EXPIRED!", "whistle")
  if tipoff.get("active",false):
   tick_tipoff(delta,commands)
   return
@@ -686,17 +822,15 @@ func tick(delta: float, commands: Dictionary) -> void:
    clock_buzzer_sounded = true
    announce("BUZZER", "buzzer")
   if flight.is_empty() or flight.get("kind", "") != "shot":
-   if clock >= 24.0:
+   if shot_clock >= 0.0:
     shot_clock = maxf(0.0, shot_clock - delta * SHOT_CLOCK_TIME_SCALE)
-   else:
-    shot_clock = 24.0
  if clock <= 0 and flight.is_empty():
   start_quarter_transition()
   return
- if clock >= 24.0 and shot_clock <= 0 and flight.is_empty():
+ if shot_clock >= 0.0 and shot_clock <= 0.0 and flight.is_empty():
   var next_team = 1 - (owner / 2 if owner >= 0 else 0)
   announce("SHOT CLOCK VIOLATION", "whistle")
-  inbound(next_team)
+  inbound(next_team, false, false, false, true)
   return
  var effective_commands = teammate_commands(commands)
  # Cache intent before any player acts so simultaneous jump/pass is slot-order independent.
@@ -704,38 +838,47 @@ func tick(delta: float, commands: Dictionary) -> void:
   if not effective_commands.has(i):
    effective_commands[i] = ai(i)
  prepare_receivers(delta,commands,effective_commands)
- # A dunker may abandon the attempt for a pass or layup before reaching the rim (arcade PLYR.ASM:2915-2950).
- if not flight.is_empty() and flight.kind == "shot" and flight.dunk and not flight.blocked and flight.time < flight.duration*0.85:
-  var dunker: int = flight.shooter
-  if commands.has(dunker):
-   if commands[dunker].get("pass",false):
-    stats[dunker].attempts = maxi(0,stats[dunker].attempts-1)
-    var mate = (dunker / 2) * 2 + (1 - dunker % 2)
-    var is_double_dunk = players[mate].receive_jump > 0.05 or players[mate].jump > 0.05
-    pass_ball(dunker,commands[dunker].get("turbo",false))
-    if is_double_dunk and not flight.is_empty():
-     flight.double_dunk = true
-     announce("DOUBLE DUNK!", "dunk")
-    else:
-     announce("AIRBORNE DISH!", "pass")
-    players[dunker].charge = 0.0
-    players[dunker].shoot_held = false
-   elif commands[dunker].get("jump_press", false) and flight.time >= 0.18 and not flight.get("bailed_to_layup", false):
-    flight.dunk = false
-    flight.layup = true
-    flight.super_dunk = false
-    flight.finish = "layup"
-    flight.arc_height = 1.0
-    flight.bailed_to_layup = true
-    var breakdown = calculate_shot_percentage(dunker, 0.58, false, true, false, false, false, false, null, true)
-    flight.made = rng.randf() < breakdown.chance
-    flight.shot_breakdown = breakdown
-    players[dunker].jump = minf(players[dunker].jump, 0.45)
-    players[dunker].charge = 0.0
-    players[dunker].shoot_held = false
-    announce("SWITCHES HANDS! FINGER ROLL!", "shot")
+ # plyr_startpass runs on a pass edge while the shooter still owns the ball.
+ # Dunks own it until seq_slamball. Jump shots, layups, and hooks own it until
+ # plyr_shoot, which the player loop will not call before 12 jump ticks, and
+ # a pass on that frame is taken first.
+ if shot_still_in_hand():
+  var shooter: int = int(flight.shooter)
+  var shot_cmd: Dictionary = commands.get(shooter, effective_commands.get(shooter, {}))
+  if shot_cmd.get("pass", false) and players[shooter].get("pass_off", 0.0) <= 0.0:
+   var was_dunk = flight.get("dunk", false)
+   stats[shooter].attempts = maxi(0, stats[shooter].attempts - 1)
+   var mate = (shooter / 2) * 2 + (1 - shooter % 2)
+   var is_double_dunk = was_dunk and (players[mate].receive_jump > 0.05 or players[mate].jump > 0.05)
+   ball_touch_lock = 0.0
+   pass_ball(shooter, shot_cmd.get("turbo", false))
+   if is_double_dunk and not flight.is_empty():
+    flight.double_dunk = true
+    announce("DOUBLE DUNK!", "dunk")
+   else:
+    announce("AIRBORNE DISH!", "pass")
+   players[shooter].charge = 0.0
+   players[shooter].shoot_held = false
+   players[shooter].shot_finish = ""
+  elif flight.get("dunk", false) and not flight.get("bailed_to_layup", false) and flight.time >= 0.18 and shot_cmd.get("jump_press", false):
+   flight.dunk = false
+   flight.layup = true
+   flight.super_dunk = false
+   flight.finish = "layup"
+   flight.arc_height = 1.0
+   flight.bailed_to_layup = true
+   var breakdown = calculate_shot_percentage(shooter, 0.58, false, true, false, false, false, false, null, true)
+   flight.made = rng.randf() < breakdown.chance
+   flight.shot_breakdown = breakdown
+   roll_layup_touch_lock()
+   players[shooter].jump = minf(players[shooter].jump, 0.45)
+   players[shooter].charge = 0.0
+   players[shooter].shoot_held = false
+   announce("SWITCHES HANDS! FINGER ROLL!", "shot")
+ ball_touch_lock = maxf(0.0, ball_touch_lock - delta)
  for i in range(4):
   var p: Dictionary = players[i]
+  p.human = commands.has(i)
   p.cooldown = maxf(0.0, p.cooldown - delta)
   p.stun = maxf(0.0, p.stun - delta)
   if p.stun <= 0.0:
@@ -761,7 +904,8 @@ func tick(delta: float, commands: Dictionary) -> void:
    p.hold_time = p.get("hold_time", 0.0) + delta
   else:
    p.hold_time = 0.0
-  if p.swipe > 0.0 and not p.get("swipe_resolved", false) and p.swipe <= 0.25:
+  var contact_remaining = TE_SHOVE_CONTACT_REMAINING if p.get("swipe_shove", false) else 0.25
+  if p.swipe > 0.0 and not p.get("swipe_resolved", false) and p.swipe <= contact_remaining:
    p.swipe_resolved = true
    resolve_steal(i, p.get("swipe_shove", false))
   p.drive = maxf(0.0,p.drive-delta)
@@ -770,106 +914,86 @@ func tick(delta: float, commands: Dictionary) -> void:
    p.charge = 0.0
    p.shoot_held = false
    p.receive_jump = 0.0
+   p.dir_time = 0.0
    p.pos = (p.pos + p.vel * delta).clamp(COURT.position + Vector2(18,18), COURT.end - Vector2(18,18))
    var friction = 420.0 if p.get("shove_kind", "") == "flyback" else 600.0
    p.vel = p.vel.move_toward(Vector2.ZERO, delta * friction)
    continue
   var move: Vector2 = c.get("move", Vector2.ZERO)
   move = move.limit_length()
-  var turbo: bool = c.get("turbo", false) and (p.turbo > 0.001 or infinite_turbo or is_player_on_fire(i))
-  var spd_stat = clampi(int(rating(i, 0)), 0, 10)
-  # Authentic arcade walking speed: BV_TABLE scaled from 800px arcade court to 1050px court at 54 Hz:
-  # BV / 1024.0 * 54.0 * (1050.0 / 800.0) = BV * 0.069213867 (283.6 - 338.3 px/s)
-  var speed = float(BV_TABLE[spd_stat]) * 0.069213867
-  if owner == i:
-   speed *= 0.885
-   # Backcourt stalling penalty (PLYR.ASM:2188-2210): leading/tied ball-carrier in backcourt with <=10s on shot clock
-   if p.pos.distance_to(hoop_for(i / 2)) >= 530.0 and shot_clock <= 10.0 and score[1 - i / 2] <= score[i / 2]:
-    speed *= 0.68
-  elif owner >= 0 and owner / 2 == i / 2:
-   speed *= 0.95
-  if clock < 50.0 and score[1 - i / 2] > score[i / 2]:
-   speed *= 1.08
-  if p.turbo_burnout > 0.0:
-   speed *= 0.85
-   p.turbo = 0.0
-  elif turbo:
-   # Authentic arcade turbo boost: +3f00h added to BV_TABLE base speed (PLYR.ASM:2280)
-   # 0x3f00 / 0x10020 = +24.6% boost (~1.246x), not +40%
-   speed *= 1.246
-   if move.length() > 0.01:
-    var drain_mult = 0.75 if (score[1 - i / 2] - score[i / 2] >= 8) else 1.0
-    # Authentic arcade turbo drain: 390 ticks for full meter (PLYR.ASM:2480)
-    # 390 / 53.20488 = 7.33s -> drain rate = 1.0 / 7.3304 = 0.1364/s
-    p.turbo = maxf(0.0, p.turbo - delta * 0.1364 * drain_mult)
-    if p.turbo <= 0.001 and not infinite_turbo and not is_player_on_fire(i):
+  if owner == i and p.get("dribble_locked", false):
+   move = Vector2.ZERO
+   p.vel = Vector2.ZERO
+  note_dir_time(p, move, delta)
+  var turbo: bool = c.get("turbo", false) and (p.turbo > 0.0 or infinite_turbo or is_player_on_fire(i))
+  var diagonal = absf(move.x) > 0.2 and absf(move.y) > 0.2
+  var speed = terminal_speed(i, turbo, diagonal)
+  if turbo:
+   if not infinite_turbo and not is_player_on_fire(i):
+    p.turbo = maxf(0.0, p.turbo - delta * TE_TURBO_DRAIN_PER_SEC)
+    p.turbo_burnout = TE_TURBO_RECOVER
+    if p.turbo <= 0.001:
      p.turbo = 0.0
-     p.turbo_burnout = 0.75
-  elif c.get("turbo", false) and p.turbo <= 0.001 and p.turbo_burnout <= 0.0 and not infinite_turbo and not is_player_on_fire(i):
-   p.turbo = 0.0
-   p.turbo_burnout = 0.75
-   speed *= 0.85
+  elif p.turbo_burnout > 0.0:
+   pass
   else:
-   # Authentic arcade turbo recharge: ~200 ticks for full meter (PLYR.ASM:2482, SCORE.ASM:283)
-   # 200 / 53.20488 = 3.76s -> recharge rate = 1.0 / 3.7591 = 0.2660/s
-   p.turbo = minf(1.0, p.turbo + delta * 0.2660)
+   p.turbo = minf(1.0, p.turbo + delta * TE_TURBO_RECHARGE_PER_SEC)
   if infinite_turbo or is_player_on_fire(i):
    p.turbo = 1.0
    p.turbo_burnout = 0.0
-  var spin_press: bool = c.get("spin", false)
+  var spin_press: bool = (c.get("spin", false) or c.get("shove", false)) and not p.get("dribble_locked", false)
   if owner == i and spin_press and inbounding_team < 0 and p.jump <= 0.0 and p.receive_jump <= 0.0 and p.cooldown <= 0.0 and p.get("spin", 0.0) <= 0.0 and p.get("elbow", 0.0) <= 0.0:
-   if p.turbo > 0.14 or infinite_turbo or is_player_on_fire(i):
-    p.turbo = maxf(0.0, p.turbo - (2.0 / 7.0))
-    if move.length() > 0.2:
-     # Consecutive spin within 2.0s reduces steal immunity to 10 ticks (0.188s) instead of 60 ticks (1.128s) (PLYR.ASM:2424-2436)
-     p.steal_immune = (10.0 / ARCADE_TSEC) if p.get("spin_cooldown", 0.0) > 0.0 else (60.0 / ARCADE_TSEC)
+   # Offensive L is ELBO. Holding Turbo is the double-tap elbow, ELBO2.
+   if c.get("turbo", false):
+    if p.turbo + 0.0001 < (5.0 / TE_TURBO_UNITS) and not infinite_turbo and not is_player_on_fire(i):
+     p.turbo_flash = 0.60
+     announce("NEED TURBO!", "turbo")
+    else:
+     if not infinite_turbo and not is_player_on_fire(i):
+      p.turbo = maxf(0.0, p.turbo - (4.0 / TE_TURBO_UNITS))
+     var spin_dir = move
+     if spin_dir.length() < 0.1:
+      spin_dir = p.get("last_move_vel", Vector2.ZERO)
+     if spin_dir.length() < 0.1:
+      spin_dir = Vector2(p.face, 0.0)
+     # ELBO2 always locks steals for 60 ticks (PLYR.ASM:1820).
+     p.steal_immune = 60.0 / ARCADE_TSEC
      p.spin = 0.45
      p.spin_cooldown = 2.0
      p.cooldown = 0.45
-     p.vel = move.normalized() * (speed * 1.35)
-     # 0.5% mid-spin fumble chance when leading by 5+ points (PLYRSEQ2.ASM:1111-1180)
-     if (score[i / 2] - score[1 - i / 2]) >= 5 and not tournament_mode and not is_player_on_fire(i) and rng.randf() < 0.005:
-      owner = -1
-      shot_clock = 24.0
-      loose_ball_timer = 0.50
-      p.pickup_delay = 0.50
-      stats[i].turnovers = stats[i].get("turnovers", 0) + 1
-      var fumble_dest = (p.pos + move.normalized() * 65.0).clamp(COURT.position + Vector2(25.0, 25.0), COURT.end - Vector2(25.0, 25.0))
-      flight = {"kind":"loose", "start":p.pos, "end":fumble_dest, "time":0.0, "duration":0.40, "arc_height":0.9}
-      announce("LOST THE HANDLE! LOOSE BALL", "steal")
-     else:
-      announce("SPIN MOVE!", "pass")
-    else:
-     # Standing elbow grants 140 ticks (2.632s) steal immunity (PLYR2.ASM:4162-4165)
-     p.steal_immune = 140.0 / ARCADE_TSEC
-     p.elbow = 0.50
-     p.push_keep_ball = 80.0 / ARCADE_TSEC
-     p.spin_cooldown = 1.2
-     p.cooldown = 0.50
-     var nearby_defs: Array = []
-     for d in range(4):
-      # 40 * DIST_REDUCTION (34 ASM units * 1.30 = 45.0 px) (PLYR2.ASM:5995, 6008)
-      if d / 2 != i / 2 and players[d].pos.distance_to(p.pos) < 45.0:
-       nearby_defs.append(d)
-     for d in nearby_defs:
-      # 50% per-defender hit roll when multiple defenders crowd in (PLYR2.ASM:5998-6000)
-      if nearby_defs.size() == 1 or rng.randf() < 0.50:
-       players[d].stun = 0.75
-       players[d].shove_kind = "stumble"
-       players[d].shove_time = 0.75
-       var push_dir = (players[d].pos - p.pos).normalized()
-       if push_dir.length() < 0.1:
-        push_dir = Vector2.RIGHT * p.face
-       var face_dir = -signf(push_dir.x)
-       if absf(face_dir) > 0.1:
-        players[d].face = face_dir
-       players[d].pos = (players[d].pos + push_dir * 18.0).clamp(COURT.position + Vector2(18,18), COURT.end - Vector2(18,18))
-       players[d].vel = push_dir * 180.0
-     announce("CLEAR OUT!", "shove")
+     p.vel = spin_dir.normalized() * (speed * 1.35)
+     announce("SPIN MOVE!", "pass")
    else:
-    p.turbo_flash = 0.60
-    announce("NEED TURBO!", "turbo")
+    # seq_stand starts ELBO with steals_off 140 and pushing_delay 80 (PLYR2.ASM:3666).
+    p.steal_immune = 140.0 / ARCADE_TSEC
+    p.elbow = 0.50
+    p.push_keep_ball = TE_PUSH_PROTECTION
+    p.spin_cooldown = 1.2
+    p.cooldown = 0.50
+    var nearby_defs: Array = []
+    for d in range(4):
+     if d / 2 != i / 2 and players[d].pos.distance_to(p.pos) < TE_ELBOW_RANGE:
+      nearby_defs.append(d)
+    # Both opponents share one HCOUNT bit, so the clear-out hits both or neither.
+    if rng.randi() % 2 == 0:
+     for d in nearby_defs:
+      players[d].stun = 0.75
+      players[d].shove_kind = "stumble"
+      players[d].shove_time = 0.75
+      var push_dir = (players[d].pos - p.pos).normalized()
+      if push_dir.length() < 0.1:
+       push_dir = Vector2.RIGHT * p.face
+      var face_dir = -signf(push_dir.x)
+      if absf(face_dir) > 0.1:
+       players[d].face = face_dir
+      players[d].pos = (players[d].pos + push_dir * 18.0).clamp(COURT.position + Vector2(18,18), COURT.end - Vector2(18,18))
+      players[d].vel = push_dir * 180.0
+    announce("CLEAR OUT!", "shove")
   var shoot: bool = c.get("shoot", false)
+  if owner == i and shot_past_half_court(i / 2, p.pos):
+   shoot = false
+   p.charge = 0.0
+   p.shot_finish = ""
   var shooting_this_tick = owner == i and shoot and p.pos.x >= COURT.position.x and p.pos.x <= COURT.end.x and not c.get("pass", false) and p.cooldown <= 0.0
   if shooting_this_tick and (not p.shoot_held or p.charge <= 0.0):
    var was_moving = p.get("still_time", 1.0) < 0.10 or p.vel.length() > 10.0 or move.length() > 0.05
@@ -925,7 +1049,8 @@ func tick(delta: float, commands: Dictionary) -> void:
    else:
     p.pos.x = clampf(p.pos.x + p.vel.x * delta, COURT.end.x + 10.0, 1225.0)
    p.pos.y = clampf(p.pos.y + p.vel.y * delta, COURT.position.y + 18.0, COURT.end.y - 18.0)
-  elif not flight.is_empty() and flight.kind == "shot" and flight.shooter == i and flight.has("player_start"):
+   p.shot_finish = ""
+  elif not flight.is_empty() and flight.kind == "shot" and flight.shooter == i and flight.has("player_start") and not flight.get("blocked", false):
    var destination = finisher_position(flight.time+delta)
    p.vel = (destination-p.pos)/maxf(delta,0.0001)
    p.pos = destination
@@ -936,10 +1061,12 @@ func tick(delta: float, commands: Dictionary) -> void:
     var own_hoop = hoop_for(1 - inbounding_team)
     var left_side = own_hoop.x < 640
     if i / 2 != inbounding_team:
+     # plyrtob_moveo3 parks defenders 150 world units off center, not on the baseline.
+     var defend_line = 640.0 + (-150.0 if left_side else 150.0) * PX_PER_ASM
      if left_side:
-      p.pos.x = maxf(p.pos.x, 480.0)
+      p.pos.x = maxf(p.pos.x, defend_line)
      else:
-      p.pos.x = minf(p.pos.x, 800.0)
+      p.pos.x = minf(p.pos.x, defend_line)
     elif i != owner:
      if left_side:
       p.pos.x = minf(p.pos.x, 420.0)
@@ -957,9 +1084,11 @@ func tick(delta: float, commands: Dictionary) -> void:
    if p.pos.x < COURT.position.x or p.pos.x > COURT.end.x:
     shoot = false
     p.charge = 0.0
-   if c.get("pass", false) and p.cooldown <= 0:
+    p.shot_finish = ""
+   if c.get("pass", false) and p.cooldown <= 0 and not spin_press:
     pass_ball(i, turbo)
     p.charge = 0.0
+    p.shot_finish = ""
     shoot = false
    elif shoot:
     if p.shot_is_moving:
@@ -967,32 +1096,46 @@ func tick(delta: float, commands: Dictionary) -> void:
     else:
      p.vel = Vector2.ZERO
     p.fake = 0.0
+    # plyr_startjmp picks the dunk, layup, hook, or jumper as the player leaves
+    # the floor. Releasing later does not choose a different finish.
+    if p.charge <= 0.0 and str(p.get("shot_finish", "")) == "":
+     p.shot_finish = finish_kind(i, turbo)
     p.charge = minf(1.25, p.charge + delta)
-    var finish = finish_kind(i,turbo)
-    if (finish == "turbo_dunk" and p.charge >= 0.16) or (finish == "dunk" and p.charge >= 0.35):
-     shoot_ball(i,turbo)
+    if str(p.shot_finish) in ["dunk", "turbo_dunk"]:
+     shoot_ball(i, turbo)
      p.charge = 0.0
+     p.shot_finish = ""
    elif p.shoot_held and p.charge > 0:
-    if p.charge < 0.16 and commands.has(i) and clock >= 4.0:
+    # shoot_t reaches seq_jump after three N=3 frames (9 ticks). Button up there
+    # goes to seq_stand and keeps the ball. Layups, hooks, and dunks do not.
+    # Under 4 seconds seq_jump always jumps. A human teammate's drone never
+    # lets go (#fake), so that order still releases. The shtbutn 3-8 skip is
+    # commented out and is not this check.
+    var windup = 9.0 / ARCADE_TSEC
+    var ordered_cpu = not commands.has(i) and commands.has(i ^ 1)
+    var released_finish = str(p.get("shot_finish", "jumper"))
+    if released_finish == "jumper" and p.charge < windup and clock >= 4.0 and not ordered_cpu:
      p.fake = 0.38
-     p.shot_is_moving = false
-     p.shot_drift_vel = Vector2.ZERO
-     announce("HEAD FAKE!", "fake")
+     p.charge = 0.0
+     p.shot_finish = ""
+     if not p.shot_is_moving:
+      p.vel = Vector2.ZERO
+     announce("HEAD FAKE!", "shot")
     else:
      var jump_h = sin(clampf(p.charge / 1.16, 0.0, 1.0) * PI) * 1.35
      shoot_ball(i, turbo, false, 1.3 + jump_h)
      p.jump = maxf(0.08, 1.16 - p.charge)
      if not p.shot_is_moving:
       p.vel = Vector2.ZERO
-    p.charge = 0.0
+     p.charge = 0.0
   else:
    # Off-ball commands target a CPU ball carrier; never override another human.
    var ordering_cpu = owner >= 0 and owner / 2 == i / 2 and not commands.has(owner)
    if not ordering_cpu and p.receive_jump <= 0:
     if shoot and not p.shoot_held and p.cooldown <= 0:
      defend(i, turbo)
-    if c.get("pass", false) and p.cooldown <= 0:
-     steal(i, turbo)
+    if (c.get("pass", false) or c.get("shove", false)) and p.cooldown <= 0:
+     steal(i, turbo or c.get("shove", false))
   p.shoot_held = shoot
  # Keep athletes separated without pushing them outside bounds.
  for i in range(4):
@@ -1007,13 +1150,12 @@ func tick(delta: float, commands: Dictionary) -> void:
  elif owner >= 0:
   ball = players[owner].pos + Vector2(players[owner].face * 14, -7)
  else:
-  if loose_ball_timer <= 0.0 and in_cylinder_timer <= 0.0:
+  if ball_touch_lock <= 0.0 and loose_ball_timer <= 0.0 and in_cylinder_timer <= 0.0:
    for i in range(4):
     if players[i].stun <= 0 and players[i].get("pickup_delay", 0.0) <= 0.0 and players[i].pos.distance_to(ball) < 30:
      acquire_possession(i, true)
-     players[i].push_keep_ball = 1.33
-     players[i].steal_immune = 0.67 if rng.randf() < 0.05 else 0.25
-     shot_clock = 24.0
+     players[i].push_keep_ball = TE_PUSH_PROTECTION
+     reset_shot_clock()
      stats[i].rebounds += 1
      announce("REBOUND!", "catch")
      break
@@ -1023,13 +1165,8 @@ func drone_skill_index(i: int) -> int:
  var opp_team = 1 - team
  var pts_down = score[opp_team] - score[team]
  var adj = (difficulty - 1) * 4
- var heat_bonus = 0
- # Authentic drone toughness boost when heating up / on-fire (DRONE.ASM:2145-2156)
- if player_streak[i] >= 2 or is_player_on_fire(i):
-  heat_bonus = 8
- elif streak[team] >= 2 or on_fire(team):
-  heat_bonus = 2
- return clampi(15 + pts_down + adj + heat_bonus, 0, 30)
+ # drone_getcurskillo is ptsdown + plyr_d_skill, clamped around 15. Heat is not added.
+ return clampi(15 + pts_down + adj, 0, 30)
 
 func ai(i: int) -> Dictionary:
  var p: Dictionary = players[i]
@@ -1108,21 +1245,17 @@ func ai(i: int) -> Dictionary:
      pass_action = true
     elif p.charge < 0.16 and rng.randf() < 0.03125:
      shoot = false
-  # Defender avoidance / pass to open teammate (DRONE.ASM:342-502 #goaround)
+  # Defender in the lane: pass if the teammate is the clearer look (DRONE2.ASM drone_pass).
   if p.cooldown <= 0 and near_def < 55.0:
    if (mate_dist < dist - 30.0 and nearest_defender(mate) > 65.0) or fmod(elapsed, 2.0) < 0.025:
     pass_action = true
-   elif p.get("spin_cooldown", 0.0) <= 0.0 and p.get("turbo", 1.0) > 0.35 and rng.randf() < float(DRONE_P_T[skill_idx]) * 0.004:
-    spin = true
  elif not flight.is_empty() and flight.get("kind", "") == "shot":
   var shooter: int = flight.shooter
   if shooter / 2 != team:
    target = flight_position()
-   var t = clampf(flight.time/flight.duration,0,1)
-   var arc: float = flight.get("arc_height",1.7 if flight.dunk else 4.6)
-   var descending = 3.05-flight.get("release_height",1.3)+PI*arc*cos(t*PI) < 0
    var reacts: bool = flight.time >= 0.18-0.04*clampi(difficulty,0,2) and flight.get("cpu_block_allowed",[true,true,true,true])[i]
-   shoot = reacts and not flight.blocked and p.cooldown <= 0 and p.pos.distance_to(target) < 72 and ball_height() <= 4.6 and (not descending or flight.dunk or is_player_on_fire(i))
+   # drone_defence blocks an airborne ball inside 65 units. It does not refuse a descending shot.
+   shoot = reacts and not flight.blocked and p.cooldown <= 0 and p.pos.distance_to(target) < 65.0 * PX_PER_ASM and ball_height() <= 4.6
   else:
    target = hoop_for(team)
  elif not flight.is_empty() and (flight.get("kind", "") == "rebound" or flight.get("kind", "") == "loose"):
@@ -1161,19 +1294,16 @@ func ai(i: int) -> Dictionary:
     if d < guard_dist:
      guard_dist = d
      guard_id = j
-  var dir_to_hoop = (hoop - p.pos).normalized()
-  var guard_in_path = guard_id >= 0 and guard_dist <= 50.0 and (players[guard_id].pos - p.pos).normalized().dot(dir_to_hoop) > 0.40
-  if guard_in_path and players[guard_id].stun <= 0.0 and not no_pushing and p.cooldown <= 0.0:
+  # drone_offwoball pushes a defender within 50 units and 16/128 of facing.
+  # #p_t is a 0-99 roll, not a per-thousand rate, and TE has no alley-oop rate table.
+  var facing = Vector2(p.face, 0.0)
+  var to_guard: Vector2 = players[guard_id].pos - p.pos if guard_id >= 0 else Vector2.ZERO
+  var guard_in_front = guard_id >= 0 and to_guard.length() <= 50.0 * PX_PER_ASM and to_guard.length() > 0.01 and facing.dot(to_guard.normalized()) > cos(16.0 / 128.0 * TAU)
+  if guard_in_front and players[guard_id].stun <= 0.0 and not no_pushing and p.cooldown <= 0.0 and rng.randi() % 100 < DRONE_P_T[skill_idx]:
    turbo = true
    pass_action = true
    if guard_dist > 25.0:
     target = players[guard_id].pos
-  elif not is_player_on_fire(i):
-   # Off-ball alley-oop cut & leap governed by DRONE_ALY_T, capped at 3 per period (DRONE.ASM:884-959, PLYR.ASM:4706,4742: 65..165 ASM units -> 84.5..214.5px)
-   var dist_to_hoop = p.pos.distance_to(hoop)
-   if p.get("alley_cnt", 0) < 3 and dist_to_hoop > 84.5 and dist_to_hoop <= 214.5 and p.get("turbo", 1.0) > 0.15 and p.cooldown <= 0.0 and p.jump <= 0.0 and rng.randf() < float(DRONE_ALY_T[skill_idx]) * 0.0005:
-    shoot = true
-    turbo = true
  elif owner >= 0:
   var partner = (i / 2) * 2 + (1 - i % 2)
   var own_hoop = hoop_for(1 - team)
@@ -1202,42 +1332,24 @@ func ai(i: int) -> Dictionary:
   if should_turbo:
    turbo = true
 
-  # Authentic defensive shoving and stealing matched to DRONE_PS_T (DRONE.ASM:1475-1540)
-  var can_shove = not no_pushing and (p.get("turbo", 1.0) >= 0.14 or is_player_on_fire(i) or infinite_turbo) and p.cooldown <= 0.0
-  var shove_rate = float(DRONE_PS_T[skill_idx]) * 0.0035 + 0.040 * clampi(difficulty, 0, 2)
-  if nasty or (quarter >= 4 and deficit > 0):
-   shove_rate += clampf(float(maxi(0, deficit)) * 0.015 + 0.04, 0.0, 0.18)
-  elif deficit < 0:
-   shove_rate *= clampf(1.0 + float(deficit) * 0.08, 0.25, 1.0)
-
-  # 1. Shoving the ball carrier (the player) (DRONE.ASM:1475-1540, PLYR2.ASM:5589)
-  if dist_to_owner <= 56.0 and players[owner].stun <= 0.0 and players[owner].get("steal_immune", 0.0) <= 0.0:
-   if can_shove and rng.randf() < shove_rate:
-    turbo = true
+  # drone2_defence rolls #ps_t out of 1000 inside #dist_t. Nasty and within
+  # 35 units skips the roll. A successful action is steal, and half of those
+  # also hold turbo (DRONE2.ASM:974-1005). Off-ball bodies are not shoved.
+  var can_shove = not no_pushing and (p.get("turbo", 1.0) >= (10.0 / TE_TURBO_UNITS) or is_player_on_fire(i) or infinite_turbo) and p.cooldown <= 0.0
+  var face_px = 35.0 * PX_PER_ASM
+  var steal_px = float(DRONE_DIST_T[skill_idx]) * PX_PER_ASM
+  var contact_action_rate = 0.0
+  if nasty and dist_to_owner <= face_px:
+   contact_action_rate = 1.0
+  elif dist_to_owner <= steal_px:
+   contact_action_rate = float(DRONE_PS_T[skill_idx]) / 1000.0
+  if contact_action_rate > 0.0 and players[owner].stun <= 0.0 and players[owner].get("steal_immune", 0.0) <= 0.0:
+   if p.cooldown <= 0.0 and rng.randf() < contact_action_rate:
+    var choose_shove = can_shove and rng.randf() < 0.50
+    turbo = turbo or choose_shove
     pass_action = true
     if dist_to_owner > 25.0:
      target = players[owner].pos
-   elif p.cooldown <= 0.0:
-    var steal_prob = float(DRONE_PS_T[skill_idx]) * 0.0010 + 0.010 * clampi(difficulty, 0, 2)
-    if deficit < 0:
-     steal_prob *= clampf(1.0 + float(deficit) * 0.08, 0.25, 1.0)
-    if rng.randf() < steal_prob:
-     pass_action = true
-
-  # 2. Shoving the player's teammate (off-ball defense) (DRONE.ASM:1520-1540, PLYR2.ASM:5605)
-  var teammate_id = (1 - team) * 2 + (1 - (owner % 2))
-  var dist_to_teammate = p.pos.distance_to(players[teammate_id].pos)
-  if not pass_action and dist_to_teammate <= 56.0 and players[teammate_id].stun <= 0.0:
-   var offball_shove_rate = float(DRONE_PS_T[skill_idx]) * 0.0025 + 0.040 * clampi(difficulty, 0, 2)
-   if nasty or (quarter >= 4 and deficit > 0):
-    offball_shove_rate += 0.05
-   elif deficit < 0:
-    offball_shove_rate *= 0.30
-   if can_shove and (difficulty >= 1 or rng.randf() < 0.50) and rng.randf() < offball_shove_rate:
-    turbo = true
-    pass_action = true
-    if dist_to_teammate > 25.0:
-     target = players[teammate_id].pos
  else:
   target = ball
  return {"move":(target - p.pos).normalized() if p.pos.distance_to(target) > 9 else Vector2.ZERO, "shoot":shoot, "pass":pass_action, "turbo":turbo, "spin":spin}
@@ -1313,24 +1425,67 @@ func calculate_defensive_contest(shooter: int, hoop: Vector2) -> Dictionary:
   defender_ids.append(d.id)
  return {"level":total_contest,"defenders":defender_ids}
 
+func asm_units(px: float) -> int:
+ return int(px / PX_PER_ASM)
+
+# plyr_shoot sets reduce_3ptr for a 3 that started >= 270 units out, or an arc 3
+# more than 0x16 units behind the line. Corner 3s inside 270 and heaves >= 400 do not.
+func te_reduce_3ptr(point: Vector2, hoop: Vector2, three: bool) -> bool:
+ if not three:
+  return false
+ var dist_asm = asm_units(point.distance_to(hoop))
+ if dist_asm >= 400:
+  return false
+ if dist_asm >= 270:
+  return true
+ if absf(point.y - hoop.y) > THREE_POINT_CORNER_OFFSET:
+  return false
+ return asm_units(point.distance_to(hoop) - THREE_POINT_RADIUS) >= 22
+
+# PLYR.ASM plyr_shoot defender adjustment. Within 40 units is a flat -240.
+# Within 75 units and 20/128 of the hoop direction, subtract 390 - dist*4,
+# scaled up when the defender is above the shooter.
+func te_shot_contest(shooter: int, hoop: Vector2) -> Dictionary:
+ var shooter_pos: Vector2 = players[shooter].pos
+ var shot_vec = hoop - shooter_pos
+ var shot_dist = shot_vec.length()
+ if shot_dist < 0.001:
+  return {"penalty":0, "defenders":[]}
+ var shot_dir = shot_vec / shot_dist
+ var lane_dot = cos(20.0 / 128.0 * TAU)
+ var shooter_elev = body_elevation(shooter)
+ var penalty = 0
+ var defenders: Array = []
+ for j in range(4):
+  if j / 2 == shooter / 2:
+   continue
+  var rel: Vector2 = players[j].pos - shooter_pos
+  var dist = rel.length()
+  if dist < 0.001:
+   continue
+  var dist_asm = asm_units(dist)
+  if dist_asm > 75:
+   continue
+  var pen = 0
+  if dist_asm <= 40:
+   pen += 240
+  if (rel / dist).dot(shot_dir) >= lane_dot:
+   var angled = dist_asm * 4 - 390
+   var elev_px = (body_elevation(j) - shooter_elev) * (120.0 / 1.8)
+   if elev_px > 0.0:
+    angled = roundi(float(angled) * (elev_px + 8.0) / 8.0)
+   pen += -angled
+  if pen > 0:
+   penalty += pen
+   defenders.append(j)
+ return {"penalty":penalty, "defenders":defenders}
+
 func calculate_shot_percentage(i: int, charge: float, dunk: bool, layup: bool, specialty: bool, alley: bool = false, hook: bool = false, fadeaway: bool = false, moving_shot: Variant = null, bailed_to_layup: bool = false) -> Dictionary:
  var hoop = hoop_for(i / 2)
  var distance: float = players[i].pos.distance_to(hoop)
  var three_pointer = not dunk and not layup and not hook and is_three_pointer(players[i].pos, hoop)
  var delta_time = charge - 0.58
  var timing = exp(-(delta_time * delta_time) / (2.0 * 0.18 * 0.18))
- var contest_data = calculate_defensive_contest(i, hoop)
- var contest_level: float = contest_data.level
- var dist_penalty = pow(distance / 750.0, 1.32) * 0.28
- var my_team = i / 2
- var opp_team = 1 - my_team
- var score_diff = score[opp_team] - score[my_team]
- var clamped_diff = clampi(score_diff, -15, 15)
- var rubber_band = 0.0 if tournament_mode else clampf(float(clamped_diff) * 0.014, -0.21, 0.21)
- var base = 0.0
- var chance = 0.0
- var timing_contrib = 0.0
- var fire_bonus = 0.0
  var is_moving_shot = false
  if moving_shot != null:
   is_moving_shot = bool(moving_shot)
@@ -1339,103 +1494,108 @@ func calculate_shot_percentage(i: int, charge: float, dunk: bool, layup: bool, s
  elif i >= 0 and i < players.size():
   var p_shoot: Dictionary = players[i]
   is_moving_shot = p_shoot.get("shot_is_moving", false) or p_shoot.get("still_time", 1.0) < 0.10 or p_shoot.get("vel", Vector2.ZERO).length() > 10.0
- var moving_penalty = 0.14
- var still_bonus = 0.02
+ var my_team = i / 2
+ var opp_team = 1 - my_team
+ # Tournament mode clears plyr_ptsdown (assistance_off). Positive means this team is losing.
+ var pts_down = 0 if tournament_mode else (score[opp_team] - score[my_team])
+ var rubber_band = float(pts_down) * 0.02
  var sht_stat = clampi(int(rating(i, 1)), 0, 10)
- var sht_mult = SHT_TABLE[sht_stat]
- if dunk:
-  base = (0.84 if specialty else 0.72) + rating(i, 2) * 0.018
-  chance = base - contest_level * 0.14 + rubber_band
- elif bailed_to_layup:
-  # Dunk bailout to mid-air layup (DDUNK_STRT2_SEQ in PLYR.ASM:6139-6142): fixed 55% base
-  base = 0.55
-  timing_contrib = 0.0
-  chance = base - contest_level * 0.15 + rubber_band
- elif layup:
-  base = 0.66 + rating(i, 1) * 0.024
-  # Layup late knockdown when leading/tied and not on fire (PLYR.ASM:6205-6212: 10% chance -> 65%)
-  if score_diff <= 0 and not is_player_on_fire(i) and not tournament_mode and rng.randf() < 0.10:
-   base = 0.65
-  timing_contrib = timing * 0.10
-  chance = base + timing_contrib - contest_level * 0.20 + rubber_band
- elif hook:
-  base = 0.62 + rating(i, 1) * 0.028
-  # Hook shot late knockdown when not on fire (PLYR.ASM:6230-6236: 12% chance -> 50%)
-  if not is_player_on_fire(i) and not tournament_mode and rng.randf() < 0.12:
-   base = 0.50
-  timing_contrib = timing * 0.15
-  chance = base + timing_contrib - contest_level * 0.22 + rubber_band
- elif fadeaway:
-  base = (0.18 + rating(i, 1) * 0.028) * sht_mult
-  timing_contrib = timing * 0.24
-  var fade_contest = maxf(0.0, contest_level - 0.25)
-  chance = base + timing_contrib - dist_penalty - fade_contest * 0.28 + rubber_band
-  if three_pointer:
-   if sht_stat <= 6:
-    chance -= 0.20
-   chance -= 0.15
- else:
-  base = (0.21 + rating(i, 1) * 0.030) * sht_mult
-  timing_contrib = timing * 0.28
-  if is_moving_shot:
-   chance = base + timing_contrib - dist_penalty - contest_level * 0.32 + rubber_band - moving_penalty
+ var skill = SHT_PERMILLE[sht_stat]
+ var base = float(skill) / 1000.0
+ var a9 = skill
+ # Weak 3-point shooters only: PAT_SHOTSKILL <= 1025 (SHT0-SHT3) loses 200.
+ if three_pointer and skill <= 1025:
+  a9 -= 200
+ if te_reduce_3ptr(players[i].pos, hoop, three_pointer):
+  a9 -= 15
+ var dist_asm = asm_units(distance)
+ if dist_asm <= 0x70:
+  a9 += 250
+ if dist_asm >= 0x130:
+  a9 -= 990
+ var contest = te_shot_contest(i, hoop)
+ var contest_penalty = float(contest.penalty) / 1000.0
+ a9 -= int(contest.penalty)
+ var dist_penalty = float(dist_asm * 2) / 1000.0
+ a9 -= dist_asm * 2
+ if a9 < 50:
+  a9 = 50
+ var lock_timing = false
+ # brick_count >= 3 forces 990 at any distance. Later rules can still change it.
+ if i >= 0 and i < brick_count.size() and brick_count[i] >= 3:
+  a9 = 990
+  lock_timing = true
+ a9 += pts_down * 20
+ if a9 < 50:
+  a9 = 50
+ # 55/1000 when tied or winning replaces the percent with 150.
+ if rng.randf() < 0.055 and pts_down <= 0:
+  a9 = 150
+  lock_timing = true
+ # game_time <= 0x400 (4.00s). Floors are raises; a tied Q4/OT shot is forced to 50.
+ if clock <= 4.0:
+  var shot_pts = 3 if three_pointer else 2
+  if pts_down == 0:
+   if quarter >= 4:
+    a9 = 50
+    lock_timing = true
+  elif pts_down < 0:
+   if pts_down <= -5 and quarter >= 4:
+    var win_floor = 300 if clock > 2.0 else 120
+    if a9 < win_floor:
+     a9 = win_floor
+     lock_timing = true
   else:
-   chance = base + timing_contrib - dist_penalty - contest_level * 0.32 + rubber_band + still_bonus
-  if three_pointer:
-   # Weak 3-point shooter penalty (PLYR.ASM:5913-5915: <= SHT5 on 0-10 scale loses 20%)
-   if sht_stat <= 6:
-    chance -= 0.20
-   # Deep 3-pointer penalty beyond >25 ASM units past the 3pt line (PLYR.ASM:4501, 5499-5505, 5917-5919 @reduce_3ptr)
-   if distance >= 345.0:
-    chance -= 0.15
-  elif distance <= 145.0:
-   # Close-in jumper bonus (PLYR.ASM:5925-5927)
-   chance += 0.10
+   var lose_floor = 100
+   if quarter >= 4:
+    if pts_down >= 4:
+     lose_floor = 300
+    elif pts_down == shot_pts:
+     lose_floor = 800
+    else:
+     lose_floor = 380
+   elif pts_down > 5 or pts_down == shot_pts:
+    lose_floor = 120
+   if a9 < lose_floor:
+    a9 = lose_floor
+    lock_timing = true
+ var fire_bonus = 0.0
  if is_player_on_fire(i):
-  fire_bonus = 0.30
-  chance += fire_bonus
-  var fire_floor = 0.95 if dunk else (0.88 if layup else 0.82)
-  chance = maxf(chance, fire_floor)
- elif player_streak[i] == 2:
-  fire_bonus = 0.08
-  chance += fire_bonus
- # 304 ASM units * 1.30 = 395.0px far-shot cutoff for brick_count mercy make (PLYR.ASM:5995)
- if brick_count[i] >= 3 and distance <= 395.0:
-  chance = 0.99
- elif score_diff < 0 and not tournament_mode and rng.randf() < 0.055:
-  # 5.5% random knockdown when leading (PLYR.ASM:6015: movi 55, a0; calla RNDPER)
-  chance = minf(chance, 0.35)
- # End-of-quarter and Q4 buzzer-beater rules (PLYR.ASM:6020-6117)
- if clock <= 5.0:
-  var shot_pts = 2 if dunk else (3 if three_pointer else 2)
-  if quarter >= 4:
-   if score[0] == score[1]:
-    chance = 0.05
-   elif clock <= 4.0:
-    if score_diff <= -5:
-     chance = maxf(chance, 0.30 if clock > 2.0 else 0.12)
-    elif score_diff >= 4:
-     chance = maxf(chance, 0.30)
-    elif score_diff > 0:
-     if score_diff == shot_pts:
-      chance = maxf(chance, 0.88)
-     elif score_diff < shot_pts:
-      chance = maxf(chance, 0.80)
-     else:
-      chance = maxf(chance, 0.38)
-  elif clock <= 4.0 and score_diff > 0:
-   if score_diff > 5 or score_diff == shot_pts:
-    chance = maxf(chance, 0.12)
-   else:
-    chance = maxf(chance, 0.10)
- if distance > 395.0 and clock <= 4.0:
-  chance += 0.15
- # Clutch attribute boost in final 10 seconds (rating index 7 = Clutch)
- if clock <= 10.0 and rating(i, 7) >= 5.0:
-  chance += 0.08
- var final_chance = clampf(chance, 0.05, 0.99)
+  a9 += 750
+  fire_bonus = 0.75
+  if dist_asm >= 0x148:
+   a9 = 100
+   fire_bonus = 0.0
+   lock_timing = true
+ if dunk:
+  a9 += 760
+  lock_timing = true
+ elif layup or bailed_to_layup:
+  # lay_perc replaces the jumper percent. On-fire does not survive this.
+  a9 = 870
+  base = 0.87
+  fire_bonus = 0.0
+  lock_timing = true
+  if pts_down <= 0 and rng.randf() < 0.10:
+   a9 = 450
+   base = 0.45
+ elif hook:
+  a9 = 600
+  base = 0.60
+  fire_bonus = 0.0
+  lock_timing = true
+  if rng.randf() < 0.12:
+   a9 = 250
+   base = 0.25
+ var timing_contrib = 0.0
+ if not lock_timing:
+  var scaled = roundi(float(a9) * timing)
+  timing_contrib = float(scaled - a9) / 1000.0
+  a9 = maxi(50, scaled)
+ var final_chance = clampf(float(a9) / 1000.0, 0.0, 1.0)
  var percentage = roundf(final_chance * 1000.0) / 10.0
  var quality = "PERFECT" if timing > 0.93 else ("GREAT" if timing > 0.75 else ("GOOD" if timing > 0.50 else ("EARLY" if charge < 0.58 else "LATE")))
+ var contest_level = clampf(contest_penalty, 0.0, 1.0)
  return {
   "chance":final_chance,
   "percentage":percentage,
@@ -1443,21 +1603,21 @@ func calculate_shot_percentage(i: int, charge: float, dunk: bool, layup: bool, s
   "timing":timing,
   "timing_contrib":timing_contrib,
   "dist_penalty":dist_penalty,
-  "contest_penalty":contest_level * (0.14 if dunk else (0.20 if layup else 0.32)),
+  "contest_penalty":contest_penalty,
   "contest_level":contest_level,
-  "defenders":contest_data.defenders,
+  "defenders":contest.defenders,
   "rubber_band":rubber_band,
   "fire_bonus":fire_bonus,
   "three_pointer":three_pointer,
   "dunk":dunk,
-  "layup":layup,
+  "layup":layup or bailed_to_layup,
   "specialty":specialty,
   "hook":hook,
   "fadeaway":fadeaway,
   "moving_shot":is_moving_shot,
   "still_shot":not is_moving_shot,
-  "moving_penalty":moving_penalty if is_moving_shot else 0.0,
-  "still_bonus":still_bonus if not is_moving_shot else 0.0,
+  "moving_penalty":0.0,
+  "still_bonus":0.0,
   "quality":quality
  }
 
@@ -1467,56 +1627,242 @@ func calculate_rim_ricochet(start_pos: Vector2, hoop: Vector2) -> Vector2:
  var bounce_y = clampf(hoop.y + rng.randf_range(-85.0, 85.0), COURT.position.y + 35.0, COURT.end.y - 35.0)
  return Vector2(bounce_x, bounce_y)
 
+func terminal_speed(i: int, turbo_on: bool, diagonal: bool) -> float:
+ # Each tick drops XZ velocity by 1/4, then adds a14. Terminal velocity is 4*a14.
+ # a14 starts as plyr_bvel<<4 (PLYR.ASM movement). Hoop span 640 maps onto our 950.
+ var accel = BV_TABLE[clampi(int(rating(i, 0)), 0, 10)] << 4
+ var mine = owner == i
+ var teammate = owner >= 0 and owner / 2 == i / 2 and not mine
+ if mine or teammate:
+  accel -= 0xe80
+ if mine:
+  accel -= 0x1100
+  var losing = score[1 - i / 2] > score[i / 2]
+  # Shot clock has left the stuck [1,0] "10" value, carrier is past half court, and is not losing.
+  if oct_dist_asm(players[i].pos, hoop_for(i / 2)) > float(0x174) and shot_clock >= 0.0 and shot_clock < 10.0 and not losing:
+   accel -= 0x3000
+ if clock < 50.0 and score[1 - i / 2] > score[i / 2]:
+  accel += 0x1c00
+ if turbo_on:
+  accel += 0x3e00
+ if diagonal:
+  accel -= accel >> 3
+ var px_per_tick = float(accel) * 4.0 / 65536.0
+ var speed = px_per_tick * ARCADE_TSEC * PX_PER_ASM
+ if diagonal:
+  speed *= sqrt(2.0)
+ return maxf(0.0, speed)
+
+func oct_dist_asm(a: Vector2, b: Vector2) -> float:
+ var delta = (a - b) / PX_PER_ASM
+ var longer = maxf(absf(delta.x), absf(delta.y))
+ var shorter = minf(absf(delta.x), absf(delta.y))
+ return longer + shorter * 0.375
+
+func seek_dir_128(src: Vector2, dest: Vector2) -> int:
+ var a0 = int(round((src.x - dest.x) / PX_PER_ASM))
+ var a1 = int(round((src.y - dest.y) / PX_PER_ASM))
+ var a2 = 0
+ var swap = 0
+ if a0 > 0:
+  a0 = absi(a0)
+  if a1 >= 0:
+   a2 = 16
+  else:
+   a2 = 24
+   a1 = absi(a1)
+   swap = a0
+   a0 = a1
+   a1 = swap
+ else:
+  a0 = absi(a0)
+  if a1 >= 0:
+   a2 = 0
+  else:
+   a2 = 8
+   a1 = absi(a1)
+   swap = a0
+   a0 = a1
+   a1 = swap
+ a2 = a2 << 2
+ var step = 0
+ var acc = 0
+ if a0 >= a1:
+  a2 += 31
+  step = a0 >> 4
+  if step != 0:
+   while acc < a1:
+    a2 -= 1
+    acc += step
+ else:
+  step = a1 >> 4
+  if step != 0:
+   while acc < a0:
+    a2 += 1
+    acc += step
+ return a2 & 127
+
+func dir_delta_128(a: int, b: int) -> int:
+ var delta = absi(a - b)
+ if delta > 64:
+  delta = 128 - delta
+ return delta
+
+# seekdirdist_obxz128's 0-127 angle, rounded to the 8 sequence directions.
+func dir_sector(src: Vector2, dest: Vector2) -> int:
+ return ((seek_dir_128(src, dest) + 8) & 127) >> 4
+
+func passer_seqdir(i: int) -> int:
+ var p: Dictionary = players[i]
+ var aim: Vector2 = p.vel
+ if aim.length() <= 10.0:
+  var face = float(p.face)
+  aim = Vector2(face if absf(face) > 0.01 else 1.0, 0.0)
+ return dir_sector(p.pos, p.pos + aim)
+
+# plyr_startpass no-look buckets (PLYR.ASM:5449). A hit skips PASSBH.
+func nolook_angles(seqdir: int, tm: int) -> bool:
+ if seqdir < 3:
+  if tm == 2 or tm == 7:
+   return true
+ elif seqdir >= 6:
+  if tm == 6 or tm == 1:
+   return true
+ if seqdir < 2:
+  return false
+ if seqdir < 5:
+  return tm == 5 or tm == 2
+ if seqdir == 7:
+  return false
+ return tm == 6
+
+# #bhcont direction buckets (PLYR.ASM:5595).
+func bh_angles(seqdir: int, tm: int) -> bool:
+ if seqdir < 2 or seqdir == 7:
+  if seqdir == 7:
+   return tm == 5 or tm == 6
+  return tm == 2 or tm == 3
+ if seqdir >= 5:
+  return tm >= 6
+ return tm == 1 or tm == 2
+
+# PASSBH_SEQ: 35% once the spacing, skill, inbound, and angle gates pass.
+func behind_back_pass(i: int, mate: int) -> bool:
+ if players[i].jump > 0.0:
+  return false
+ var dist = oct_dist_asm(players[i].pos, players[mate].pos)
+ var seqdir = passer_seqdir(i)
+ var tm = dir_sector(players[i].pos, players[mate].pos)
+ if inbounding_team < 0 and dist >= 70.0 and dist <= 320.0 and nolook_angles(seqdir, tm):
+  if rng.randi_range(0, 7) == 0:
+   return false
+ if dist < 90.0 or dist > 360.0:
+  return false
+ if rating(i, 5) < 5.0:
+  return false
+ var opp = (1 - int(i / 2)) * 2
+ if oct_dist_asm(players[i].pos, players[opp].pos) < float(0x78):
+  return false
+ if oct_dist_asm(players[i].pos, players[opp + 1].pos) < float(0x78):
+  return false
+ # Inbound BH only when ahead by 7 or more (ptsdown <= -7).
+ if inbounding_team >= 0:
+  var pts_down = score[1 - int(i / 2)] - score[int(i / 2)]
+  if pts_down > -7:
+   return false
+ if rng.randi_range(0, 999) >= 350:
+  return false
+ return bh_angles(seqdir, tm)
+
+func behind_hoop(i: int, pos: Vector2) -> bool:
+ var hoop = hoop_for(i / 2)
+ var sector = ((seek_dir_128(pos, hoop) + 8) & 127) >> 4
+ if hoop.x > 640.0:
+  return sector >= 5
+ return sector >= 1 and sector <= 3
+
+func hook_z_ok(y: float) -> bool:
+ var z = 1000.0 + ((y - COURT.position.y) / COURT.size.y) * (1389.0 - 1000.0)
+ return z >= float(0x430) and z <= float(0x4fa)
+
+func lane_blocks_dunk(i: int, hoop: Vector2) -> bool:
+ var p: Dictionary = players[i]
+ var dist_asm = oct_dist_asm(p.pos, hoop)
+ var hoop_dir = seek_dir_128(p.pos, hoop)
+ for j in range(4):
+  if j / 2 == i / 2 or players[j].get("stun", 0.0) > 0.0:
+   continue
+  var def_dist = oct_dist_asm(p.pos, players[j].pos)
+  if dist_asm < def_dist:
+   continue
+  var def_idx = 11 if is_player_on_fire(j) else clampi(int(rating(j, 3)), 0, 10)
+  if def_dist > float(DEF_DIST_T[def_idx]):
+   continue
+  var width = DEF_WIDTH_T[def_idx]
+  if dir_delta_128(seek_dir_128(p.pos, players[j].pos), hoop_dir) < width:
+   return true
+ return false
+
 func finish_kind(i: int, turbo: bool, alley: bool = false) -> String:
  if alley:
   return "alley_oop"
  var p: Dictionary = players[i]
- var hoop = hoop_for(i/2)
- var moving: bool = p.drive > 0 or (p.vel.length() > 40 and p.vel.dot((hoop-p.pos).normalized()) > 20)
- var distance: float = p.pos.distance_to(hoop)
- # Skip dunks from behind the hoop along the baseline or within 34 ASM Z-units (~36px) of sidelines (PLYR.ASM:4679-4700, 4745-4749)
- var behind_hoop = (hoop.x > 640 and p.pos.x > hoop.x + 8.0 and absf(p.pos.y - hoop.y) > 25.0) or (hoop.x < 640 and p.pos.x < hoop.x - 8.0 and absf(p.pos.y - hoop.y) > 25.0)
- var extreme_sideline = p.pos.y <= COURT.position.y + 36.0 or p.pos.y >= COURT.end.y - 36.0
- if not moving or distance >= 185 or behind_hoop or extreme_sideline:
-  return "jumper"
- var hoop_dir = (hoop - p.pos).normalized()
+ var hoop = hoop_for(i / 2)
+ var dist_asm = oct_dist_asm(p.pos, hoop)
+ var hoop_dir_vec = hoop - p.pos
  var vel_dir = p.vel.normalized() if p.vel.length() > 10.0 else Vector2(p.face, 0.0)
- var directness = vel_dir.dot(hoop_dir)
- if not turbo and distance >= 75.0 and distance <= 185.0 and directness < 0.65 and directness > -0.65 and p.vel.length() > 30.0:
+ var directness = vel_dir.dot(hoop_dir_vec.normalized()) if hoop_dir_vec.length() > 0.001 else 1.0
+ # Hook is chosen before the dunk attempt when the carrier is sideways, 64-200 units out, in the mid Z band.
+ if not turbo and dist_asm >= float(0x40) and dist_asm < 200.0 and directness < 0.65 and directness > -0.65 and p.vel.length() > 30.0 and hook_z_ok(p.pos.y):
   return "hook_shot"
- if turbo and (p.turbo > 0.1 or infinite_turbo or is_player_on_fire(i)):
-  var contest = calculate_defensive_contest(i, hoop)
-  var lane_guarded = false
-  for j in range(4):
-   if j / 2 != i / 2 and players[j].get("stun", 0.0) <= 0.0:
-    var def_idx = 11 if is_player_on_fire(j) else clampi(int(rating(j, 3)), 0, 10)
-    var rel = players[j].pos - p.pos
-    var def_dist = rel.length()
-    var def_hoop_dist = players[j].pos.distance_to(hoop)
-    if def_dist > 0.001 and def_hoop_dist <= distance and def_dist <= float(DEF_DIST_T[def_idx]) * 1.30:
-     var angle_diff = acos(clampf((rel / def_dist).dot(hoop_dir), -1.0, 1.0))
-     var max_angle = float(DEF_WIDTH_T[def_idx]) * (TAU / 128.0)
-     if angle_diff < max_angle:
-      lane_guarded = true
-      break
-  var pwr_stat = clampi(int(rating(i, 6)), 0, 10)
-  var dunk_thru_prob = maxf(0.35, DNKTHRU_T[pwr_stat])
-  if (contest.level > 0.45 or lane_guarded) and not is_player_on_fire(i) and rating(i, 2) < 8.0 and rng.randf() >= dunk_thru_prob:
+ if behind_hoop(i, p.pos) or dist_asm >= 170.0:
+  return "jumper"
+ var axis_min = ARCADE_TSEC * PX_PER_ASM
+ var moving = absf(p.vel.x) >= axis_min or absf(p.vel.y) >= axis_min
+ var facing = false
+ if p.vel.length() > 10.0:
+  facing = dir_delta_128(seek_dir_128(p.pos, p.pos + p.vel), seek_dir_128(p.pos, hoop)) <= 24
+ if dist_asm > 60.0 and (not moving or not facing):
+  return "jumper"
+ var pwr_stat = clampi(int(rating(i, 6)), 0, 10)
+ var dunk_through = rng.randf() < DNKTHRU_T[pwr_stat]
+ if not dunk_through and lane_blocks_dunk(i, hoop):
+  # HCOUNT bit 0 sends half of these to a jumper. Layup distance is 35..138.
+  if (rng.randi() & 1) == 0 and dist_asm > 35.0 and dist_asm < 138.0:
    return "layup"
+  return "jumper"
+ if dist_asm > 80.0 and not turbo:
+  return "jumper"
+ if turbo and dist_asm > 80.0:
   return "turbo_dunk"
- if p.charge < 0.35 or distance >= 115:
-  return "layup"
  return "dunk"
 
+func dunk_rim_ticks(dist_asm: float) -> float:
+ if dist_asm <= 60.0:
+  return 37.0
+ if dist_asm <= 80.0:
+  return 64.0
+ return 74.0
+
+# lay_perc's second roll. A hit blocks every ball touch for TSEC*2 (PLYR.ASM:4716).
+func roll_layup_touch_lock() -> void:
+ if rng.randi_range(0, 999) < 700:
+  ball_touch_lock = TE_LAYUP_TOUCH_LOCK
+
 func shoot_ball(i: int, turbo: bool, alley: bool = false, release_height: float = 1.3) -> void:
+ if shot_past_half_court(i / 2, players[i].pos):
+  return
  teammate_shot_order = -1
  inbound_transition = {}
  inbounding_team = -1
  var p: Dictionary = players[i]
  p.fake = 0.0
+ p.dribble_locked = false
  var hoop = hoop_for(i / 2)
  var distance: float = p.pos.distance_to(hoop)
- var finish = finish_kind(i,turbo,alley)
+ var locked_finish = str(p.get("shot_finish", ""))
+ var finish = locked_finish if locked_finish != "" else finish_kind(i, turbo, alley)
+ p.shot_finish = ""
  var dunk = finish in ["dunk","turbo_dunk","alley_oop"]
  var specialty = finish in ["turbo_dunk","alley_oop"]
  var layup = finish == "layup"
@@ -1524,13 +1870,23 @@ func shoot_ball(i: int, turbo: bool, alley: bool = false, release_height: float 
  var launch_height = receive_height(i) if alley else 0.0
  p.receive_jump = 0.0
  var hoop_vec = hoop - p.pos
- var angle_from_baseline = absf(atan2(hoop_vec.y, hoop_vec.x))
- var any_on_fire = fire_player >= 0 or team_fire_timer[0] > 0.0 or team_fire_timer[1] > 0.0
- # Close bank (<=125px, 20%-25% chance) and long bank (125..270px, 25% chance), suppressed when anyone is on fire (PLYR.ASM:6325-6426)
- var is_close_bank = distance >= 55.0 and distance <= 125.0 and angle_from_baseline > 0.35 and angle_from_baseline < 1.35
- var is_long_bank = distance > 125.0 and distance <= 270.0 and angle_from_baseline > 0.40 and angle_from_baseline < 1.35
- var bank_prob = 0.25 if (is_long_bank or angle_from_baseline > 0.75) else 0.20
- var bank_shot = (is_close_bank or is_long_bank) and not dunk and not alley and not any_on_fire and rng.randf() < bank_prob
+ var any_on_fire = fire_player >= 0
+ # plyr_shoot seeks (ohoopx, CZMID). abs((dir & 63) - 32) >= 24 is a bad glass angle.
+ # Close (<=100) banks 1/5 from in front and 1/4 from the wing, and always uses the make.
+ # Anyone on fire cancels that close bank. Long shots bank only from in front, on 1/4 of releases, and only when the percentage makes.
+ var hoop_dir = seek_dir_128(p.pos, hoop)
+ var bank_offset = absi((hoop_dir & 63) - 32)
+ var bank_dist = oct_dist_asm(p.pos, hoop)
+ var close_bank = false
+ var long_bank = false
+ if not dunk and not alley and bank_offset < 24:
+  if bank_dist <= 100.0:
+   if not any_on_fire:
+    var faces = 4 if bank_offset < 16 else 3
+    if rng.randi_range(0, faces) == 0:
+     close_bank = true
+  elif bank_offset < 16 and rng.randi_range(0, 3) == 0:
+   long_bank = true
  var fadeaway = not dunk and not layup and not hook and not alley and p.vel.length() > 20.0 and p.vel.dot(hoop_vec.normalized()) < -15.0
  var moving_shot = p.get("shot_is_moving", false) if p.has("shot_is_moving") else (p.get("still_time", 1.0) < 0.10 or p.vel.length() > 10.0)
  if fadeaway:
@@ -1569,7 +1925,7 @@ func shoot_ball(i: int, turbo: bool, alley: bool = false, release_height: float 
  var my_team = i / 2
  var opp_team = 1 - my_team
  var pts_down = score[opp_team] - score[my_team]
- var any_fire = fire_player >= 0 or team_fire_timer[0] > 0.0 or team_fire_timer[1] > 0.0
+ var any_fire = fire_player >= 0
  # Unblocked dunks always make except for 2.5% clank when leading/up by 1 and nobody is on fire (PLYR2.ASM:5357-5373)
  if dunk:
   will_make = true
@@ -1577,16 +1933,20 @@ func shoot_ball(i: int, turbo: bool, alley: bool = false, release_height: float 
    if rng.randf() < 0.025:
     will_make = false
     clank = true
- elif not layup and not hook and not alley and not bank_shot and pts_down < 2 and not any_fire and nearest_defender(i) <= 56.0:
+ elif close_bank:
+  will_make = true
+ elif not long_bank and not layup and not hook and not alley and pts_down < 2 and not any_fire and nearest_defender(i) <= 56.0:
   # Contested jump-shot airball roll when defender within 50*DIST_REDUCTION (56px), not trailing by 2+, and nobody is on fire (PLYR.ASM:6430-6488)
   var air_prob = 0.12 if (distance > 380.0 and chance < 0.06) else (1.0 / 128.0 if distance < 65.0 else 1.0 / 32.0)
   if rng.randf() < air_prob:
    will_make = false
    airball = true
+ var bank_shot = close_bank or (long_bank and will_make)
  var flat_arc = not dunk and not layup and not hook and rng.randf() < 0.016
- # Authentic arcade dunk durations (PLYR2.ASM:5058, DUNK.ASM, PLYRDSEQ.ASM, PLYRDSQ2.ASM):
- # Standard: 62-73 ticks (~1.15s), Specialty/Turbo: 75-85 ticks (~1.40s), On-Fire: 95-110 ticks (~1.75s), Alley-oop catch slam: ~42 ticks (~0.78s)
- var dunk_duration = 1.75 if burning else (0.78 if finish == "alley_oop" else (1.40 if specialty else 1.15))
+ # seq_strtdunk tick count is the time to the rim (PLYRDSEQ). Fire uses getdunkseq's
+ # skill-5 table, not a longer timer. Under 60 / under 80 / beyond are DUNKB2 (37),
+ # DUNKLAY7 (64), and DUNKL/DUNKQ (74).
+ var dunk_duration = dunk_rim_ticks(oct_dist_asm(p.pos, hoop)) / ARCADE_TSEC
  var dunk_arc = 4.5 if burning else (3.0 if specialty else 1.6)
  var jumper_arc = 3.3 if flat_arc else 4.6
  # Authentic arcade shot duration (PLYR.ASM:6573-6610):
@@ -1602,7 +1962,11 @@ func shoot_ball(i: int, turbo: bool, alley: bool = false, release_height: float 
  else:
   shot_ticks = maxf(50.0, shot_ticks)
  var shot_duration = shot_ticks / 53.2
- flight = {"kind":"shot", "start":ball, "end":hoop, "time":0.0, "duration":dunk_duration if dunk else shot_duration, "shooter":i, "points":points, "made":will_make, "dunk":dunk, "layup":layup, "hook":hook, "fadeaway":fadeaway, "super_dunk":specialty or burning, "dunk_style":dunk_style, "finish":finish, "arc_height":(3.6 if turbo else 2.5) if hook else (dunk_arc if dunk else (1.0 if layup else jumper_arc)), "blocked":false, "shot_breakdown":breakdown, "clank":clank, "airball":airball, "flat_arc":flat_arc, "bank_shot":bank_shot, "moving_shot":moving_shot}
+ var shot_time = dunk_duration if dunk else shot_duration
+ var in_hand_until = SHOT_HAND_TICKS / ARCADE_TSEC
+ if dunk:
+  in_hand_until = shot_time * DUNK_HAND_RELEASE
+ flight = {"kind":"shot", "start":ball, "end":hoop, "time":0.0, "duration":shot_time, "shooter":i, "points":points, "made":will_make, "dunk":dunk, "layup":layup, "hook":hook, "fadeaway":fadeaway, "super_dunk":specialty or burning, "dunk_style":dunk_style, "finish":finish, "arc_height":(3.6 if turbo else 2.5) if hook else (dunk_arc if dunk else (1.0 if layup else jumper_arc)), "blocked":false, "shot_breakdown":breakdown, "clank":clank, "airball":airball, "flat_arc":flat_arc, "bank_shot":bank_shot, "moving_shot":moving_shot, "shot_dist":oct_dist_asm(p.pos, hoop), "in_hand_until":in_hand_until}
  if dunk or layup or hook:
   flight.player_start = p.pos
   flight.player_end = hoop+Vector2(-1 if hoop.x > 640 else 1,0)*(28 if dunk else 50)
@@ -1651,43 +2015,111 @@ func shoot_ball(i: int, turbo: bool, alley: bool = false, release_height: float 
   callout = "HOOK SHOT!"
  elif layup:
   callout = "LAY IT UP!"
- elif bank_shot:
-  callout = "OFF THE GLASS!"
  elif moving_shot:
   callout = "PERFECT RELEASE!" if breakdown.quality == "PERFECT" else "PULL-UP JUMPER!"
  else:
   callout = "PERFECT RELEASE!" if breakdown.quality == "PERFECT" else ("FROM DOWNTOWN!" if points == 3 else "UP IT GOES")
- announce(callout, "dunk" if dunk else "shot")
+ if layup:
+  roll_layup_touch_lock()
+ # scored_speech plays the jam line once, when the dunk goes in. Saying it
+ # again here repeats "slams it" on the way up.
+ if not dunk:
+  announce(callout, "shot")
+
+# plyr_dirtime counts ticks the stick has held one sector. A release clears it.
+func note_dir_time(p: Dictionary, move: Vector2, delta: float) -> void:
+ if move.length() < 0.05:
+  p.dir_time = 0.0
+  return
+ var sector = dir_sector(Vector2.ZERO, move.normalized() * 128.0)
+ if sector != int(p.get("dir_sector", -1)):
+  p.dir_sector = sector
+  p.dir_time = 0.0
+  return
+ p.dir_time = float(p.get("dir_time", 0.0)) + delta * ARCADE_TSEC
+
+# plyr_startpass leads after 8 ticks in one direction. Under that, a defender
+# inside 25 or a teammate inside 30 keeps the pass on the receiver's feet.
+# No-look passes wait until 10 ticks. A jump never leads. Stick release zeros
+# velocity on the same frame, so the dirtime-0 coin flip has nothing to lead.
+func pass_should_lead(passer: int, mate: int, behind_back: bool) -> bool:
+ var mate_p: Dictionary = players[mate]
+ if mate_p.jump > 0.0:
+  return false
+ var dir_time = float(mate_p.get("dir_time", 0.0))
+ if behind_back and dir_time < 10.0:
+  return false
+ if dir_time > 8.0:
+  return true
+ if dir_time <= 0.0:
+  return false
+ var opp = (1 - int(mate / 2)) * 2
+ var close = oct_dist_asm(mate_p.pos, players[opp].pos) < 25.0 or oct_dist_asm(mate_p.pos, players[opp + 1].pos) < 25.0
+ if not close:
+  return true
+ if oct_dist_asm(players[passer].pos, mate_p.pos) < 30.0:
+  return false
+ return dir_time > 4.0
+
+# plyr_pass #bndlp. One velocity step per flight tick, then stop on the glass.
+func walked_pass_target(mate: int, ticks: int) -> Vector2:
+ var mate_p: Dictionary = players[mate]
+ var step: Vector2 = mate_p.vel / ARCADE_TSEC
+ if step.length() < 0.01:
+  return mate_p.pos
+ var pos: Vector2 = mate_p.pos
+ var min_x = asm_spot(-337.0, 0.0).x
+ var max_x = asm_spot(328.0, 0.0).x
+ var min_y = asm_spot(0.0, 1008.0 - 1170.0).y
+ var max_y = asm_spot(0.0, 1383.0 - 1170.0).y
+ for _step in range(maxi(0, ticks)):
+  pos += step
+  if pos.x <= min_x or pos.x >= max_x or pos.y <= min_y or pos.y >= max_y:
+   break
+ return pos
 
 func pass_ball(i: int, turbo: bool) -> void:
  teammate_shot_order = -1
  players[i].fake = 0.0
+ players[i].dribble_locked = false
  var release_height = ball_height() if not flight.is_empty() and flight.get("kind","") == "shot" else 1.1
  var mate = (i / 2) * 2 + (1 - i % 2)
  var alley = turbo and players[mate].receive_jump > 0 and players[mate].stun <= 0 and players[mate].pos.distance_to(hoop_for(i / 2)) < 220
- var distance: float = ball.distance_to(players[mate].pos)
  var pass_stat = clampi(int(rating(i, 5)), 0, 10)
- # Authentic arcade pass travel time calculation (PLYR.ASM:8041-8077):
- # Distance scaled to 800px arcade court, table lookups for long (>300) vs short,
- # turbo deduction, and hard floor of 16 ticks (0.30s min duration at 53.2 Hz).
- var arcade_dist = distance * (800.0 / 1050.0)
+ # plyr_pass: octagonal distance, long table above 300, else short, minus turbo, floor 16 ticks.
+ var arcade_dist = oct_dist_asm(ball, players[mate].pos)
  var factor = float(LONGPAS_T[pass_stat]) if arcade_dist > 300.0 else float(SHORTPAS_T[pass_stat])
  if turbo:
   factor -= float(TURBOPAS_T[pass_stat])
  var ticks = maxf(16.0, (arcade_dist * factor) / 1024.0)
- var duration = ticks / 53.2
+ var duration = ticks / ARCADE_TSEC
  if fast_passing:
   duration *= 0.50
- if clock <= 10.0 and rating(i, 7) >= 5.0:
-  duration *= 0.85
- var pass_vec = players[mate].pos - players[i].pos
- var face_dir = Vector2(players[i].face, 0.0)
- var behind_back = not alley and players[i].jump <= 0.0 and distance >= 80.0 and distance <= 380.0 and rating(i, 5) >= 5.0 and face_dir.dot(pass_vec.normalized()) < -0.30
- flight = {"kind":"pass", "start":ball, "end":players[mate].pos, "start_height":release_height, "end_height":3.8 if alley else 1.1, "time":0.0, "duration":0.38 if alley else duration, "target":mate, "passer":i, "alley":alley, "turbo":turbo, "behind_back":behind_back}
+ var behind_back = false if alley else behind_back_pass(i, mate)
+ # plyr_pass walks the receiver's velocity for the flight, stopping at the court edge.
+ # Alley lobs stay on the jumper. A jump, a short run, or a close defender skips the lead.
+ var end = players[mate].pos
+ if not alley and pass_should_lead(i, mate, behind_back):
+  end = walked_pass_target(mate, maxi(1, int(duration * ARCADE_TSEC + 0.001)))
+ flight = {"kind":"pass", "start":ball, "end":end, "start_height":release_height, "end_height":3.8 if alley else 1.1, "time":0.0, "duration":0.38 if alley else duration, "target":mate, "passer":i, "alley":alley, "turbo":turbo, "behind_back":behind_back}
  owner = -1
  inbounding_team = -1
+ # assist_plyr / assist_delay are stored when the pass starts, not when it is caught.
+ last_passer = i
+ assist_window = 210.0 / ARCADE_TSEC
  players[i].cooldown = 0.45
  announce("LOB IT UP!" if alley else ("BEHIND THE BACK PASS!" if behind_back else "NICE PASS"), "pass")
+
+# BLOCKREB tightens Z by 6 and limits X to tbl4 past the hand. The 30-pixel glide
+# is how far seq_block can still slide before that box is tested. tbl3's +15
+# applies only at or below RUNDRIBTURB; a block image uses the raised hand, so
+# the ball only has to be within 3px of that image top. This sim has no sprite
+# origin, so the existing 4.6m cap remains the vertical gate.
+func block_contact_box(defender: int, ball_high: bool) -> Vector2:
+ var skill = clampi(int(rating(defender, 3)), 0, 10)
+ var z_asm = float(TBL1_Z[skill] if ball_high else TBL2_Z[skill]) - 6.0
+ var x_asm = float(BLK_REACH_T[skill])
+ return Vector2((BLOCK_GLIDE_ASM + x_asm) * PX_PER_ASM, (BLOCK_GLIDE_ASM + z_asm) * PX_PER_ASM)
 
 func defend(i: int, turbo: bool) -> void:
  players[i].vel = Vector2.ZERO
@@ -1696,9 +2128,8 @@ func defend(i: int, turbo: bool) -> void:
  if must_rebound_timer > 0.0 or (not flight.is_empty() and (flight.get("kind", "") == "rebound" or flight.get("kind", "") == "loose")):
   var shooter = flight.get("shooter", -1)
   var is_defense = (shooter < 0 or shooter / 2 != i / 2)
-  # Authentic arcade auto-rebound restriction (PLYR.ASM:8439-8446):
-  # Offense (shooter and teammate) cannot trigger magnetic auto-rebound glide
-  if not is_defense and flight.get("kind", "") == "rebound":
+  # plyr_tryrebound skips the shooter and teammate only while game_time is under 0:05.
+  if not is_defense and flight.get("kind", "") == "rebound" and clock < 5.0:
    players[i].jump = 0.75
    return
   players[i].jump = 0.75
@@ -1712,101 +2143,109 @@ func defend(i: int, turbo: bool) -> void:
     players[i].rebound_glide = REBOUND_GLIDE_DURATION
   return
  if not flight.is_empty() and flight.get("kind", "") == "shot":
+  if ball_touch_lock > 0.0:
+   return
   var shooter: int = flight.shooter
   if shooter / 2 == i / 2 or flight.blocked:
    return
   var t = clampf(flight.time/flight.duration,0,1)
   var contact = flight_position()
-  var reach = players[i].pos.distance_to(contact)
   var arc: float = flight.get("arc_height",1.7 if flight.dunk else 4.6)
   var v_vert = 3.05-flight.get("release_height",1.3)+PI*arc*cos(t*PI)
   var def_team = i / 2
   var off_team = shooter / 2
-  var pts_down = score[off_team] - score[def_team]
-  # Allow ball to be blocked right at peak of arc (PLYR2.ASM:2678-2705)
+  var pts_down = 0 if tournament_mode else (score[off_team] - score[def_team])
+  # ball_chkpcollide: downward speed under 2 (3 when the defender is down 5+)
+  # is a block. Faster descents whiff unless rnd's mask of 6 is 0, which
+  # goaltends. On fire and airballs that do connect are blocks (PLYR2.ASM:2376-2432).
   var desc_threshold = -1.5 if pts_down >= 5 else -1.0
   var descending = v_vert < desc_threshold
   var at_rim = contact.distance_to(flight.end) < 115
-  var blk_reach_bonus = float(BLK_REACH_T[clampi(int(rating(i, 3)), 0, 10)] - 12) * 3.0
-  if descending and at_rim and reach < 78 + maxf(0.0, blk_reach_bonus) and ball_height() <= 4.6:
-   var uncalled = flight.get("airball", false)
-   if not uncalled and pts_down >= 1 and not tournament_mode:
-    var uncalled_chance = float(GOALT_T[clampi(pts_down, 0, 15)]) / 1000.0
-    if rng.randf() < uncalled_chance:
-     uncalled = true
-   if flight.dunk or is_player_on_fire(i) or uncalled:
-    flight.made = false
-    flight.blocked = true
-    stats[i].blocks += 1
-    record_miss(shooter)
-    if flight.dunk:
-     var def_pwr = 10 if (maximum_power or is_player_on_fire(i)) else clampi(int(rating(i, 6)), 0, 10)
-     var dnk_pwr = clampi(int(rating(shooter, 6)), 0, 10)
-     var td_idx = clampi((def_pwr - dnk_pwr) + 10, 0, TAKEDUNK_T.size() - 1)
-     if def_pwr > 4 and rng.randf() < float(TAKEDUNK_T[td_idx]) / 1000.0:
-      players[shooter].stun = 0.85
-      stats[shooter].injury += 1
-      announce("STUFFED AT THE RIM!", "block")
-     else:
-      announce("DENIED AT THE RIM!", "block")
-    else:
-     announce("NO CALL! REJECTED AT THE RIM!" if uncalled else "FIRE BLOCK! NO GOALTENDING!", "block")
-   else:
+  var ball_high = ball_height() > (28.0 / 120.0) * 3.05 or absf(v_vert) / maxf(flight.duration, 0.01) > 1.02
+  var box = block_contact_box(i, ball_high)
+  var delta_xz = contact - players[i].pos
+  var in_reach = absf(delta_xz.x) < box.x and absf(delta_xz.y) < box.y and ball_height() <= 4.6
+  if descending and at_rim and in_reach:
+   if flight.dunk and dunk_strip_resisted(i, shooter):
+    return
+   var legal_block = flight.dunk or is_player_on_fire(i)
+   if not legal_block and rng.randi() % 4 != 0:
+    return
+   if not legal_block and not flight.get("airball", false):
     var points: int = flight.points
     stats[i].goaltends += 1
     award_basket(shooter,points,false,false)
     announce("GOALTENDING! %d POINTS" % points,"whistle")
     inbound(i/2, true)
-  elif not descending and reach < 85 + blk_reach_bonus and ball_height() <= 4.6:
-   flight.made = false
-   flight.blocked = true
-   stats[i].blocks += 1
-   record_miss(shooter)
-   if flight.dunk:
-    var def_pwr = 10 if (maximum_power or is_player_on_fire(i)) else clampi(int(rating(i, 6)), 0, 10)
-    var dnk_pwr = clampi(int(rating(shooter, 6)), 0, 10)
-    var td_idx = clampi((def_pwr - dnk_pwr) + 10, 0, TAKEDUNK_T.size() - 1)
-    if def_pwr > 4 and rng.randf() < float(TAKEDUNK_T[td_idx]) / 1000.0:
-     players[shooter].stun = 0.85
-     stats[shooter].injury += 1
-     announce("STUFFED AT THE RIM!", "block")
+   else:
+    flight.made = false
+    flight.blocked = true
+    abort_finish_glide(shooter)
+    stats[i].blocks += 1
+    record_miss(shooter)
+    if flight.dunk:
+     announce("DENIED AT THE RIM!", "block")
+    elif is_player_on_fire(i):
+     announce("FIRE BLOCK! NO GOALTENDING!", "block")
     else:
      announce("REJECTED!", "block")
-   else:
-    announce("REJECTED!", "block")
+  elif not descending and in_reach:
+   if flight.dunk and dunk_strip_resisted(i, shooter):
+    return
+   flight.made = false
+   flight.blocked = true
+   abort_finish_glide(shooter)
+   stats[i].blocks += 1
+   record_miss(shooter)
+   announce("REJECTED!", "block")
  elif owner >= 0 and owner / 2 != i / 2:
   steal(i, turbo)
+
+# A block replaces the dunk or layup sequence. The finisher stops riding the
+# rim path and comes down instead of gliding the rest of the flight in the air.
+func abort_finish_glide(shooter: int) -> void:
+ if shooter < 0 or shooter >= players.size():
+  return
+ players[shooter].vel = Vector2.ZERO
+ players[shooter].jump = 0.0
+ players[shooter].rim_hang = 0.0
+
+# takedunk_t is the chance a collision fails to take the ball from a dunker.
+# A stripper with power 3 or less never wins that check.
+func dunk_strip_resisted(defender: int, shooter: int) -> bool:
+ var def_pwr = 10 if (maximum_power or is_player_on_fire(defender)) else clampi(int(rating(defender, 6)), 0, 10)
+ if def_pwr <= 3:
+  return true
+ var dnk_pwr = clampi(int(rating(shooter, 6)), 0, 10)
+ var idx = clampi((dnk_pwr - def_pwr) + 10, 0, TAKEDUNK_T.size() - 1)
+ var resist = TAKEDUNK_T[idx]
+ if resist <= 0:
+  return false
+ return rng.randf() < float(resist) / 1000.0
 
 func steal(i: int, shove: bool) -> void:
  if shove and no_pushing:
   announce("NO PUSHING!", "whistle")
   return
  if shove and not is_player_on_fire(i) and not infinite_turbo:
-  if players[i].turbo < 0.14:
-   shove = false
-  else:
-   # Authentic shove turbo cost: (TURBO_CNT*2)/13 (PLYR2.ASM:5945)
-   players[i].turbo = maxf(0.0, players[i].turbo - (2.0 / 13.0))
- players[i].cooldown = 0.65
- players[i].swipe = 0.45
+  if players[i].turbo < (10.0 / 47.0):
+   return
+  # TE removes eight units when the move begins and up to seven more when
+  # seq_push actually connects.
+  players[i].turbo = maxf(0.0, players[i].turbo - (8.0 / 47.0))
+ var action_dir: Vector2 = players[i].vel
+ if action_dir.length() < 10.0:
+  action_dir = players[i].get("last_move_vel", Vector2.ZERO)
+ if action_dir.length() < 0.1:
+  action_dir = Vector2(players[i].face, 0.0)
+ var shove_len = TE_SHOVE_DIAGONAL_DURATION if shove and shove_faces_diagonal(action_dir) else TE_SHOVE_DURATION
+ players[i].cooldown = shove_len if shove else 0.65
+ players[i].swipe = shove_len if shove else 0.45
  players[i].swipe_resolved = false
  players[i].swipe_shove = shove
+ players[i].swipe_dir = action_dir.normalized()
  players[i].vel = Vector2.ZERO
- var team = i / 2
- if shove:
-  var closest_opp = -1
-  var min_d = 56.0
-  for j in range(4):
-   if j / 2 != team:
-    var d = players[i].pos.distance_to(players[j].pos)
-    if d <= min_d:
-     min_d = d
-     closest_opp = j
-  if closest_opp >= 0:
-   var to_opp = players[closest_opp].pos - players[i].pos
-   if absf(to_opp.x) > 0.1:
-    players[i].face = 1 if to_opp.x >= 0 else -1
- elif owner >= 0:
+ if not shove and owner >= 0:
   var to_target = players[owner].pos - players[i].pos
   if absf(to_target.x) > 0.1:
    players[i].face = 1 if to_target.x >= 0 else -1
@@ -1814,129 +2253,228 @@ func steal(i: int, shove: bool) -> void:
   var to_target = flight_position() - players[i].pos
   if absf(to_target.x) > 0.1:
    players[i].face = 1 if to_target.x >= 0 else -1
- if not flight.is_empty() and flight.kind == "pass" and not flight.get("tip",false) and int(flight.target)/2 != i/2:
+ if ball_touch_lock <= 0.0 and not flight.is_empty() and flight.kind == "pass" and not flight.get("tip",false) and int(flight.target)/2 != i/2:
   if players[i].pos.distance_to(flight_position()) < (68 if shove else 56) and ball_height() <= 2.5:
-   # Authentic arcade pass ticks: flight.time * 53.2 (PLYR2.ASM:3221-3226)
-   var pass_ticks = int(flight.time * ARCADE_TSEC)
-   var base_pct = 1.0 + absf(pass_ticks - 3) * 0.5
-   var def_team = i / 2
-   var off_team = int(flight.target) / 2
-   var pts_down = clampi(score[off_team] - score[def_team], 0, 15)
-   var ptsdown_bonus = INT_T[pts_down]
-   if tournament_mode:
-    ptsdown_bonus = 0
-   var alley_bonus = 25.0 if flight.get("alley", false) else 0.0
-   var intercept_chance = clampf(0.22 + rating(i, 4) * 0.03 + (base_pct + ptsdown_bonus + alley_bonus) * 0.006, 0.20, 0.78)
-   if rng.randf() < intercept_chance:
+   if pass_intercept_succeeds(i, int(flight.time * ARCADE_TSEC)):
     intercept_pass(i)
   return
- if shove:
-  resolve_steal(i, true)
+
+# Odd push_t seqdirs are the diagonal sequences. They connect on frame 8, not frame 12.
+func shove_faces_diagonal(dir: Vector2) -> bool:
+ if dir.length() < 0.1:
+  return false
+ return (dir_sector(Vector2.ZERO, dir.normalized() * 128.0) & 1) == 1
+
+func shove_target(i: int) -> int:
+ var team = i / 2
+ var first_opponent = (1 - team) * 2
+ var facing: Vector2 = players[i].get("swipe_dir", Vector2.ZERO)
+ if facing.length() < 0.1:
+  facing = Vector2(players[i].face, 0.0)
+ facing = facing.normalized()
+ for victim in [first_opponent, first_opponent + 1]:
+  var offset: Vector2 = players[victim].pos - players[i].pos
+  # Opponents: distance <= 50 and wrapped dir delta < 32/128 (PLYR2.ASM:4822-4834).
+  if offset.length() <= TE_SHOVE_RANGE and offset.length() > 0.01 and facing.dot(offset.normalized()) > 0.0:
+   return victim
+ # Humans only. Drones return before the teammate test (PLYR2.ASM:4854-4874).
+ # The teammate cone is 16/128, half the opponent cone.
+ if players[i].get("human", false):
+  var mate = i ^ 1
+  var mate_offset: Vector2 = players[mate].pos - players[i].pos
+  if mate_offset.length() <= TE_SHOVE_RANGE and mate_offset.length() > 0.01 and facing.dot(mate_offset.normalized()) > cos(16.0 / 128.0 * TAU):
+   return mate
+ return -1
+
+# Cabinet dunks climb to HOOPY and stay there until seq_slamball. Presentation
+# eases the body back down; the shove gate follows the cabinet rise instead.
+func body_elevation(i: int) -> float:
+ var p: Dictionary = players[i]
+ if p.get("rim_hang", 0.0) > 0.0:
+  return 1.35
+ if dunk_ball_held(i) or dunk_already_slammed(i):
+  var progress = clampf(float(flight.time) / maxf(float(flight.duration), 0.001), 0.0, 1.0)
+  return 1.8 * clampf(progress / DUNK_RELEASE_FRACTION, 0.0, 1.0)
+ if p.receive_jump > 0.0:
+  return receive_height(i)
+ if p.charge > 0.0:
+  return sin(clampf(p.charge / 1.16, 0.0, 1.0) * PI) * 1.35
+ if p.jump > 0.0:
+  var t = 1.0 - clampf(p.jump / 0.70, 0.0, 1.0)
+  if t <= 0.20:
+   return 0.0
+  return sin((t - 0.20) / 0.80 * PI) * 2.85
+ return 0.0
+
+func dunk_ball_held(victim: int) -> bool:
+ if flight.is_empty() or flight.get("kind", "") != "shot":
+  return false
+ if not flight.get("dunk", false) or flight.get("blocked", false):
+  return false
+ if int(flight.get("shooter", -1)) != victim:
+  return false
+ return float(flight.time) < float(flight.duration) * DUNK_RELEASE_FRACTION
+
+func dunk_already_slammed(victim: int) -> bool:
+ if flight.is_empty() or flight.get("kind", "") != "shot":
+  return false
+ if not flight.get("dunk", false) or flight.get("blocked", false):
+  return false
+ if int(flight.get("shooter", -1)) != victim:
+  return false
+ return float(flight.time) >= float(flight.duration) * DUNK_RELEASE_FRACTION
+
+func victim_dunking(victim: int) -> bool:
+ if flight.is_empty() or flight.get("kind", "") != "shot" or flight.get("blocked", false):
+  return false
+ return flight.get("dunk", false) and int(flight.get("shooter", -1)) == victim
+
+# BB.ASM counts pushing_delay down once for the whole game. Whoever is holding
+# the ball keeps it, including a teammate who was passed to after the gain.
+func pushing_delay_active() -> bool:
+ for p in players:
+  if p.get("push_keep_ball", 0.0) > 0.0:
+   return true
+ return false
+
+# Keep-ball uses #shortfly_t. A winner who is not shooting rolls 50/1000.
+# Losing the ball uses #winshortfly_t while ahead and #shortfly_t while behind.
+# Similar power never takes the short no-ball flyback.
+func short_flyback(victim: int, kept: bool, shooting: bool, victim_power: float, pusher_power: float) -> bool:
+ var close_power = absf(victim_power - pusher_power) <= 1.0
+ var power_idx = clampi(int(victim_power), 0, 10)
+ var winning = score[1 - victim / 2] - score[victim / 2] <= 0
+ var chance = 0.0
+ if kept:
+  if shooting or not winning:
+   chance = 0.250 if close_power else SHORTFLY_T[power_idx]
+  else:
+   chance = 0.050
+ else:
+  if close_power:
+   return false
+  chance = WINSHORTFLY_T[power_idx] if winning else SHORTFLY_T[power_idx]
+ return rng.randf() < chance
+
+func no_ball_flail(victim_power: float, pusher_power: float) -> bool:
+ if absf(victim_power - pusher_power) <= 1.0:
+  return false
+ return rng.randf() < NOBLFLAIL_T[clampi(int(victim_power), 0, 10)]
+
+func shove_loose_flight(from: Vector2, rear: bool) -> Dictionary:
+ var vx = rng.randf_range(-1.0, 0.999)
+ var vy = 2.0 if rear else rng.randf_range(-1.0, 0.999)
+ var duration = 0.55
+ var dest = (from + Vector2(vx, vy) * PX_PER_ASM * ARCADE_TSEC * duration).clamp(COURT.position + Vector2(25.0, 25.0), COURT.end - Vector2(25.0, 25.0))
+ return {"kind": "loose", "start": from, "end": dest, "time": 0.0, "duration": duration, "arc_height": 0.35}
 
 func resolve_steal(i: int, shove: bool) -> void:
  var team = i / 2
  if shove:
-  var victims: Array = []
-  for j in range(4):
-   if j / 2 != team:
-    var dist = players[i].pos.distance_to(players[j].pos)
-    if dist <= 56.0:
-     victims.append(j)
-  if victims.is_empty():
+  var victim = shove_target(i)
+  if victim < 0:
    return
   players[i].swipe_resolved = true
-  var hit_count = 0
-  var any_turnover = false
-  var any_kept = false
-  var any_flyback = false
-  var pusher_power = 9.0 if (maximum_power or is_player_on_fire(i)) else rating(i, 6)
-  for victim in victims:
-   # Vertical height difference check (PLYR2.ASM:5729-5734)
-   if absf(players[i].get("jump", 0.0) - players[victim].get("jump", 0.0)) > 0.45:
-    continue
-   # Spin/elbow/rebound shove resistance (85%, PLYR2.ASM:5710-5725)
-   if (players[victim].get("spin", 0.0) > 0.0 or players[victim].get("elbow", 0.0) > 0.0 or players[victim].get("rebound_glide", 0.0) > 0.0) and rng.randf() < 0.85:
-    continue
-   # Layup shove resistance (50%, PLYR2.ASM:5704-5708)
-   if not flight.is_empty() and flight.get("kind", "") == "shot" and flight.get("shooter", -1) == victim and flight.get("layup", false) and rng.randf() < 0.50:
-    continue
-
-   hit_count += 1
-   var victim_power = rating(victim, 6)
-   var power_diff = pusher_power - victim_power
-   var push_dir = (players[victim].pos - players[i].pos).normalized()
-   if push_dir.length() < 0.1:
-    push_dir = Vector2.RIGHT * players[i].face
-   var face_dir = -signf(push_dir.x)
-   if absf(face_dir) > 0.1:
-    players[victim].face = face_dir
-
-   var is_flyback = true
-   if not maximum_power and not is_player_on_fire(i):
-    var flyback_chance = 0.65
-    if power_diff >= 3.0:
-     flyback_chance = 0.90
-    elif power_diff >= 1.0:
-     flyback_chance = 0.75
-    elif power_diff <= -3.0:
-     flyback_chance = 0.20
-    elif power_diff <= -1.0:
-     flyback_chance = 0.40
-    is_flyback = rng.randf() < flyback_chance
-
-   if is_flyback:
-    any_flyback = true
-
-   stats[victim].injury += 1
-   players[victim].charge = 0.0
-   players[victim].fake = 0.0
-   if is_flyback:
-    players[victim].shove_kind = "flyback"
-    players[victim].shove_time = 0.95
-    players[victim].stun = 0.95
-    players[victim].pickup_delay = 0.67
-    players[victim].pos = (players[victim].pos + push_dir * 22.0).clamp(COURT.position + Vector2(18,18), COURT.end - Vector2(18,18))
-    players[victim].vel = push_dir * 380.0
-   else:
-    players[victim].shove_kind = "stumble"
-    players[victim].shove_time = 0.40
-    players[victim].stun = 0.40
-    players[victim].pickup_delay = 0.35
-    players[victim].pos = (players[victim].pos + push_dir * 12.0).clamp(COURT.position + Vector2(18,18), COURT.end - Vector2(18,18))
-    players[victim].vel = push_dir * 180.0
-
-   if victim == owner:
-    # Ball retention on shove knockdown (FLYBACKWB_SEQ in PLYR.ASM:1626-1683)
-    var v_pts_down = score[i / 2] - score[victim / 2]
-    var keep_prob = 0.0
-    if v_pts_down > 0:
-     keep_prob = KPBALL_T[clampi(int(victim_power), 0, 10)] + FLYB_T[clampi(v_pts_down, 0, 15)]
-    if players[victim].get("push_keep_ball", 0.0) > 0.0 or (v_pts_down > 0 and rng.randf() < keep_prob):
-     any_kept = true
-    else:
-     any_turnover = true
-     stats[i].steals += 1
-     stats[victim].turnovers = stats[victim].get("turnovers", 0) + 1
-     acquire_possession(i, true)
-     shot_clock = 24.0
-
-  if hit_count == 0:
+  # PLYR2.ASM rejects a target more than 0x54 pixels above the pusher.
+  if body_elevation(victim) - body_elevation(i) > TE_SHOVE_ABOVE:
    return
-  players[i].cooldown = 0.80
-  if hit_count > 1:
-   if any_turnover:
-    announce("DOUBLE KNOCKDOWN! TURNOVER!", "steal")
-   elif any_kept:
-    announce("DOUBLE SHOVE! KEEPS THE BALL!", "shove")
-   else:
-    announce("DOUBLE KNOCKDOWN! NO FOULS!", "shove")
+  if inbounding_team >= 0:
+   return
+  # A TE layup is pushable 30% of the time. Elbows and rebounds are pushable
+  # 15% of the time; its shove routine has no separate spin immunity.
+  if not flight.is_empty() and flight.get("kind", "") == "shot" and flight.get("shooter", -1) == victim and flight.get("layup", false) and rng.randf() >= 0.30:
+   return
+  if (players[victim].get("elbow", 0.0) > 0.0 or players[victim].get("rebound_glide", 0.0) > 0.0) and rng.randf() >= 0.15:
+   return
+  if not is_player_on_fire(i) and not infinite_turbo:
+   var contact_cost = 7.0 / 47.0
+   players[i].turbo = players[i].turbo - contact_cost if players[i].turbo >= (10.0 / 47.0) else 0.0
+
+  var pusher_power = 9.0 if (maximum_power or is_player_on_fire(i)) else rating(i, 6)
+  var victim_power = rating(victim, 6)
+  var victim_advantage = victim_power - pusher_power
+  # The cabinet drives knockback along the pusher's committed direction, not
+  # radially away from the victim's exact position inside the forward cone.
+  var push_dir: Vector2 = players[i].get("swipe_dir", Vector2.ZERO)
+  if push_dir.length() < 0.1:
+   push_dir = Vector2.RIGHT * players[i].face
+  push_dir = push_dir.normalized()
+  var face_dir = -signf(push_dir.x)
+  if absf(face_dir) > 0.1:
+   players[victim].face = face_dir
+
+  # TE quarters the horizontal impulse at a six-point victim advantage. At a
+  # seven-point advantage, 35% of contacts become the short, non-fall reaction.
+  var reduced_impulse = victim_advantage >= 6.0
+  var full_knockdown = victim_advantage < 7.0 or rng.randf() < 0.65
+  var shooting = players[victim].charge > 0.0 or (not flight.is_empty() and flight.get("kind", "") == "shot" and int(flight.get("shooter", -1)) == victim and not flight.get("dunk", false) and not flight.get("layup", false))
+  players[victim].charge = 0.0
+  players[victim].fake = 0.0
+  var fly_speed = 95.0 if reduced_impulse else 380.0
+  var fly_stun = 1.10
+  if full_knockdown:
+   stats[victim].injury += 1
+   players[victim].shove_kind = "flyback"
+   players[victim].pickup_delay = maxf(players[victim].get("pickup_delay", 0.0), 0.67)
   else:
-   if any_turnover:
-    announce("SHOVED! NO FOULS!" if any_flyback else "STUMBLED! LOST THE BALL!", "steal")
-   elif any_kept:
-    announce("SHOVED! KEEPS THE BALL!" if any_flyback else "STUMBLED! KEEPS THE BALL!", "shove")
-   else:
-    announce("SHOVED! NO FOULS!" if any_flyback else "STAGGERED!", "shove")
+   players[victim].shove_kind = "stumble"
+   fly_speed = 95.0
+   fly_stun = 0.30
+   players[victim].shove_time = fly_stun
+   players[victim].stun = fly_stun
+   players[victim].pickup_delay = maxf(players[victim].get("pickup_delay", 0.0), 0.35)
+   players[victim].vel = push_dir * fly_speed
+
+  var turnover = false
+  var kept_ball = false
+  # seq_slamball scores only while the dunker still owns the ball (PLYR2.ASM:4576).
+  # A flyback replaces the dunk sequence (PLYR.ASM:1316), so the slam never runs.
+  # DUNK_B also skips the short flyback (PLYR.ASM:1137, 1218). The stagcnt-16
+  # stagger does not change sequences, and the dunk continues.
+  var dunk_held = dunk_ball_held(victim)
+  var interrupts_dunk = dunk_held and full_knockdown
+  if dunk_held and not full_knockdown:
+   stats[i].steals += 1
+  if victim == owner or interrupts_dunk:
+   # TE credits a push-steal when the carrier is hit, even if the carrier wins
+   # the subsequent keep-ball roll.
+   stats[i].steals += 1
+   var points_down = clampi(score[i / 2] - score[victim / 2], 0, 15)
+   var keep_prob = 0.50 if players[victim].get("elbow", 0.0) > 0.0 else (0.20 if absf(victim_power - pusher_power) <= 1.0 else KPBALL_T[clampi(int(victim_power), 0, 10)])
+   keep_prob = minf(1.0, keep_prob + FLYB_T[points_down])
+   var rear = players[victim].pos.y <= asm_spot(0.0, 1040.0 - 1170.0).y
+   var into_table = rear and push_dir.y < 0.0
+   kept_ball = not rear and (pushing_delay_active() or rng.randf() < keep_prob)
+   if not kept_ball:
+    turnover = true
+    stats[victim].turnovers = stats[victim].get("turnovers", 0) + 1
+    owner = -1
+    reset_shot_clock()
+    loose_ball_timer = 0.20
+    ball = players[victim].pos
+    flight = shove_loose_flight(ball, rear)
+   elif interrupts_dunk:
+    # FLYBACKWB keeps possession, but the replaced dunk cannot score.
+    owner = victim
+    ball = players[victim].pos
+    flight = {}
+   if full_knockdown and not victim_dunking(victim) and not into_table and short_flyback(victim, kept_ball, shooting, victim_power, pusher_power):
+    fly_speed *= 0.25
+    fly_stun = TE_SHORT_FLY_TICKS / ARCADE_TSEC
+  elif full_knockdown and not victim_dunking(victim) and no_ball_flail(victim_power, pusher_power):
+   fly_speed *= 0.25
+   fly_stun = TE_SHORT_FLY_TICKS / ARCADE_TSEC
+  if full_knockdown:
+   players[victim].shove_time = fly_stun
+   players[victim].stun = fly_stun
+   players[victim].vel = push_dir * fly_speed
+
+  if turnover:
+   announce("SHOVED! LOOSE BALL!" if full_knockdown else "STUMBLED! LOOSE BALL!", "steal")
+  elif kept_ball:
+   announce("SHOVED! KEEPS THE BALL!" if full_knockdown else "STUMBLED! KEEPS THE BALL!", "shove")
+  else:
+   announce("SHOVED! NO FOULS!" if full_knockdown else "STAGGERED!", "shove")
   return
  var victim = -1
  if owner >= 0 and owner / 2 != team:
@@ -1945,17 +2483,13 @@ func resolve_steal(i: int, shove: bool) -> void:
   var dist_to_owner = players[i].pos.distance_to(players[owner].pos)
   if dist_to_ball <= 46.0 or dist_to_owner <= 46.0:
    victim = owner
- if victim < 0:
+ if victim < 0 or ball_touch_lock > 0.0:
   return
  if players[victim].get("steal_immune", 0.0) > 0.0:
   return
  players[i].swipe_resolved = true
  var stl_stat = clampi(int(rating(i, 4)), 0, 10)
- var clutch_steal_bonus = 0.03 if (clock <= 10.0 and rating(i, 7) >= 5.0) else 0.0
- var steal_chance = STL1[stl_stat] + clutch_steal_bonus
- # Holding ball too long without dribbling/moving penalty (PLYR2.ASM:3038-3041: >220 ticks = 4.135s at 53.2 Hz -> 35% steal)
- if players[victim].get("hold_time", 0.0) >= (220.0 / ARCADE_TSEC) and players[victim].get("still_time", 0.0) >= 2.0:
-  steal_chance = maxf(steal_chance, 0.35)
+ var steal_chance = STL1[stl_stat]
  if rng.randf() < steal_chance:
   var clean_steal = rng.randf() < STL2[stl_stat]
   stats[i].steals += 1
@@ -1965,23 +2499,36 @@ func resolve_steal(i: int, shove: bool) -> void:
   players[victim].fake = 0.0
   if clean_steal:
    acquire_possession(i, true)
-   players[i].steal_immune = 0.67
-   players[i].pass_off = 0.42
-   players[i].push_keep_ball = 1.33
-   shot_clock = 24.0
+   # steals_off 30, pass_off 25, pushing_delay 80 (PLYR2.ASM give-ball path).
+   players[i].steal_immune = TE_STEAL_LOCKOUT
+   players[i].pass_off = TE_PASS_OFF
+   players[i].push_keep_ball = TE_PUSH_PROTECTION
+   reset_shot_clock()
    announce("PICKED THEIR POCKET!", "steal")
   else:
    owner = -1
-   shot_clock = 24.0
-   loose_ball_timer = 0.65
-   players[i].pickup_delay = 0.50
-   players[victim].pickup_delay = 0.50
+   reset_shot_clock()
+   loose_ball_timer = 0.0
+   players[i].pickup_delay = TE_POKE_DELAY
+   players[victim].pickup_delay = TE_POKE_DELAY
    var loose_dir = (players[victim].pos - players[i].pos).normalized()
    if loose_dir.length() < 0.1:
     loose_dir = Vector2.RIGHT * players[i].face
    var loose_dest = (ball + loose_dir * rng.randf_range(60.0, 110.0) + Vector2(rng.randf_range(-30.0, 30.0), rng.randf_range(-30.0, 30.0))).clamp(COURT.position + Vector2(25.0, 25.0), COURT.end - Vector2(25.0, 25.0))
    flight = {"kind":"loose", "start":ball, "end":loose_dest, "time":0.0, "duration":0.45, "arc_height":1.2}
    announce("LOOSE BALL!", "steal")
+
+# #giveball: rndrng0(99) must be under abs(ballpasstime-3)/2 + #int_t + 1,
+# then RNDPER(400) must hit. No steal-skill or alley term (PLYR2.ASM:2759-2796).
+func pass_intercept_succeeds(defender: int, pass_ticks: int) -> bool:
+ var off_team = int(flight.get("target", 0)) / 2
+ var pts_down = 0
+ if not tournament_mode:
+  pts_down = clampi(score[off_team] - score[defender / 2], 0, 15)
+ var threshold = (absi(pass_ticks - 3) >> 1) + INT_T[pts_down] + 1
+ if rng.randi() % 100 >= threshold:
+  return false
+ return rng.randf() < 0.40
 
 func intercept_pass(i: int) -> void:
  stats[i].steals += 1
@@ -2001,10 +2548,10 @@ func intercept_pass(i: int) -> void:
  acquire_possession(i, true)
  flight = {}
  ball = players[i].pos
- shot_clock = 24.0
+ reset_shot_clock()
  players[i].cooldown = 0.8
  players[i].swipe = 0.25
- players[i].push_keep_ball = 1.33
+ players[i].push_keep_ball = TE_PUSH_PROTECTION
  announce("PASS PICKED OFF!", "steal")
 
 func tick_flight(delta: float) -> void:
@@ -2013,25 +2560,22 @@ func tick_flight(delta: float) -> void:
  flight.time += delta
  var t = clampf(flight.time / flight.duration, 0, 1)
  ball = flight.start.lerp(flight.end, t)
- if flight.kind == "pass" and not flight.get("tip",false) and t > 0.12 and t < 0.88 and ball_height() <= 2.5:
-  for i in range(4):
-   if i/2 == int(flight.target)/2 or players[i].stun > 0 or players[i].cooldown > 0:
-    continue
-   # Authentic arcade pass ticks: flight.time * 53.2 (PLYR2.ASM:3221-3226)
+ if flight.kind == "pass" and not flight.get("tip",false) and ball_height() <= 2.5:
+  var accum = float(flight.get("intercept_ticks", 0.0)) + delta * ARCADE_TSEC
+  var rolls = mini(int(accum), 3)
+  flight.intercept_ticks = accum - float(rolls)
+  if rolls > 0 and ball_touch_lock <= 0.0:
    var pass_ticks = int(flight.time * ARCADE_TSEC)
-   var base_pct = 1.0 + absf(pass_ticks - 3) * 0.5
-   var def_team = i / 2
-   var off_team = int(flight.target) / 2
-   var pts_down = clampi(score[off_team] - score[def_team], 0, 15)
-   var ptsdown_bonus = INT_T[pts_down]
-   if tournament_mode:
-    ptsdown_bonus = 0
-   var alley_bonus = 25.0 if flight.get("alley", false) else 0.0
-   var rate = (base_pct + ptsdown_bonus + alley_bonus + rating(i, 4) * 2.5) * 0.15
-   if players[i].pos.distance_to(ball) < 42 and rng.randf() < 1.0-exp(-rate*delta):
-    intercept_pass(i)
-    return
- elif flight.kind == "rebound" or flight.kind == "loose":
+   for i in range(4):
+    if i / 2 == int(flight.target) / 2 or players[i].stun > 0:
+     continue
+    if players[i].pos.distance_to(ball) >= 42.0:
+     continue
+    for _roll in range(rolls):
+     if pass_intercept_succeeds(i, pass_ticks):
+      intercept_pass(i)
+      return
+ elif ball_touch_lock <= 0.0 and (flight.kind == "rebound" or flight.kind == "loose"):
   if flight.kind == "loose" and loose_ball_timer > 0.0:
    pass
   else:
@@ -2060,9 +2604,8 @@ func tick_flight(delta: float) -> void:
     flight = {}
     p_win.vel = Vector2.ZERO
     p_win.rebound_glide = 0.0
-    p_win.push_keep_ball = 1.33
-    p_win.steal_immune = 0.67 if rng.randf() < 0.05 else 0.25
-    shot_clock = 24.0
+    p_win.push_keep_ball = TE_PUSH_PROTECTION
+    reset_shot_clock()
     if is_rebound:
      stats[winner].rebounds += 1
      announce("REBOUND!", "catch")
@@ -2103,8 +2646,6 @@ func tick_flight(delta: float) -> void:
    return
   acquire_possession(receiver)
   ball = players[owner].pos
-  last_passer = flight.get("passer", -1)
-  assist_window = 3.5 if last_passer >= 0 else 0.0
   flight = {}
   if alley or double_dunk:
    players[owner].alley_cnt = players[owner].get("alley_cnt", 0) + 1
@@ -2114,48 +2655,22 @@ func tick_flight(delta: float) -> void:
   return
  var shooter: int = flight.shooter
  var team = shooter / 2
+ # ball_bbcollision: shot_distance >= 0x158 uses lhoopl_t/lhoopr_t, which have
+ # no score spots, unless RNDPER(200) hits. game_time <= 0x400 raises that to
+ # RNDPER(350). One roll at the rim is the pass through that zone. Dunks score
+ # in seq_slamball and do not take this hoop.
+ if flight.made and not flight.blocked and not flight.get("dunk", false) and float(flight.get("shot_dist", 0.0)) >= float(0x158):
+  var allow = 350 if clock <= 4.0 else 200
+  if rng.randi_range(0, 999) >= allow:
+   flight.made = false
+   if int(last_shot_feedback.get("shooter", -1)) == shooter:
+    last_shot_feedback.made = false
  if flight.made and not flight.blocked:
   if flight.dunk:
    players[shooter].rim_hang = 0.35
    players[shooter].jump = maxf(players[shooter].jump, 0.35)
    players[shooter].pos = hoop_for(team) + Vector2(-15 if hoop_for(team).x > 640 else 15, 0)
-   var super_facial = is_player_on_fire(shooter) or flight.get("super_dunk", false)
-   for d in range(4):
-    # Authentic dunk facial radius: 35*DIST_REDUCTION = 29.75 ASM units -> 48.0px from rim (PLYR2.ASM:5406, 5409)
-    if d / 2 != team and players[d].pos.distance_to(hoop_for(team)) < 48.0:
-     var facial_dir = (players[d].pos - hoop_for(team)).normalized()
-     if facial_dir.length() < 0.1:
-      facial_dir = Vector2.RIGHT * (1 if hoop_for(team).x < 640 else -1)
-     var face_dir = -signf(facial_dir.x)
-     if absf(face_dir) > 0.1:
-      players[d].face = face_dir
-     if super_facial:
-      players[d].stun = 1.2
-      players[d].shove_kind = "flyback"
-      players[d].shove_time = 1.2
-      players[d].pos = (players[d].pos + facial_dir * 28.0).clamp(COURT.position + Vector2(18,18), COURT.end - Vector2(18,18))
-      players[d].vel = facial_dir * 300.0
-     else:
-      players[d].stun = maxf(players[d].stun, 0.8)
-      players[d].shove_kind = "stumble"
-      players[d].shove_time = 0.8
-      players[d].pos = (players[d].pos + facial_dir * 16.0).clamp(COURT.position + Vector2(18,18), COURT.end - Vector2(18,18))
-      players[d].vel = facial_dir * 160.0
-  var assisted = false
-  if assist_window > 0.0 and last_passer >= 0 and last_passer / 2 == team and last_passer != shooter:
-   stats[last_passer].assists += 1
-   assisted = true
-   last_passer = -1
-   assist_window = 0.0
-  if flight.get("alley", false) or flight.get("double_dunk", false) or assisted:
-   team_streak[team] += 1
-   if team_streak[team] >= 3:
-    team_fire_timer[team] = 25.0
-    team_streak[team] = 0
-    fire_player = -1
-    fire_points = 0
-    fire_shots = 0
-    announce("TEAM IN THE ZONE! 25 SECONDS!", "fire")
+  # seq_slamball's facial only plays facial_snd. It does not move or stun anyone.
   var was_on_fire = is_player_on_fire(shooter)
   var shattered = award_basket(shooter,flight.points,flight.dunk,true,flight.get("super_dunk",false))
   var ignited = is_player_on_fire(shooter) and not was_on_fire
@@ -2168,7 +2683,7 @@ func tick_flight(delta: float) -> void:
    flight = {}
    owner = -1
    ball = hoop_for(team)
-   shot_clock = 24.0
+   reset_shot_clock()
    pending_inbound = 1-team
    shatter_shooter = shooter
    freeze = 1.65
@@ -2177,8 +2692,6 @@ func tick_flight(delta: float) -> void:
    inbound(1-team, true, true)
  else:
   record_miss(shooter)
-  last_passer = -1
-  assist_window = 0.0
   in_cylinder_timer = 0.20
   must_rebound_timer = 2.0
   loose_ball_timer = maxf(loose_ball_timer, 0.20)
@@ -2194,14 +2707,14 @@ func tick_flight(delta: float) -> void:
    ball = ricochet
    flight = {}
    owner = -1
-   shot_clock = 24.0
+   reset_shot_clock()
    loose_ball_timer = 0.0
    in_cylinder_timer = 0.0
    announce("AIRBALL!" if was_airball else ("OFF THE GLASS!" if was_bank_shot else "OFF THE RIM!"), "miss")
   else:
    flight = {"kind":"rebound", "start":hoop_for(team), "end":ricochet, "time":0.0, "duration":REBOUND_FLIGHT_DURATION, "shooter":shooter, "arc_height":arc_h, "bounces":0}
    owner = -1
-   shot_clock = 24.0
+   reset_shot_clock()
    announce("AIRBALL!" if was_airball else ("OFF THE GLASS!" if was_bank_shot else ("OFF THE BACK IRON!" if was_clank else "OFF THE RIM!")), "miss")
 
 func next_period(from_transition: bool = false) -> void:
@@ -2229,10 +2742,11 @@ func next_period(from_transition: bool = false) -> void:
   p.alley_cnt = 0
   p.shove_kind = ""
   p.shove_time = 0.0
- inbound(quarter % 2)
+ var gmqrtr = (3 + overtime) if overtime > 0 else (quarter - 1)
+ inbound(gmqrtr & 1, false, false, true)
 
 func snapshot() -> Dictionary:
- return {"tipoff":tipoff.duplicate(true), "board_breaks":board_breaks.duplicate(), "pending_inbound":pending_inbound, "shatter_shooter":shatter_shooter, "players":players.duplicate(true), "teams":teams.duplicate(), "score":score.duplicate(), "streak":streak.duplicate(), "player_streak":player_streak.duplicate(), "team_streak":team_streak.duplicate(), "team_fire_timer":team_fire_timer.duplicate(), "fire_player":fire_player, "fire_points":fire_points, "fire_shots":fire_shots, "last_passer":last_passer, "assist_window":assist_window, "brick_count":brick_count.duplicate(), "inbounding_team":inbounding_team, "teammate_shot_order":teammate_shot_order, "stats":stats.duplicate(true), "ball":ball, "owner":owner, "flight":flight.duplicate(true), "clock":clock, "shot_clock":shot_clock, "quarter":quarter, "overtime":overtime, "phase":phase, "freeze":freeze, "banner":banner, "banner_time":banner_time, "event_id":event_id, "event_kind":event_kind, "elapsed":elapsed, "big_heads":big_heads, "infinite_turbo":infinite_turbo, "tournament_mode":tournament_mode, "no_pushing":no_pushing, "fast_passing":fast_passing, "maximum_power":maximum_power, "last_shot_feedback":last_shot_feedback.duplicate(true), "loose_ball_timer":loose_ball_timer, "in_cylinder_timer":in_cylinder_timer, "must_rebound_timer":must_rebound_timer, "bullet_time_remaining":bullet_time_remaining, "inbound_transition":inbound_transition.duplicate(true), "quarter_transition":quarter_transition.duplicate(true), "quarter_scores":quarter_scores.duplicate(true), "clock_buzzer_sounded":clock_buzzer_sounded}
+ return {"tipoff":tipoff.duplicate(true), "board_breaks":board_breaks.duplicate(), "pending_inbound":pending_inbound, "shatter_shooter":shatter_shooter, "players":players.duplicate(true), "teams":teams.duplicate(), "score":score.duplicate(), "streak":streak.duplicate(), "player_streak":player_streak.duplicate(), "fire_player":fire_player, "fire_points":fire_points, "fire_shots":fire_shots, "last_passer":last_passer, "assist_window":assist_window, "brick_count":brick_count.duplicate(), "inbounding_team":inbounding_team, "teammate_shot_order":teammate_shot_order, "stats":stats.duplicate(true), "ball":ball, "owner":owner, "flight":flight.duplicate(true), "clock":clock, "shot_clock":shot_clock, "quarter":quarter, "overtime":overtime, "phase":phase, "freeze":freeze, "banner":banner, "banner_time":banner_time, "event_id":event_id, "event_kind":event_kind, "elapsed":elapsed, "big_heads":big_heads, "infinite_turbo":infinite_turbo, "tournament_mode":tournament_mode, "no_pushing":no_pushing, "fast_passing":fast_passing, "maximum_power":maximum_power, "last_shot_feedback":last_shot_feedback.duplicate(true), "loose_ball_timer":loose_ball_timer, "ball_touch_lock":ball_touch_lock, "in_cylinder_timer":in_cylinder_timer, "must_rebound_timer":must_rebound_timer, "bullet_time_remaining":bullet_time_remaining, "inbound_transition":inbound_transition.duplicate(true), "quarter_transition":quarter_transition.duplicate(true), "quarter_scores":quarter_scores.duplicate(true), "clock_buzzer_sounded":clock_buzzer_sounded}
 
 func apply_snapshot(data: Dictionary) -> void:
  for key in data:

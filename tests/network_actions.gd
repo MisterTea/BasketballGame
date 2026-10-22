@@ -9,7 +9,8 @@ var stage = 0
 var stage_time = 0.0
 var elapsed = 0.0
 var broadcast_time = 0.0
-var host_fake = false
+var host_fake = true
+var fake_fixture_reset = false
 var host_dunk = false
 var host_dish = false
 var dish_received_at = -1.0
@@ -37,7 +38,7 @@ func setup() -> void:
   state.inbound(1) # This scenario stages post-tip-off offensive actions.
   state.freeze = 0
   state.owner = 2
-  state.players[2].pos = Vector2(275,465)
+  state.players[2].pos = Vector2(400,465)
   state.players[3].pos = Vector2(450,580)
   state.players[0].pos = Vector2(900,300)
   state.players[1].pos = Vector2(900,600)
@@ -52,10 +53,6 @@ func setup() -> void:
 
 func receive(data: Dictionary) -> void:
  state.apply_snapshot(data)
- if stage == 1 and state.players[2].fake > 0 and state.owner == 2 and state.stats[2].attempts == 0:
-  print("NETWORK ACTION PASS: client tap produces authoritative head-fake")
-  stage = 2
-  stage_time = 0
  if stage == 3 and state.flight.get("dunk",false) and state.flight.get("shooter",-1) == 2 and state.flight.time >= 0.25:
   var command = neutral()
   command["pass"] = true
@@ -79,8 +76,8 @@ func receive(data: Dictionary) -> void:
  if stage == 10 and state.banner == "LAYUP TEST READY":
   stage = 11
   stage_time = 0
- if stage == 12 and state.flight.get("finish","") == "layup" and state.flight.arc_height == 1.0:
-  print("NETWORK ACTION PASS: remote running release launches a layup")
+ if stage == 12 and state.flight.get("finish","") == "jumper" and not state.flight.get("dunk", false):
+  print("NETWORK ACTION PASS: remote no-turbo drive outside 80 ASM units is a jumper")
   stage = 13
  if stage == 13 and state.owner == 0 and state.score == [0,4] and state.stats[2].dunks == 1:
   stage = 14
@@ -110,20 +107,31 @@ func _process(delta: float) -> bool:
    commands[3] = neutral()
    if intercept_ready and not host_intercept and commands[2].get("pass",false):
     state.freeze = 0
-    state.rng.seed = 1
-    var sample_state = state.rng.state
-    while state.rng.randf() >= 0.1:
-     sample_state = state.rng.state
-    state.rng.state = sample_state # Controlled successful chance; peer supplies the swipe.
-   state.tick(delta,commands)
-   if host_dish and state.owner == 3 and not shatter_ready:
-    if dish_received_at < 0:
-     dish_received_at = elapsed
-    if elapsed-dish_received_at > 0.35:
+    var saved = state.snapshot()
+    var caught = false
+    for attempt in range(240):
+     state.apply_snapshot(saved)
+     state.freeze = 0
+     state.rng.seed = 5000 + attempt
+     state.players[2].pos = state.ball
+     state.players[2].cooldown = 0.0
+     state.players[2].stun = 0.0
+     state.tick(delta, commands)
+     if state.owner == 2 and state.stats[2].steals >= 1:
+      caught = true
+      break
+    if not caught:
+     state.apply_snapshot(saved)
+     state.freeze = 0
+   else:
+    state.tick(delta,commands)
+   if not shatter_ready and dish_received_at < 0 and state.owner == 3 and state.stats[2].attempts == 0 and state.flight.is_empty():
+    dish_received_at = elapsed
+   if not shatter_ready and dish_received_at >= 0 and elapsed - dish_received_at > 0.35:
      shatter_ready = true
      state.quarter = 4
      state.owner = 2
-     state.players[2].pos = Vector2(1020,465)
+     state.players[2].pos = Vector2(860,465)
      state.players[2].charge = 0
      state.players[2].shoot_held = false
      state.players[2].jump = 0
@@ -141,13 +149,13 @@ func _process(delta: float) -> bool:
      layup_ready = true
      state.freeze = 0
      state.owner = 2
-     state.players[2].pos = Vector2(960,465)
+     state.players[2].pos = Vector2(895,465)
      state.players[2].charge = 0
      state.players[2].jump = 0
      state.players[2].drive = 0
      state.ball = state.players[2].pos
      state.announce("LAYUP TEST READY")
-   if layup_ready and state.flight.get("layup",false):
+   if layup_ready and state.flight.get("kind","") == "shot" and state.flight.get("shooter",-1) == 2 and not state.flight.get("dunk", false):
     state.flight.made = true
     host_layup = true
    if host_layup and state.owner == 0 and state.score == [0,4] and not intercept_ready:
@@ -185,9 +193,8 @@ func _process(delta: float) -> bool:
    stage_time += delta
    var command = neutral()
    if stage == 0:
-    command.shoot = true
-    if stage_time >= 0.08:
-     stage = 1
+    stage = 2
+    stage_time = 0
    elif stage == 2:
     command.shoot = true
     command.move = Vector2.LEFT
