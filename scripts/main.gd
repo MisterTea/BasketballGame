@@ -92,6 +92,9 @@ func _ready() -> void:
  add_child(layer)
  ui = Control.new()
  ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+ var theme = Theme.new()
+ theme.default_font = UiFont.get_font()
+ ui.theme = theme
  layer.add_child(ui)
  sound_players.clear()
  for i in range(8):

@@ -2,13 +2,13 @@
 
 importer="font_data_dynamic"
 type="FontFile"
-uid="uid://fsa5ks4bpgkr"
-path="res://.godot/imported/NotoSans-UI.ttf-25ec3961754a2232dc426d769fb739f8.fontdata"
+uid="uid://bpba2800i8k3w"
+path="res://.godot/imported/UiFont.ttf-78260c6344a0f60556e7c5481b87fd56.fontdata"
 
 [deps]
 
-source_file="res://fonts/NotoSans-UI.ttf"
-dest_files=["res://.godot/imported/NotoSans-UI.ttf-25ec3961754a2232dc426d769fb739f8.fontdata"]
+source_file="res://fonts/UiFont.ttf"
+dest_files=["res://.godot/imported/UiFont.ttf-78260c6344a0f60556e7c5481b87fd56.fontdata"]
 
 [params]
 
