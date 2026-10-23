@@ -180,9 +180,10 @@ func _init() -> void:
 	s_def.players[2].nasty_timer = 1.0 # TE nasty mode always reaches the steal/push decision
 	s_def.maximum_power = true
 	var found_shove_owner = false
-	for _i in range(20):
+	for _i in range(40):
+		s_def.players[2].drone_seek = 0
 		var cmd_close = s_def.ai(2)
-		if cmd_close.pass == true and cmd_close.turbo == true:
+		if cmd_close.get("shove", false):
 			found_shove_owner = true
 			s_def.players[2].pos = Vector2(530, 465)
 			s_def.tick(0.016, {0: {}, 1: {}, 2: cmd_close, 3: {}})
@@ -214,6 +215,35 @@ func _init() -> void:
 			shoved_teammate = true
 			break
 	assert_true.call(not shoved_teammate, "A defender does not shove an off-ball opponent who is far from the ball")
+
+	# drone_defence waits #skt_t between push/steal rolls, and closing-out turbo stays a steal.
+	s_def.flight = {}
+	s_def.owner = 0
+	s_def.ball = Vector2(500, 465)
+	s_def.players[0].pos = Vector2(500, 465)
+	s_def.players[0].stun = 0.0
+	s_def.players[2].pos = Vector2(530, 465)
+	s_def.players[2].nasty_timer = 1.0
+	s_def.players[2].drone_seek = 10
+	s_def.players[2].turbo = 1.0
+	s_def.players[2].cooldown = 0.0
+	var held = s_def.ai(2)
+	assert_true.call(not held.get("shove", false) and not held.pass and s_def.players[2].drone_seek == 9, "A defender waits out plyr_d_seekcnt before another push or steal")
+	var saw_steal = false
+	var saw_push = false
+	for trial in range(80):
+		s_def.rng.seed = 3000 + trial
+		s_def.players[2].drone_seek = 0
+		s_def.players[2].nasty_timer = 1.0
+		s_def.players[2].turbo = 1.0
+		s_def.players[2].turbo_burnout = 0.0
+		s_def.players[2].cooldown = 0.0
+		var cmd_split = s_def.ai(2)
+		if cmd_split.pass and cmd_split.turbo and not cmd_split.get("shove", false):
+			saw_steal = true
+		if cmd_split.get("shove", false):
+			saw_push = true
+	assert_true.call(saw_steal and saw_push, "Closing-out turbo does not turn a defensive steal into a shove")
 
 	# Test 10: Authentic 8-attribute separation (PLYRAT.ASM: Speed, Shoot, Dunk, Block, Steal, Pass, Power, Clutch)
 	var s_attr = MatchState.new()
@@ -473,7 +503,7 @@ func _init() -> void:
 
 	# Test 24: ASM Coordinate Proportions & Dunk Restrictions (WORLD.EQU / PLYR.ASM:4679-4749)
 	var s_dim = MatchState.new()
-	s_dim.start(1, 0) # LAX (player 0 = HOLLYWOOD, dunk=7, power=5) vs CHI (player 3 = BRICK, def=10)
+	s_dim.start(1, 0) # LAX (player 0 = WANG, dunk=7, power=5) vs CHI (player 3 = GAUCI, def=10)
 	s_dim.tipoff = {}
 	s_dim.freeze = 0.0
 	s_dim.owner = 0

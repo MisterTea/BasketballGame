@@ -216,6 +216,19 @@ func run() -> void:
  s.flight.time = s.flight.duration*0.5
  s.steal(2,true)
  check(s.owner == -1 and not s.flight.is_empty(),"the opening tip pass stays protected from ordinary lane steals")
+ s = fresh()
+ s.owner = 0
+ s.players[0].pos = Vector2(400, 465)
+ s.players[1].pos = Vector2(760, 465)
+ s.players[1].stun = 1.0
+ s.players[1].vel = Vector2.ZERO
+ s.players[2].pos = Vector2(200, 220)
+ s.players[3].pos = Vector2(200, 700)
+ s.ball = s.players[0].pos
+ s.pass_ball(0, false)
+ var aimed: Vector2 = s.flight.end
+ s.tick_flight(s.flight.duration + 0.01)
+ check(s.owner != 1 and s.flight.get("kind", "") == "loose" and s.flight.end.distance_to(aimed) > 40.0, "a pass to a knocked-down teammate sails past instead of being caught")
  print("FINISHING TESTS: ",checks," checks, ","PASS" if failures == 0 else "FAIL")
  arena.queue_free()
  await process_frame

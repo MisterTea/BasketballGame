@@ -214,8 +214,9 @@ func run() -> void:
  state.flight = {
   "kind": "shot",
   "shooter": 0,
-  "time": 0.40,
-  "duration": 0.80,
+  "time": 0.88,
+  "duration": 1.39,
+  "dunk_ticks": 74.0,
   "dunk": true,
   "arc_height": 2.6,
   "super_dunk": true,
@@ -227,7 +228,7 @@ func run() -> void:
  arena.present(state, [], state.ball, [0], 0.1, false)
  check(arena.camera.position.y > rest_cam_y + 0.35, "camera ascends vertically to frame high vertical dunk")
  check(arena.camera.fov < rest_cam_fov - 0.5, "camera zooms in dynamically as dunk approaches apex")
- state.flight.time = 0.76
+ state.flight.time = 1.31
  arena.present(state, [], state.ball, [0], 0.05, false)
  check(arena.dunk_shake_timer > 0.0, "dunk slamming into rim triggers camera shake timer")
  check(arena.camera.position != Vector3(arena.camera_focus, arena.BASE_CAM_Y + arena.dunk_cam_lift, arena.BASE_CAM_Z - minf(1.8, arena.dunk_cam_lift * 0.35)), "camera shake imparts 3D displacement")

@@ -14,7 +14,51 @@ const BULLET_TIME_SCALE = 0.30
 const TE_SHOVE_RANGE = 65.0
 # seq_elbo reaches opponents inside 40 world units (PLYR2.ASM:5174).
 const TE_ELBOW_RANGE = 40.0 * (950.0 / 640.0)
-const SIGNATURE_DUNKS = ["helicopter", "frontflip", "spin_360", "between_legs", "behind_back"]
+const SIGNATURE_DUNKS = ["helicopter", "frontflip", "spin_360", "between_legs", "behind_back", "behind_head", "windmill", "tomahawk", "cradle", "switch"]
+# seq_strtdunk gravity. The ani point is at HOOPY+12 when seq_slamball fires,
+# and a longer sequence arcs above that before coming back down to the rim.
+const DUNK_GRAVITY = 9728.0 / 65536.0
+const DUNK_SLAM_PX = 108.0
+const DUNK_METERS_PER_PX = 3.05 / 120.0
+# Rim is at 3.05m. In the overhead hang the wrists sit 2.12m above the body
+# origin, so the body has to hang about 0.93m up for the hands to meet the rim.
+const RIM_HEIGHT = 3.05
+const DUNK_HAND_REACH = 2.124
+const DUNK_SLAM_LIFT = RIM_HEIGHT - DUNK_HAND_REACH
+# Ticks until the rim, then ticks of hang, taken from the sequence that plays
+# that motion (DUNKB2, DUNKLAY, w2swdu, w1spdu, w3wmdu, DUNKQ).
+const DUNK_TICKS = {
+	"standard": 37, "leaner": 44, "reverse": 48, "cradle": 58, "switch": 66,
+	"between_legs": 64, "spin_360": 63, "tomahawk": 70, "windmill": 75,
+	"behind_head": 74, "behind_back": 74, "frontflip": 72, "helicopter": 74,
+}
+const DUNK_HANG_TICKS = {
+	"standard": 64, "leaner": 36, "reverse": 40, "cradle": 42, "switch": 40,
+	"between_legs": 48, "spin_360": 40, "tomahawk": 44, "windmill": 48,
+	"behind_head": 50, "behind_back": 50, "frontflip": 44, "helicopter": 48,
+}
+# getdunkseq's five facing buckets, mirrored the same way as #d1..#d5.
+const DUNK_UNDER = [
+	["standard", "standard", "reverse"],
+	["standard", "leaner"],
+	["standard", "leaner", "reverse"],
+	["leaner", "reverse"],
+	["reverse"],
+]
+const DUNK_SHORT = [
+	["standard", "cradle", "between_legs"],
+	["standard", "switch", "spin_360"],
+	["cradle", "between_legs", "switch"],
+	["leaner", "cradle"],
+	["reverse", "leaner"],
+]
+const DUNK_FANCY = [
+	["frontflip", "cradle", "helicopter"],
+	["spin_360", "windmill", "tomahawk", "between_legs"],
+	["windmill", "behind_head", "helicopter", "tomahawk"],
+	["tomahawk", "spin_360", "behind_head"],
+	["behind_head", "frontflip", "cradle"],
+]
 const QUARTER_SECONDS = 180.0
 const TIP_TOSS = 1.0
 const TIP_IDEAL_JUMP = 1.42
@@ -86,6 +130,11 @@ const STL2 = [0.160, 0.170, 0.180, 0.195, 0.200, 0.205, 0.215, 0.225, 0.230, 0.2
 # Intercept bonus for the losing team (PLYR2.ASM #int_t), added to the percent gate.
 const INT_T = [0, 4, 7, 10, 12, 15, 19, 20, 20, 20, 20, 20, 22, 25, 27, 30]
 const TE_STEAL_LOCKOUT = 30.0 / ARCADE_TSEC
+# steal_t (PLYRSEQ.ASM). seqdir order is #1,#2,#3,#4,#5,#4,#3,#2.
+# A released pass button hits seq_stealstand and stands: 9 ticks on
+# #1/#4/#5 and 10 on #2/#3. Holding pass plays the 25- or 26-tick return.
+# Pass is a tap here, so the gesture ends at that first stand.
+const STEAL_REACH_TICKS = [9, 10, 10, 9, 9, 9, 10, 10]
 const TE_PASS_OFF = 25.0 / ARCADE_TSEC
 const TE_POKE_DELAY = 15.0 / ARCADE_TSEC
 # lay_perc: RNDPER(700) sets every player's shtdly to TSEC*2 so the ball cannot be touched.
@@ -107,10 +156,16 @@ const TBL2_Z = [32, 33, 34, 35, 35, 35, 35, 36, 37, 38, 39]
 const BLK_REACH_T = [11, 12, 12, 12, 12, 12, 12, 13, 14, 15, 16]
 # seq_block clamps the intercept slide to 30 pixels (PLYR2.ASM:4149).
 const BLOCK_GLIDE_ASM = 30.0
+# ball_bbcollision #chkbb. The glass sits 12 past the rim, 34 wide of center.
+const GLASS_BEHIND_ASM = 12.0
+const GLASS_Z_ASM = 34.0
 # Drone AI 31-entry skill tables (DRONE.ASM:1047-1065, 1642-1684)
 const DRONE_P_T = [1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 4, 4, 5, 5, 5, 6, 8, 10, 13, 15, 17, 18, 20, 20, 25, 30, 35, 40, 50]
 const DRONE_ALY_T = [1, 2, 3, 4, 5, 15, 20, 25, 25, 30, 30, 30, 30, 32, 35, 35, 35, 36, 38, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 100, 109]
-const DRONE_NAST_T = [0, 0, 0, 0, 0, 1, 1, 2, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 18, 20, 24, 28, 30]
+# DRONE2.ASM #nast_t. Per-thousand chance, while not already nasty, to enter it for one second.
+const DRONE_NAST_T = [0, 0, 0, 0, 0, 1, 1, 2, 2, 2, 3, 3, 3, 4, 6, 8, 10, 11, 12, 13, 14, 15, 17, 20, 25, 26, 27, 28, 29, 30, 35]
+# DRONE2.ASM #skt_t. Ticks a defender waits before the next push/steal decision.
+const DRONE_SKT_T = [60, 60, 58, 55, 52, 48, 44, 40, 36, 32, 28, 24, 22, 18, 16, 15, 15, 15, 14, 14, 14, 14, 14, 14, 13, 13, 13, 13, 13, 12, 12]
 const DRONE_DIST_T = [110, 100, 100, 100, 100, 90, 90, 80, 80, 80, 80, 70, 70, 60, 60, 60, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50]
 const DRONE_PS_T = [1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 4, 4, 4, 5, 5, 6, 6, 6, 8, 10, 13, 15, 17, 18, 20, 30, 40, 60, 80, 150, 250]
 const DRONE_BLK_T = [1, 1, 2, 3, 3, 3, 3, 4, 4, 5, 6, 7, 8, 10, 12, 14, 16, 18, 20, 25, 30, 35, 40, 45, 50, 50, 50, 50, 50, 50, 50]
@@ -211,7 +266,7 @@ func start(a: int, b: int, seconds: float = QUARTER_SECONDS, level: int = 1) -> 
  flight = {}
  for i in range(4):
   var t = i / 2
-  players.append({"pos":Vector2(420 if t == 0 else 860, 400 + (i % 2) * 140), "vel":Vector2.ZERO, "turbo":1.0, "turbo_burnout":0.0, "jump":0.0, "receive_jump":0.0, "stun":0.0, "cooldown":0.0, "charge":0.0, "fake":0.0, "dribble_locked":false, "drive":0.0, "swipe":0.0, "swipe_resolved":false, "swipe_shove":false, "swipe_dir":Vector2.ZERO, "rebound_glide":0.0, "possession_flash":0.0, "shoot_held":false, "face":1 if t == 0 else -1, "spin":0.0, "spin_cooldown":0.0, "elbow":0.0, "steal_immune":0.0, "push_keep_ball":0.0, "pass_off":0.0, "alley_cnt":0, "hold_time":0.0, "nasty_timer":0.0, "rim_hang":0.0, "still_time":1.0, "shot_is_moving":false, "shot_drift_vel":Vector2.ZERO, "last_move_vel":Vector2.ZERO, "pickup_delay":0.0, "turbo_flash":0.0, "shove_kind":"", "shove_time":0.0, "dir_time":0.0, "dir_sector":-1, "human":false, "shot_finish":""})
+  players.append({"pos":Vector2(420 if t == 0 else 860, 400 + (i % 2) * 140), "vel":Vector2.ZERO, "turbo":1.0, "turbo_burnout":0.0, "jump":0.0, "receive_jump":0.0, "stun":0.0, "cooldown":0.0, "charge":0.0, "fake":0.0, "dribble_locked":false, "drive":0.0, "swipe":0.0, "swipe_resolved":false, "swipe_shove":false, "swipe_dir":Vector2.ZERO, "rebound_glide":0.0, "possession_flash":0.0, "shoot_held":false, "face":1 if t == 0 else -1, "spin":0.0, "spin_cooldown":0.0, "elbow":0.0, "steal_immune":0.0, "push_keep_ball":0.0, "pass_off":0.0, "alley_cnt":0, "hold_time":0.0, "nasty_timer":0.0, "drone_seek":0, "rim_hang":0.0, "still_time":1.0, "shot_is_moving":false, "shot_drift_vel":Vector2.ZERO, "last_move_vel":Vector2.ZERO, "pickup_delay":0.0, "turbo_flash":0.0, "shove_kind":"", "shove_time":0.0, "dir_time":0.0, "dir_sector":-1, "human":false, "shot_finish":""})
   stats.append({"points":0, "attempts":0, "made":0, "dunks":0, "steals":0, "blocks":0, "rebounds":0, "goaltends":0, "assists":0, "injury":0, "turnovers":0})
  begin_tipoff()
 
@@ -613,8 +668,14 @@ func tick_inbound_transition(delta: float) -> void:
    p.shove_kind = ""
    p.shove_time = 0.0
   p.pickup_delay = maxf(0.0, p.get("pickup_delay", 0.0) - delta)
-  p.rim_hang = 0.0
   p.receive_jump = 0.0
+  # seq_slamball holds the dunker on the rim for the rest of that sequence.
+  if p.get("rim_hang", 0.0) > 0.0:
+   p.rim_hang = maxf(0.0, p.rim_hang - delta)
+   p.jump = p.rim_hang
+   p.vel = Vector2.ZERO
+   all_settled = false
+   continue
   # If in the air, land rapidly
   if p.jump > 0.0:
    p.jump = maxf(0.0, p.jump - delta * 4.0)
@@ -888,9 +949,14 @@ func tick(delta: float, commands: Dictionary) -> void:
   p.rim_hang = maxf(0.0, p.get("rim_hang", 0.0) - delta)
   if p.rim_hang <= 0.0:
    p.jump = maxf(0.0, p.jump - delta)
+  if p.jump <= 0.0:
+   p.blocking = false
+  elif p.get("blocking", false):
+   try_shot_block(i)
   p.receive_jump = maxf(0.0,p.receive_jump-delta)
   p.fake = maxf(0.0, p.fake - delta)
-  p.swipe = maxf(0.0,p.swipe-delta)
+  var swipe_before = p.swipe
+  p.swipe = maxf(0.0, p.swipe - delta)
   p.spin = maxf(0.0, p.get("spin", 0.0) - delta)
   p.spin_cooldown = maxf(0.0, p.get("spin_cooldown", 0.0) - delta)
   p.elbow = maxf(0.0, p.get("elbow", 0.0) - delta)
@@ -904,10 +970,14 @@ func tick(delta: float, commands: Dictionary) -> void:
    p.hold_time = p.get("hold_time", 0.0) + delta
   else:
    p.hold_time = 0.0
-  var contact_remaining = TE_SHOVE_CONTACT_REMAINING if p.get("swipe_shove", false) else 0.25
-  if p.swipe > 0.0 and not p.get("swipe_resolved", false) and p.swipe <= contact_remaining:
+  # The extended hand is the last 2 ticks before seq_stealstand.
+  var contact_remaining = TE_SHOVE_CONTACT_REMAINING if p.get("swipe_shove", false) else (2.0 / ARCADE_TSEC)
+  if not p.get("swipe_resolved", false) and swipe_before > contact_remaining and p.swipe <= contact_remaining:
    p.swipe_resolved = true
    resolve_steal(i, p.get("swipe_shove", false))
+   # seq_stealstand goes straight to seq_stand once this player has the ball.
+   if not p.get("swipe_shove", false) and owner == i:
+    p.swipe = 0.0
   p.drive = maxf(0.0,p.drive-delta)
   var c: Dictionary = effective_commands[i]
   if p.stun > 0:
@@ -1041,6 +1111,11 @@ func tick(delta: float, commands: Dictionary) -> void:
    p.shot_drift_vel = Vector2.ZERO
   if p.get("swipe", 0.0) > 0.0:
    p.vel = Vector2.ZERO
+  var ordered_cpu = not commands.has(i) and commands.has(i ^ 1)
+  if owner == i and (p.get("fake", 0.0) > 0.0 or head_fake_release(i, shoot, ordered_cpu)):
+   p.vel = Vector2.ZERO
+   p.shot_is_moving = false
+   p.shot_drift_vel = Vector2.ZERO
   if p.vel.length() > 40 and p.vel.dot((hoop_for(i/2)-p.pos).normalized()) > 20:
    p.drive = 0.16
   if owner == i and (p.pos.x < COURT.position.x or p.pos.x > COURT.end.x):
@@ -1111,15 +1186,13 @@ func tick(delta: float, commands: Dictionary) -> void:
     # Under 4 seconds seq_jump always jumps. A human teammate's drone never
     # lets go (#fake), so that order still releases. The shtbutn 3-8 skip is
     # commented out and is not this check.
-    var windup = 9.0 / ARCADE_TSEC
-    var ordered_cpu = not commands.has(i) and commands.has(i ^ 1)
-    var released_finish = str(p.get("shot_finish", "jumper"))
-    if released_finish == "jumper" and p.charge < windup and clock >= 4.0 and not ordered_cpu:
+    if head_fake_release(i, false, ordered_cpu):
      p.fake = 0.38
      p.charge = 0.0
      p.shot_finish = ""
-     if not p.shot_is_moving:
-      p.vel = Vector2.ZERO
+     p.vel = Vector2.ZERO
+     p.shot_is_moving = false
+     p.shot_drift_vel = Vector2.ZERO
      announce("HEAD FAKE!", "shot")
     else:
      var jump_h = sin(clampf(p.charge / 1.16, 0.0, 1.0) * PI) * 1.35
@@ -1134,8 +1207,11 @@ func tick(delta: float, commands: Dictionary) -> void:
    if not ordering_cpu and p.receive_jump <= 0:
     if shoot and not p.shoot_held and p.cooldown <= 0:
      defend(i, turbo)
-    if (c.get("pass", false) or c.get("shove", false)) and p.cooldown <= 0:
-     steal(i, turbo or c.get("shove", false))
+  # A human's Turbo+Pass is a shove. A drone's closing-out turbo is not;
+  # drone_defence sets shove only for the #ps push half.
+  var contact_shove = c.get("shove", false) or (commands.has(i) and c.get("pass", false) and turbo)
+  if (c.get("pass", false) or contact_shove) and p.cooldown <= 0:
+   steal(i, contact_shove)
   p.shoot_held = shoot
  # Keep athletes separated without pushing them outside bounds.
  for i in range(4):
@@ -1160,6 +1236,23 @@ func tick(delta: float, commands: Dictionary) -> void:
      announce("REBOUND!", "catch")
      break
 
+# plyr_d_seekcnt is #skt_t plus a quarter of that span, or 25 when the drone is 320 units from its hoop.
+# seq_jump returns to seq_stand on a short release and the ball stays in hand.
+# The shooter plants instead of carrying the gather down the floor.
+func head_fake_release(i: int, shoot: bool, ordered_cpu: bool) -> bool:
+ var p: Dictionary = players[i]
+ if shoot or not p.shoot_held or p.charge <= 0.0:
+  return false
+ var windup = 9.0 / ARCADE_TSEC
+ var released_finish = str(p.get("shot_finish", "jumper"))
+ return released_finish == "jumper" and p.charge < windup and clock >= 4.0 and not ordered_cpu
+
+func drone_defense_seek_ticks(skill_idx: int, hoop_dist_asm: float) -> int:
+ if hoop_dist_asm >= 320.0:
+  return 25
+ var base = DRONE_SKT_T[clampi(skill_idx, 0, DRONE_SKT_T.size() - 1)]
+ return base + rng.randi_range(0, base >> 2)
+
 func drone_skill_index(i: int) -> int:
  var team = i / 2
  var opp_team = 1 - team
@@ -1179,6 +1272,7 @@ func ai(i: int) -> Dictionary:
  var pass_action = false
  var turbo = false
  var spin = false
+ var shove = false
  if inbounding_team >= 0 and owner >= 0 and (players[owner].pos.x < COURT.position.x or players[owner].pos.x > COURT.end.x):
   var own_hoop = hoop_for(1 - inbounding_team)
   var left_side = own_hoop.x < 640
@@ -1302,6 +1396,7 @@ func ai(i: int) -> Dictionary:
   if guard_in_front and players[guard_id].stun <= 0.0 and not no_pushing and p.cooldown <= 0.0 and rng.randi() % 100 < DRONE_P_T[skill_idx]:
    turbo = true
    pass_action = true
+   shove = true
    if guard_dist > 25.0:
     target = players[guard_id].pos
  elif owner >= 0:
@@ -1311,9 +1406,12 @@ func ai(i: int) -> Dictionary:
   var partner_beaten = owner_dist_to_hoop < 340.0 and players[partner].pos.distance_to(players[owner].pos) > 95.0
   var help_defense = players[partner].stun > 0.0 or partner_beaten or shot_clock < 5.0 or clock < 8.0 or (quarter >= 4 and deficit > 0)
   var mark = owner if (i % 2 == owner % 2 or help_defense) else (1 - team) * 2 + (1 - (owner % 2))
-  if p.get("nasty_timer", 0.0) <= 0.0 and rng.randf() < float(DRONE_NAST_T[skill_idx]) * 0.0015:
-   p.nasty_timer = rng.randf_range(0.5, 3.0)
-  var nasty = p.get("nasty_timer", 0.0) > 0.0 or (quarter >= 4 and deficit > 0)
+  # Under 8 seconds, a shot clock under 5, or the last 30 seconds of a quarter
+  # when not ahead by 3, drone_defence forces nasty. Otherwise #nast_t can start one second of it.
+  var forced_nasty = clock < 8.0 or (shot_clock >= 0.0 and shot_clock < 5.0) or (quarter >= 4 and clock < 30.0 and deficit > -3)
+  if p.get("nasty_timer", 0.0) <= 0.0 and not forced_nasty and rng.randi_range(0, 999) < DRONE_NAST_T[skill_idx]:
+   p.nasty_timer = 53.0 / ARCADE_TSEC
+  var nasty = forced_nasty or p.get("nasty_timer", 0.0) > 0.0
   # Authentic DRONE.ASM sag: guard between offensive player and basket with DRONE_DIST_T cushion (DRONE.ASM:1425-1435)
   var to_own_hoop = (own_hoop - players[mark].pos).normalized()
   var sag_cushion = minf(float(DRONE_DIST_T[skill_idx]) * 1.0, owner_dist_to_hoop * 0.65)
@@ -1332,27 +1430,29 @@ func ai(i: int) -> Dictionary:
   if should_turbo:
    turbo = true
 
-  # drone2_defence rolls #ps_t out of 1000 inside #dist_t. Nasty and within
-  # 35 units skips the roll. A successful action is steal, and half of those
-  # also hold turbo (DRONE2.ASM:974-1005). Off-ball bodies are not shoved.
-  var can_shove = not no_pushing and (p.get("turbo", 1.0) >= (10.0 / TE_TURBO_UNITS) or is_player_on_fire(i) or infinite_turbo) and p.cooldown <= 0.0
-  var face_px = 35.0 * PX_PER_ASM
-  var steal_px = float(DRONE_DIST_T[skill_idx]) * PX_PER_ASM
-  var contact_action_rate = 0.0
-  if nasty and dist_to_owner <= face_px:
-   contact_action_rate = 1.0
-  elif dist_to_owner <= steal_px:
-   contact_action_rate = float(DRONE_PS_T[skill_idx]) / 1000.0
-  if contact_action_rate > 0.0 and players[owner].stun <= 0.0 and players[owner].get("steal_immune", 0.0) <= 0.0:
-   if p.cooldown <= 0.0 and rng.randf() < contact_action_rate:
-    var choose_shove = can_shove and rng.randf() < 0.50
-    turbo = turbo or choose_shove
+  # drone_defence only re-rolls push/steal when plyr_d_seekcnt expires
+  # (#skt_t, about 15 ticks at an even score). Closing-out turbo is not a push.
+  # #ps adds steal, then half of those also hold turbo (DRONE2.ASM:845-1005).
+  var seek = int(p.get("drone_seek", 0)) - 1
+  if seek > 0:
+   p.drone_seek = seek
+  else:
+   p.drone_seek = drone_defense_seek_ticks(skill_idx, oct_dist_asm(p.pos, own_hoop))
+   var can_shove = not no_pushing and (p.get("turbo", 1.0) >= (10.0 / TE_TURBO_UNITS) or is_player_on_fire(i) or infinite_turbo) and p.cooldown <= 0.0
+   var face_px = 35.0 * PX_PER_ASM
+   var steal_px = float(DRONE_DIST_T[skill_idx]) * PX_PER_ASM
+   var contact = nasty and dist_to_owner <= face_px
+   if not contact and dist_to_owner <= steal_px:
+    contact = rng.randi_range(0, 999) < DRONE_PS_T[skill_idx]
+   if contact and players[owner].stun <= 0.0 and players[owner].get("steal_immune", 0.0) <= 0.0 and p.cooldown <= 0.0:
+    if can_shove and rng.randi() % 2 == 0:
+     shove = true
     pass_action = true
     if dist_to_owner > 25.0:
      target = players[owner].pos
  else:
   target = ball
- return {"move":(target - p.pos).normalized() if p.pos.distance_to(target) > 9 else Vector2.ZERO, "shoot":shoot, "pass":pass_action, "turbo":turbo, "spin":spin}
+ return {"move":(target - p.pos).normalized() if p.pos.distance_to(target) > 9 else Vector2.ZERO, "shoot":shoot, "pass":pass_action, "turbo":turbo, "shove":shove, "spin":spin}
 
 func nearest_defender(i: int) -> float:
  var distance = 1000.0
@@ -1844,6 +1944,50 @@ func dunk_rim_ticks(dist_asm: float) -> float:
   return 64.0
  return 74.0
 
+# Feet follow seq_strtdunk: v = GRAV/2*ticks plus the 108px rise to the rim.
+# Short dunks arrive at the top. Longer ones peak above the rim and slam down.
+func dunk_body_lift(progress: float, ticks: float) -> float:
+ var span = maxf(ticks, 1.0)
+ var t = clampf(progress, 0.0, 1.0) * span
+ var v0 = DUNK_GRAVITY * 0.5 * span + DUNK_SLAM_PX / span
+ var px = v0 * t - 0.5 * DUNK_GRAVITY * t * t
+ # The cabinet ani point arrives at the rim. Our body origin is the feet, so
+ # drop the curve until the slam puts the raised hands on the rim.
+ var above_slam = maxf(0.0, px) * DUNK_METERS_PER_PX - DUNK_SLAM_PX * DUNK_METERS_PER_PX
+ return maxf(0.0, DUNK_SLAM_LIFT + above_slam)
+
+func choose_dunk_style(i: int, dist_asm: float, turbo: bool, burning: bool) -> String:
+ var sector = dir_sector(players[i].pos, hoop_for(i / 2))
+ var facing = [0, 1, 2, 3, 4, 3, 2, 1][clampi(sector, 0, 7)]
+ var pool: Array = DUNK_UNDER[facing]
+ if dist_asm > 80.0 and turbo:
+  pool = DUNK_FANCY[facing]
+ elif dist_asm > 60.0:
+  pool = DUNK_FANCY[facing] if burning else DUNK_SHORT[facing]
+ elif burning:
+  pool = DUNK_UNDER[facing]
+ return str(pool[rng.randi() % pool.size()])
+
+# plyr_shoot #calcshot. Octagonal ASM pixels, excess past 170 divided by 8,
+# times 110/256. At the rim the floor is 50 ticks; a flat arc floors at 35
+# after the 3/4 cut. Hooks then add 15. Every shot adds the final 2 ticks.
+# Seconds are ticks / ARCADE_TSEC so a 50-tick release lasts 0.94s, matching
+# the 53.2 Hz cabinet rather than a 60 Hz frame.
+func shot_flight_ticks(dist_asm: float, flat: bool, hook: bool, rainbow: bool) -> float:
+ var d = dist_asm
+ if d > 170.0:
+  d = 170.0 + (d - 170.0) / 8.0
+ var ticks = d * 110.0 / 256.0
+ if flat:
+  ticks = maxf(35.0, ticks * 0.75)
+ else:
+  ticks = maxf(50.0, ticks)
+ if hook:
+  ticks += 15.0
+ if rainbow:
+  ticks += 20.0
+ return ticks + 2.0
+
 # lay_perc's second roll. A hit blocks every ball touch for TSEC*2 (PLYR.ASM:4716).
 func roll_layup_touch_lock() -> void:
  if rng.randi_range(0, 999) < 700:
@@ -1894,13 +2038,15 @@ func shoot_ball(i: int, turbo: bool, alley: bool = false, release_height: float 
   p.vel = -(hoop_vec.normalized()) * 55.0
   p.jump = 0.52
  var breakdown = calculate_shot_percentage(i, p.charge, dunk, layup, specialty, alley, hook, fadeaway, moving_shot)
+ # The release consumes the shot meter. Leaving it charged holds the shooter
+ # in the jump-shot pose after the ball is gone, including a denied dunk.
+ p.charge = 0.0
  var chance: float = breakdown.chance
  var points = 2 if dunk else (3 if breakdown.three_pointer else 2)
  var burning = is_player_on_fire(i)
  var dunk_style = "standard"
  if dunk:
-  if burning or (specialty and rating(i, 2) >= 7.0):
-   dunk_style = SIGNATURE_DUNKS[rng.randi_range(0, SIGNATURE_DUNKS.size() - 1)]
+  dunk_style = choose_dunk_style(i, oct_dist_asm(p.pos, hoop), turbo or specialty, burning)
  if dunk:
   points = 2
   p.jump = 0.95 if burning else (0.85 if specialty else 0.70)
@@ -1942,31 +2088,31 @@ func shoot_ball(i: int, turbo: bool, alley: bool = false, release_height: float 
    will_make = false
    airball = true
  var bank_shot = close_bank or (long_bank and will_make)
- var flat_arc = not dunk and not layup and not hook and rng.randf() < 0.016
+ # A10 starts at the hoop. RNDPER(16) flattens any release. Layups roll another
+ # RNDPER(100). A close bank always clears A10. Hooks stay on the 50-tick
+ # floor and then add 15, so they are slower than a layup, not faster.
+ var flat_arc = false
+ var rainbow = false
+ if not dunk:
+  var arc_roll = rng.randf()
+  flat_arc = arc_roll < 0.016 or close_bank
+  if layup and not flat_arc and rng.randf() < 0.10:
+   flat_arc = true
+  rainbow = not flat_arc and arc_roll >= 0.016 and arc_roll < 0.026 and bank_dist < 260.0
  # seq_strtdunk tick count is the time to the rim (PLYRDSEQ). Fire uses getdunkseq's
  # skill-5 table, not a longer timer. Under 60 / under 80 / beyond are DUNKB2 (37),
  # DUNKLAY7 (64), and DUNKL/DUNKQ (74).
- var dunk_duration = dunk_rim_ticks(oct_dist_asm(p.pos, hoop)) / ARCADE_TSEC
+ var dunk_motion_ticks = float(DUNK_TICKS.get(dunk_style, dunk_rim_ticks(oct_dist_asm(p.pos, hoop))))
+ var dunk_duration = dunk_motion_ticks / ARCADE_TSEC
  var dunk_arc = 4.5 if burning else (3.0 if specialty else 1.6)
  var jumper_arc = 3.3 if flat_arc else 4.6
- # Authentic arcade shot duration (PLYR.ASM:6573-6610):
- # Distance scaled to 800px arcade court, min 50 ticks (0.94s) for normal shot,
- # min 35 ticks (0.66s) for flat arc/layup, scaling up to 75-85 ticks (1.41s-1.60s) for long shots/heaves.
- var shot_arcade_dist = ball.distance_to(hoop) * (800.0 / 1050.0)
- var shot_d = shot_arcade_dist
- if shot_d > 170.0:
-  shot_d = 170.0 + (shot_d - 170.0) * 0.125
- var shot_ticks = (shot_d * 110.0) / 256.0
- if flat_arc or layup or hook:
-  shot_ticks = maxf(35.0, shot_ticks * 0.75)
- else:
-  shot_ticks = maxf(50.0, shot_ticks)
- var shot_duration = shot_ticks / 53.2
+ var shot_ticks = shot_flight_ticks(oct_dist_asm(ball, hoop), flat_arc, hook, rainbow)
+ var shot_duration = shot_ticks / ARCADE_TSEC
  var shot_time = dunk_duration if dunk else shot_duration
  var in_hand_until = SHOT_HAND_TICKS / ARCADE_TSEC
  if dunk:
   in_hand_until = shot_time * DUNK_HAND_RELEASE
- flight = {"kind":"shot", "start":ball, "end":hoop, "time":0.0, "duration":shot_time, "shooter":i, "points":points, "made":will_make, "dunk":dunk, "layup":layup, "hook":hook, "fadeaway":fadeaway, "super_dunk":specialty or burning, "dunk_style":dunk_style, "finish":finish, "arc_height":(3.6 if turbo else 2.5) if hook else (dunk_arc if dunk else (1.0 if layup else jumper_arc)), "blocked":false, "shot_breakdown":breakdown, "clank":clank, "airball":airball, "flat_arc":flat_arc, "bank_shot":bank_shot, "moving_shot":moving_shot, "shot_dist":oct_dist_asm(p.pos, hoop), "in_hand_until":in_hand_until}
+ flight = {"kind":"shot", "start":ball, "end":hoop, "time":0.0, "duration":shot_time, "shooter":i, "points":points, "made":will_make, "dunk":dunk, "layup":layup, "hook":hook, "fadeaway":fadeaway, "super_dunk":specialty or burning, "dunk_style":dunk_style, "dunk_ticks":dunk_motion_ticks if dunk else 0.0, "hang_ticks":float(DUNK_HANG_TICKS.get(dunk_style, 64)), "finish":finish, "arc_height":(3.6 if turbo else 2.5) if hook else (dunk_arc if dunk else (1.0 if layup else jumper_arc)), "blocked":false, "shot_breakdown":breakdown, "clank":clank, "airball":airball, "flat_arc":flat_arc, "bank_shot":bank_shot, "moving_shot":moving_shot, "shot_dist":oct_dist_asm(p.pos, hoop), "in_hand_until":in_hand_until}
  if dunk or layup or hook:
   flight.player_start = p.pos
   flight.player_end = hoop+Vector2(-1 if hoop.x > 640 else 1,0)*(28 if dunk else 50)
@@ -1998,17 +2144,19 @@ func shoot_ball(i: int, turbo: bool, alley: bool = false, release_height: float 
  }
  var callout = "UP IT GOES"
  if dunk:
-  if burning or specialty:
-   match dunk_style:
-    "helicopter": callout = "HELICOPTER SLAM!"
-    "frontflip": callout = "SOMERSAULT JAM!"
-    "backflip": callout = "BACKFLIP DUNK!"
-    "spin_360": callout = "360 WINDMILL!"
-    "between_legs": callout = "BETWEEN THE LEGS!"
-    "behind_back": callout = "BEHIND THE BACK SLAM!"
-    _: callout = "BOOMSHAKALAKA!"
-  else:
-   callout = "SLAM DUNK!"
+  match dunk_style:
+   "helicopter": callout = "HELICOPTER SLAM!"
+   "frontflip": callout = "SOMERSAULT JAM!"
+   "backflip": callout = "BACKFLIP DUNK!"
+   "spin_360": callout = "360 WINDMILL!"
+   "between_legs": callout = "BETWEEN THE LEGS!"
+   "behind_back", "behind_head": callout = "BEHIND THE HEAD!"
+   "windmill": callout = "WINDMILL!"
+   "tomahawk": callout = "TOMAHAWK JAM!"
+   "cradle": callout = "CRADLE DUNK!"
+   "switch": callout = "SWITCH HANDS!"
+   "reverse": callout = "REVERSE JAM!"
+   _: callout = "BOOMSHAKALAKA!" if burning or specialty else "SLAM DUNK!"
  elif fadeaway:
   callout = "FADEAWAY JUMPER!"
  elif hook:
@@ -2078,6 +2226,21 @@ func walked_pass_target(mate: int, ticks: int) -> Vector2:
    break
  return pos
 
+# A downed receiver cannot hold the ball. Keep the pass speed and carry it past them.
+func release_uncatchable_pass(receiver: int) -> void:
+ var travel: Vector2 = flight.end - flight.start
+ var speed = travel.length() / maxf(float(flight.duration), 0.01)
+ var dir = travel.normalized() if travel.length() > 1.0 else Vector2(players[receiver].face, 0.0)
+ var extra = 0.40
+ var dest = (flight.end + dir * speed * extra).clamp(COURT.position + Vector2(25.0, 25.0), COURT.end - Vector2(25.0, 25.0))
+ var was_alley = flight.get("alley", false) or flight.get("double_dunk", false)
+ ball = flight.end
+ owner = -1
+ flight = {"kind":"loose", "start":ball, "end":dest, "time":0.0, "duration":extra, "arc_height":0.45, "shooter":-1}
+ players[receiver].pickup_delay = maxf(players[receiver].get("pickup_delay", 0.0), players[receiver].stun)
+ if was_alley:
+  announce("LOB MISSED! LOOSE BALL", "miss")
+
 func pass_ball(i: int, turbo: bool) -> void:
  teammate_shot_order = -1
  players[i].fake = 0.0
@@ -2143,63 +2306,126 @@ func defend(i: int, turbo: bool) -> void:
     players[i].rebound_glide = REBOUND_GLIDE_DURATION
   return
  if not flight.is_empty() and flight.get("kind", "") == "shot":
+  players[i].blocking = true
   if ball_touch_lock > 0.0:
    return
-  var shooter: int = flight.shooter
-  if shooter / 2 == i / 2 or flight.blocked:
+  start_block_glide(i)
+  try_shot_block(i)
+  return
+ elif owner >= 0 and owner / 2 != i / 2:
+  steal(i, turbo)
+
+# #chkbb. A ball that reaches the glass from behind reverses. The display arc
+# is not the collision height: a shot aimed at the rim meets the board.
+func glass_plane_x(hoop: Vector2) -> float:
+ var away = 1.0 if hoop.x > 640.0 else -1.0
+ return hoop.x + away * GLASS_BEHIND_ASM * PX_PER_ASM
+
+func crossed_back_glass(prev: Vector2, nxt: Vector2, hoop: Vector2) -> bool:
+ var plane = glass_plane_x(hoop)
+ if hoop.x > 640.0:
+  return prev.x >= plane and nxt.x < plane
+ return prev.x <= plane and nxt.x > plane
+
+func bounce_back_glass(delta: float) -> bool:
+ if flight.get("kind", "") != "shot" or flight.get("glass_back", false):
+  return false
+ var hoop: Vector2 = flight.end
+ var prev: Vector2 = flight_position()
+ var next_t = clampf((flight.time + delta) / maxf(flight.duration, 0.01), 0.0, 1.0)
+ var nxt: Vector2 = flight.start.lerp(flight.end, next_t)
+ if not crossed_back_glass(prev, nxt, hoop):
+  return false
+ var plane = glass_plane_x(hoop)
+ var denom = nxt.x - prev.x
+ var along = 0.0 if absf(denom) < 0.001 else clampf((plane - prev.x) / denom, 0.0, 1.0)
+ var hit = prev.lerp(nxt, along)
+ if absf(hit.y - hoop.y) >= GLASS_Z_ASM * PX_PER_ASM:
+  return false
+ var shooter = int(flight.get("shooter", -1))
+ var travel: Vector2 = flight.end - flight.start
+ var speed = travel / maxf(float(flight.duration), 0.01)
+ speed.x = -speed.x
+ var remain = 0.45
+ var dest = (hit + speed * remain).clamp(COURT.position + Vector2(25.0, 25.0), COURT.end - Vector2(25.0, 25.0))
+ if shooter >= 0:
+  record_miss(shooter)
+ ball = hit
+ owner = -1
+ flight = {"kind": "loose", "start": hit, "end": dest, "time": 0.0, "duration": remain, "arc_height": 0.55, "shooter": shooter, "glass_back": true}
+ announce("OFF THE GLASS!", "miss")
+ return true
+
+# seq_block looks 30 ticks ahead and slides at most 30 pixels toward that spot.
+func start_block_glide(i: int) -> void:
+ if flight.is_empty() or flight.get("kind", "") != "shot":
+  return
+ var ahead = minf(flight.time + 30.0 / ARCADE_TSEC, flight.duration)
+ var dest = flight.start.lerp(flight.end, clampf(ahead / maxf(flight.duration, 0.01), 0.0, 1.0))
+ var delta_pos: Vector2 = dest - players[i].pos
+ var cap = BLOCK_GLIDE_ASM * PX_PER_ASM
+ delta_pos.x = clampf(delta_pos.x, -cap, cap)
+ delta_pos.y = clampf(delta_pos.y, -cap, cap)
+ var glide = 30.0 / ARCADE_TSEC
+ players[i].vel = delta_pos / glide
+ players[i].rebound_glide = glide
+
+func try_shot_block(i: int) -> void:
+ if flight.is_empty() or flight.get("kind", "") != "shot" or ball_touch_lock > 0.0:
+  return
+ var shooter: int = int(flight.get("shooter", -1))
+ if shooter < 0 or shooter / 2 == i / 2 or flight.get("blocked", false):
+  return
+ var t = clampf(flight.time / flight.duration, 0, 1)
+ var contact = flight_position()
+ var arc: float = flight.get("arc_height", 1.7 if flight.dunk else 4.6)
+ var v_vert = 3.05 - flight.get("release_height", 1.3) + PI * arc * cos(t * PI)
+ var def_team = i / 2
+ var off_team = shooter / 2
+ var pts_down = 0 if tournament_mode else (score[off_team] - score[def_team])
+ # ball_chkpcollide: downward speed under 2 (3 when the defender is down 5+)
+ # is a block. Faster descents whiff unless rnd's mask of 6 is 0, which
+ # goaltends. On fire and airballs that do connect are blocks (PLYR2.ASM:2376-2432).
+ var desc_threshold = -1.5 if pts_down >= 5 else -1.0
+ var descending = v_vert < desc_threshold
+ var at_rim = contact.distance_to(flight.end) < 115
+ var ball_high = ball_height() > (28.0 / 120.0) * 3.05 or absf(v_vert) / maxf(flight.duration, 0.01) > 1.02
+ var box = block_contact_box(i, ball_high)
+ var delta_xz = contact - players[i].pos
+ var in_reach = absf(delta_xz.x) < box.x and absf(delta_xz.y) < box.y and ball_height() <= 4.6
+ if descending and at_rim and in_reach:
+  if flight.dunk and dunk_strip_resisted(i, shooter):
    return
-  var t = clampf(flight.time/flight.duration,0,1)
-  var contact = flight_position()
-  var arc: float = flight.get("arc_height",1.7 if flight.dunk else 4.6)
-  var v_vert = 3.05-flight.get("release_height",1.3)+PI*arc*cos(t*PI)
-  var def_team = i / 2
-  var off_team = shooter / 2
-  var pts_down = 0 if tournament_mode else (score[off_team] - score[def_team])
-  # ball_chkpcollide: downward speed under 2 (3 when the defender is down 5+)
-  # is a block. Faster descents whiff unless rnd's mask of 6 is 0, which
-  # goaltends. On fire and airballs that do connect are blocks (PLYR2.ASM:2376-2432).
-  var desc_threshold = -1.5 if pts_down >= 5 else -1.0
-  var descending = v_vert < desc_threshold
-  var at_rim = contact.distance_to(flight.end) < 115
-  var ball_high = ball_height() > (28.0 / 120.0) * 3.05 or absf(v_vert) / maxf(flight.duration, 0.01) > 1.02
-  var box = block_contact_box(i, ball_high)
-  var delta_xz = contact - players[i].pos
-  var in_reach = absf(delta_xz.x) < box.x and absf(delta_xz.y) < box.y and ball_height() <= 4.6
-  if descending and at_rim and in_reach:
-   if flight.dunk and dunk_strip_resisted(i, shooter):
-    return
-   var legal_block = flight.dunk or is_player_on_fire(i)
-   if not legal_block and rng.randi() % 4 != 0:
-    return
-   if not legal_block and not flight.get("airball", false):
-    var points: int = flight.points
-    stats[i].goaltends += 1
-    award_basket(shooter,points,false,false)
-    announce("GOALTENDING! %d POINTS" % points,"whistle")
-    inbound(i/2, true)
-   else:
-    flight.made = false
-    flight.blocked = true
-    abort_finish_glide(shooter)
-    stats[i].blocks += 1
-    record_miss(shooter)
-    if flight.dunk:
-     announce("DENIED AT THE RIM!", "block")
-    elif is_player_on_fire(i):
-     announce("FIRE BLOCK! NO GOALTENDING!", "block")
-    else:
-     announce("REJECTED!", "block")
-  elif not descending and in_reach:
-   if flight.dunk and dunk_strip_resisted(i, shooter):
-    return
+  var legal_block = flight.dunk or is_player_on_fire(i)
+  if not legal_block and rng.randi() % 4 != 0:
+   return
+  if not legal_block and not flight.get("airball", false):
+   var points: int = flight.points
+   stats[i].goaltends += 1
+   award_basket(shooter, points, false, false)
+   announce("GOALTENDING! %d POINTS" % points, "whistle")
+   inbound(i / 2, true)
+  else:
    flight.made = false
    flight.blocked = true
    abort_finish_glide(shooter)
    stats[i].blocks += 1
    record_miss(shooter)
-   announce("REJECTED!", "block")
- elif owner >= 0 and owner / 2 != i / 2:
-  steal(i, turbo)
+   if flight.dunk:
+    announce("DENIED AT THE RIM!", "block")
+   elif is_player_on_fire(i):
+    announce("FIRE BLOCK! NO GOALTENDING!", "block")
+   else:
+    announce("REJECTED!", "block")
+ elif not descending and in_reach:
+  if flight.dunk and dunk_strip_resisted(i, shooter):
+   return
+  flight.made = false
+  flight.blocked = true
+  flight.block_call = "REJECTED!"
+  abort_finish_glide(shooter)
+  stats[i].blocks += 1
+  record_miss(shooter)
 
 # A block replaces the dunk or layup sequence. The finisher stops riding the
 # rim path and comes down instead of gliding the rest of the flight in the air.
@@ -2209,6 +2435,8 @@ func abort_finish_glide(shooter: int) -> void:
  players[shooter].vel = Vector2.ZERO
  players[shooter].jump = 0.0
  players[shooter].rim_hang = 0.0
+ players[shooter].charge = 0.0
+ players[shooter].receive_jump = 0.0
 
 # takedunk_t is the chance a collision fails to take the ball from a dunker.
 # A stripper with power 3 or less never wins that check.
@@ -2239,8 +2467,10 @@ func steal(i: int, shove: bool) -> void:
  if action_dir.length() < 0.1:
   action_dir = Vector2(players[i].face, 0.0)
  var shove_len = TE_SHOVE_DIAGONAL_DURATION if shove and shove_faces_diagonal(action_dir) else TE_SHOVE_DURATION
- players[i].cooldown = shove_len if shove else 0.65
- players[i].swipe = shove_len if shove else 0.45
+ var swipe_len = shove_len if shove else float(STEAL_REACH_TICKS[passer_seqdir(i)]) / ARCADE_TSEC
+ players[i].cooldown = swipe_len
+ players[i].swipe = swipe_len
+ players[i].swipe_total = swipe_len
  players[i].swipe_resolved = false
  players[i].swipe_shove = shove
  players[i].swipe_dir = action_dir.normalized()
@@ -2557,6 +2787,8 @@ func intercept_pass(i: int) -> void:
 func tick_flight(delta: float) -> void:
  if flight.is_empty():
   return
+ if bounce_back_glass(delta):
+  return
  flight.time += delta
  var t = clampf(flight.time / flight.duration, 0, 1)
  ball = flight.start.lerp(flight.end, t)
@@ -2632,7 +2864,12 @@ func tick_flight(delta: float) -> void:
   flight = {}
   return
  if flight.kind == "pass":
-  var receiver: int = flight.target
+  var receiver: int = int(flight.get("target", -1))
+  # stagger_t, fall_t, and flyback_t set NOBALL. The pass keeps its velocity
+  # instead of being caught by the player on the floor.
+  if receiver >= 0 and players[receiver].stun > 0.0:
+   release_uncatchable_pass(receiver)
+   return
   var alley: bool = flight.alley
   var double_dunk: bool = flight.get("double_dunk", false)
   var catch_height = ball_height()
@@ -2667,8 +2904,9 @@ func tick_flight(delta: float) -> void:
     last_shot_feedback.made = false
  if flight.made and not flight.blocked:
   if flight.dunk:
-   players[shooter].rim_hang = 0.35
-   players[shooter].jump = maxf(players[shooter].jump, 0.35)
+   var hang = float(flight.get("hang_ticks", 64.0)) / ARCADE_TSEC
+   players[shooter].rim_hang = hang
+   players[shooter].jump = maxf(players[shooter].jump, hang)
    players[shooter].pos = hoop_for(team) + Vector2(-15 if hoop_for(team).x > 640 else 15, 0)
   # seq_slamball's facial only plays facial_snd. It does not move or stun anyone.
   var was_on_fire = is_player_on_fire(shooter)
@@ -2695,6 +2933,7 @@ func tick_flight(delta: float) -> void:
   in_cylinder_timer = 0.20
   must_rebound_timer = 2.0
   loose_ball_timer = maxf(loose_ball_timer, 0.20)
+  var was_blocked = flight.get("blocked", false)
   var was_bank_shot = flight.get("bank_shot", false)
   var was_clank = flight.get("clank", false)
   var was_airball = flight.get("airball", false)
@@ -2703,6 +2942,7 @@ func tick_flight(delta: float) -> void:
   if was_bank_shot:
    ricochet = hoop_for(team) + (ricochet - hoop_for(team)) * 0.65
    arc_h = 1.6
+  var block_call = str(flight.get("block_call", ""))
   if delta >= 1.5:
    ball = ricochet
    flight = {}
@@ -2710,12 +2950,18 @@ func tick_flight(delta: float) -> void:
    reset_shot_clock()
    loose_ball_timer = 0.0
    in_cylinder_timer = 0.0
-   announce("AIRBALL!" if was_airball else ("OFF THE GLASS!" if was_bank_shot else "OFF THE RIM!"), "miss")
+   if block_call != "":
+    announce(block_call, "block")
+   elif not was_blocked:
+    announce("AIRBALL!" if was_airball else ("OFF THE GLASS!" if was_bank_shot else "OFF THE RIM!"), "miss")
   else:
    flight = {"kind":"rebound", "start":hoop_for(team), "end":ricochet, "time":0.0, "duration":REBOUND_FLIGHT_DURATION, "shooter":shooter, "arc_height":arc_h, "bounces":0}
    owner = -1
    reset_shot_clock()
-   announce("AIRBALL!" if was_airball else ("OFF THE GLASS!" if was_bank_shot else ("OFF THE BACK IRON!" if was_clank else "OFF THE RIM!")), "miss")
+   if block_call != "":
+    announce(block_call, "block")
+   elif not was_blocked:
+    announce("AIRBALL!" if was_airball else ("OFF THE GLASS!" if was_bank_shot else ("OFF THE BACK IRON!" if was_clank else "OFF THE RIM!")), "miss")
 
 func next_period(from_transition: bool = false) -> void:
  if not from_transition and quarter_scores.size() < quarter:

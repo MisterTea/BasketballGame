@@ -41,8 +41,8 @@ func run() -> void:
 
 	# Test 2: Dynamic pattern matches
 	var dynamic_tests = [
-		"HE'S ON FIRE! BLAZE",
-		"HE'S HEATING UP! HOLLYWOOD",
+		"HE'S ON FIRE! HENNONHOEFER",
+		"HE'S HEATING UP! WANG",
 		"INFERNO WINS THE TIP!",
 		"AFTERSHOCK WINS THE TIP!",
 		"GOALTENDING! 2 POINTS",

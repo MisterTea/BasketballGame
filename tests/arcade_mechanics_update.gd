@@ -115,12 +115,17 @@ func run() -> void:
 	state.players[2].pos = Vector2(700, 450)
 	state.players[2].vel = Vector2(150, 50)
 	state.defend(2, false)
-	check(state.players[2].vel == Vector2.ZERO, "defend() immediately zeros horizontal velocity")
+	var slide_cap = MatchState.BLOCK_GLIDE_ASM * MatchState.PX_PER_ASM / (30.0 / MatchState.ARCADE_TSEC)
+	if state.flight.get("kind", "") == "shot":
+		check(absf(state.players[2].vel.x) <= slide_cap + 1.0 and absf(state.players[2].vel.y) <= slide_cap + 1.0, "a shot block slides at most 30 pixels toward the ball")
+	else:
+		check(state.players[2].vel == Vector2.ZERO, "defend() zeros velocity when the ball is not in the air")
 	check(state.players[2].jump >= 0.65, "defend() sets block jump duration to 0.70s")
 
 	# While jumping for block, movement inputs cannot drift player
+	var block_vel = state.players[2].vel
 	state.tick(1.0 / 60.0, {2: {"move": Vector2.RIGHT, "shoot": false, "pass": false, "turbo": true}})
-	check(state.players[2].vel == Vector2.ZERO, "player jumps straight up without horizontal drift during block")
+	check(state.players[2].vel.distance_to(block_vel) < 1.0, "stick input does not add drift during a block jump")
 
 	# ==========================================
 	# ISSUE 5: STEAL SWIPE DURATION & ANIMATION
@@ -130,12 +135,16 @@ func run() -> void:
 	state.players[2].pos = Vector2(530, 450)
 	state.players[2].cooldown = 0
 	state.steal(2, false)
-	check(state.players[2].swipe >= 0.40, "steal attempt takes ~0.45s and triggers swipe animation")
+	var reach_ticks = MatchState.STEAL_REACH_TICKS[state.passer_seqdir(2)]
+	var reach = float(reach_ticks) / MatchState.ARCADE_TSEC
+	check(is_equal_approx(state.players[2].swipe, reach), "a steal lasts until seq_stealstand, 9 or 10 ticks")
 	check(not state.players[2].swipe_resolved, "steal is not resolved instantaneously at initiation")
 
-	# Tick halfway through swipe (0.22s in, swipe <= 0.25) -> resolve_steal triggers
-	state.tick(0.22, {2: {"move": Vector2.ZERO, "shoot": false, "pass": false, "turbo": false}})
-	check(state.players[2].swipe_resolved, "steal resolves at the forward reach point (swipe <= 0.25)")
+	# The hand is extended on the last 2 ticks before seq_stealstand.
+	state.tick(0.05, {2: {"move": Vector2.ZERO, "shoot": false, "pass": false, "turbo": false}})
+	check(not state.players[2].swipe_resolved, "the reach has not connected in the first few ticks")
+	state.tick(reach, {2: {"move": Vector2.ZERO, "shoot": false, "pass": false, "turbo": false}})
+	check(state.players[2].swipe_resolved, "steal resolves on the extended hand, just before standing")
 
 	# ==========================================
 	# ISSUE 3: STEAL POKES BALL LOOSE & PICKUP DELAY

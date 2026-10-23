@@ -371,22 +371,70 @@ func apply_dunk_pose(style: String, progress: float) -> void:
     skeleton.set_bone_pose_rotation(18, Quaternion.IDENTITY)
     var q_sh_r = Quaternion(Vector3.FORWARD, deg_to_rad(-85.0)) * Quaternion(Vector3.RIGHT, deg_to_rad(45.0))
     skeleton.set_bone_pose_rotation(17, q_sh_r)
-  "behind_back":
-   if p > 0.20 and p < 0.75:
-    var dip = sin((p - 0.20) / 0.55 * PI)
-    var q_sh_r = Quaternion(Vector3.UP, deg_to_rad(-45.0 * dip)) * Quaternion(Vector3.RIGHT, deg_to_rad(-35.0 * dip))
-    skeleton.set_bone_pose_rotation(17, q_sh_r * base_rotations[17])
-    var q_sh_l = Quaternion(Vector3.UP, deg_to_rad(30.0 * dip))
+  "behind_back", "behind_head":
+   if p > 0.12 and p < 0.78:
+    var dip = sin(clampf((p - 0.12) / 0.66, 0.0, 1.0) * PI)
+    var q_sh_l = Quaternion(Vector3.RIGHT, deg_to_rad(-130.0 * dip)) * Quaternion(Vector3.FORWARD, deg_to_rad(25.0 * dip))
+    var q_sh_r = Quaternion(Vector3.RIGHT, deg_to_rad(-130.0 * dip)) * Quaternion(Vector3.FORWARD, deg_to_rad(-25.0 * dip))
     skeleton.set_bone_pose_rotation(16, q_sh_l * base_rotations[16])
+    skeleton.set_bone_pose_rotation(17, q_sh_r * base_rotations[17])
+    var q_el = Quaternion(Vector3.RIGHT, deg_to_rad(-40.0 * dip))
+    skeleton.set_bone_pose_rotation(18, q_el * base_rotations[18])
+    skeleton.set_bone_pose_rotation(19, q_el * base_rotations[19])
+  "windmill":
+   if p < 0.82:
+    var sweep = p / 0.82 * TAU
+    var q_sh_r = Quaternion(Vector3.RIGHT, sweep) * Quaternion(Vector3.FORWARD, deg_to_rad(-70.0))
+    skeleton.set_bone_pose_rotation(17, q_sh_r)
+    skeleton.set_bone_pose_rotation(19, Quaternion(Vector3.RIGHT, deg_to_rad(20.0)))
+    var q_sh_l = Quaternion(Vector3.FORWARD, deg_to_rad(40.0))
+    skeleton.set_bone_pose_rotation(16, q_sh_l * base_rotations[16])
+  "tomahawk":
+   if p < 0.78:
+    var cock = sin(clampf(p / 0.78, 0.0, 1.0) * PI)
+    var q_sh_r = Quaternion(Vector3.RIGHT, deg_to_rad(-150.0 * cock)) * Quaternion(Vector3.FORWARD, deg_to_rad(-30.0 * cock))
+    skeleton.set_bone_pose_rotation(17, q_sh_r * base_rotations[17])
+    skeleton.set_bone_pose_rotation(19, Quaternion(Vector3.RIGHT, deg_to_rad(-25.0 * cock)) * base_rotations[19])
+  "cradle":
+   if p < 0.8:
+    var tuck = sin(clampf(p / 0.8, 0.0, 1.0) * PI)
+    var q_sh_l = Quaternion(Vector3.RIGHT, deg_to_rad(-70.0 * tuck)) * Quaternion(Vector3.UP, deg_to_rad(50.0 * tuck))
+    var q_sh_r = Quaternion(Vector3.RIGHT, deg_to_rad(-80.0 * tuck)) * Quaternion(Vector3.UP, deg_to_rad(35.0 * tuck))
+    skeleton.set_bone_pose_rotation(16, q_sh_l * base_rotations[16])
+    skeleton.set_bone_pose_rotation(17, q_sh_r * base_rotations[17])
+    var q_knee = Quaternion(Vector3.RIGHT, deg_to_rad(-50.0 * tuck))
+    skeleton.set_bone_pose_rotation(4, base_rotations[4] * q_knee)
+    skeleton.set_bone_pose_rotation(5, base_rotations[5] * q_knee)
+  "reverse":
+   if p < 0.8:
+    var scoop = sin(clampf(p / 0.8, 0.0, 1.0) * PI)
+    var q_sh = Quaternion(Vector3.RIGHT, deg_to_rad(55.0 * scoop))
+    skeleton.set_bone_pose_rotation(16, q_sh * base_rotations[16])
+    skeleton.set_bone_pose_rotation(17, q_sh * base_rotations[17])
+    var q_spine = Quaternion(Vector3.RIGHT, deg_to_rad(-25.0 * scoop))
+    skeleton.set_bone_pose_rotation(3, base_rotations[3] * q_spine)
+    skeleton.set_bone_pose_rotation(6, base_rotations[6] * q_spine)
+  "leaner":
+   if p < 0.85:
+    var lean = sin(clampf(p / 0.85, 0.0, 1.0) * PI)
+    var q_spine = Quaternion(Vector3.FORWARD, deg_to_rad(28.0 * lean))
+    skeleton.set_bone_pose_rotation(3, base_rotations[3] * q_spine)
+    skeleton.set_bone_pose_rotation(6, base_rotations[6] * q_spine)
+    var q_sh_r = Quaternion(Vector3.FORWARD, deg_to_rad(-80.0 * lean)) * Quaternion(Vector3.RIGHT, deg_to_rad(-20.0 * lean))
+    skeleton.set_bone_pose_rotation(17, q_sh_r * base_rotations[17])
+  "switch":
+   var on_left = p < 0.45
+   var q_hold = Quaternion(Vector3.RIGHT, deg_to_rad(-90.0))
+   var q_low = Quaternion(Vector3.RIGHT, deg_to_rad(30.0))
+   skeleton.set_bone_pose_rotation(16, (q_hold if on_left else q_low) * base_rotations[16])
+   skeleton.set_bone_pose_rotation(17, (q_low if on_left else q_hold) * base_rotations[17])
 
 func reach_rim(blend: float, one_handed: bool = false) -> void:
  if blend <= 0.001:
   return
- var target_sh_l = Quaternion(Vector3.FORWARD, deg_to_rad(85.0)) * Quaternion(Vector3.RIGHT, deg_to_rad(30.0))
- var target_sh_r = Quaternion(Vector3.FORWARD, deg_to_rad(-85.0)) * Quaternion(Vector3.RIGHT, deg_to_rad(30.0))
- var target_el = Quaternion(Vector3.RIGHT, deg_to_rad(15.0))
+ # -Z / +Z at 150 degrees brings each wrist from the hip to just above the head.
+ var q_sh_l = Quaternion(Vector3.FORWARD, deg_to_rad(-150.0) * blend)
+ var q_sh_r = Quaternion(Vector3.FORWARD, deg_to_rad(150.0) * blend)
  if not one_handed:
-  skeleton.set_bone_pose_rotation(16, base_rotations[16].slerp(target_sh_l, blend))
-  skeleton.set_bone_pose_rotation(18, base_rotations[18].slerp(target_el, blend))
- skeleton.set_bone_pose_rotation(17, base_rotations[17].slerp(target_sh_r, blend))
- skeleton.set_bone_pose_rotation(19, base_rotations[19].slerp(target_el, blend))
+  skeleton.set_bone_pose_rotation(16, q_sh_l * base_rotations[16])
+ skeleton.set_bone_pose_rotation(17, q_sh_r * base_rotations[17])

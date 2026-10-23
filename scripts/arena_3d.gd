@@ -116,11 +116,15 @@ func update_camera(state: MatchState, ball: Vector2, delta: float, paused: bool)
  var target_zoom = 0.0
  if is_dunking:
   var p = clampf(state.flight.time / state.flight.duration, 0.0, 1.0)
-  var arc_h = state.flight.get("arc_height", 1.5)
-  var lift = arc_h * sin(p * PI)
-  target_lift = lift * 0.45
-  target_look_lift = lift * 0.60
-  target_zoom = minf(4.5, lift * 0.90)
+  var dunk_ticks = float(state.flight.get("dunk_ticks", state.flight.duration * MatchState.ARCADE_TSEC))
+  var lift = state.dunk_body_lift(p, dunk_ticks)
+  target_lift = lift * 0.42
+  target_look_lift = lift * 0.55
+  target_zoom = minf(6.0, lift * 0.85)
+ elif _someone_hanging(state):
+  target_lift = MatchState.DUNK_SLAM_LIFT * 0.42
+  target_look_lift = MatchState.DUNK_SLAM_LIFT * 0.55
+  target_zoom = minf(6.0, MatchState.DUNK_SLAM_LIFT * 0.85)
 
  var follow_speed = 10.0 if is_dunking else 5.0
  dunk_cam_lift = lerpf(dunk_cam_lift, target_lift, 1.0 - exp(-delta * follow_speed))
@@ -867,6 +871,12 @@ func build_ball() -> void:
   trail_particle.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
   ball_trail.append(trail_particle)
 
+func _someone_hanging(state: MatchState) -> bool:
+ for p in state.players:
+  if p.get("rim_hang", 0.0) > 0.0:
+   return true
+ return false
+
 func present(state: MatchState, positions: Array, ball: Vector2, controlled_slots: Array, delta: float, paused: bool) -> void:
  render_target_update_mode = SubViewport.UPDATE_ALWAYS
  if not paused:
@@ -897,8 +907,12 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   if not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.shooter == i and state.flight.has("player_start") and not finish_blocked:
    var progress = clampf(state.flight.time/state.flight.duration,0,1)
    var launch: float = state.flight.get("player_launch_height",0.0)
-   var peak = 4.2 if state.is_player_on_fire(i) else (2.85 if state.flight.get("super_dunk",false) else 1.8 if state.flight.dunk else 1.15)
-   jump = lerpf(launch,0,progress)+sin(progress*PI)*(peak-launch*0.5)
+   if state.flight.dunk:
+    var dunk_ticks = float(state.flight.get("dunk_ticks", state.flight.duration * MatchState.ARCADE_TSEC))
+    jump = state.dunk_body_lift(progress, dunk_ticks)
+   else:
+    var peak = 4.2 if state.is_player_on_fire(i) else (2.85 if state.flight.get("super_dunk",false) else 1.15)
+    jump = lerpf(launch,0,progress)+sin(progress*PI)*(peak-launch*0.5)
   elif not state.flight.is_empty() and state.flight.kind == "shot" and state.flight.shooter == i:
    if p.jump > 0.0:
     jump = sin(clampf((1.16 - p.jump) / 1.16, 0.0, 1.0) * PI) * 1.35
@@ -906,7 +920,7 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
     jump = 0.0
   elif p.receive_jump > 0:
    jump = state.receive_height(i)
-  elif p.charge > 0:
+  elif p.charge > 0 and state.owner == i:
    jump = sin(clampf(p.charge / 1.16, 0.0, 1.0) * PI) * 1.35
   elif p.jump > 0:
    var t = 1.0 - clampf(p.jump / 0.70, 0.0, 1.0)
@@ -930,7 +944,7 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   var dunk_style = state.flight.get("dunk_style", "standard") if (not state.flight.is_empty() and state.flight.get("dunk", false)) else "standard"
   var dunk_p = clampf(state.flight.time / state.flight.duration, 0.0, 1.0) if not state.flight.is_empty() else 1.0
   if p.get("rim_hang", 0.0) > 0.0:
-   actor.body.position.y = 1.35
+   actor.body.position.y = MatchState.DUNK_SLAM_LIFT
   var hoop_dir = state.hoop_for(i/2) - p.pos
   var target_angle = movement_facing_angle(hoop_dir) if (is_shot_actor or p.get("rim_hang", 0.0) > 0.0) else (movement_facing_angle(p.vel) if is_running else (PI/2 if p.face > 0 else -PI/2))
   var faces_ball_for_block = p.jump > 0 and p.receive_jump <= 0 and tip_jump < 0 and not is_shot_actor
@@ -963,12 +977,39 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
      actor.body.rotation.y = target_angle
      actor.body.rotation.z = 0.0
      actor.body.rotation.x = 0.0
-    "behind_back":
+    "behind_back", "behind_head":
      var twist_p = clampf((dunk_p - 0.20) / 0.55, 0.0, 1.0)
      var twist = sin(twist_p * PI) if (dunk_p > 0.20 and dunk_p < 0.75) else 0.0
      actor.body.rotation.y = target_angle + twist * 0.75 * face_dir
      actor.body.rotation.z = 0.0
-     actor.body.rotation.x = twist * 0.25
+     actor.body.rotation.x = twist * 0.35
+    "windmill":
+     actor.body.rotation.y = target_angle + sin(dunk_p * TAU) * 0.35
+     actor.body.rotation.z = 0.0
+     actor.body.rotation.x = 0.0
+    "tomahawk":
+     var cock = sin(clampf(dunk_p / 0.72, 0.0, 1.0) * PI)
+     actor.body.rotation.y = target_angle
+     actor.body.rotation.z = 0.0
+     actor.body.rotation.x = -cock * 0.55
+    "cradle":
+     actor.body.rotation.y = target_angle + 0.4 * face_dir
+     actor.body.rotation.z = sin(minf(dunk_p / 0.7, 1.0) * PI) * 0.25 * face_dir
+     actor.body.rotation.x = 0.0
+    "reverse":
+     var scoop = sin(clampf(dunk_p / 0.8, 0.0, 1.0) * PI)
+     actor.body.rotation.y = target_angle
+     actor.body.rotation.z = 0.0
+     actor.body.rotation.x = scoop * 0.45
+    "leaner":
+     var lean = sin(clampf(dunk_p / 0.85, 0.0, 1.0) * PI)
+     actor.body.rotation.y = target_angle
+     actor.body.rotation.z = lean * 0.55 * face_dir
+     actor.body.rotation.x = 0.0
+    "switch":
+     actor.body.rotation.y = target_angle
+     actor.body.rotation.z = 0.0
+     actor.body.rotation.x = 0.0
     _:
      actor.body.rotation.y = target_angle
      actor.body.rotation.z = 0.0
@@ -1026,20 +1067,21 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
    phase = clampf(state.flight.time/state.flight.duration,0,1) if state.flight.dunk else 0.45+0.55*clampf(state.flight.time/state.flight.duration,0,1)
    if state.flight.get("finish","") == "alley_oop":
     phase = 0.55+0.45*clampf(state.flight.time/state.flight.duration,0,1)
-  elif p.charge > 0:
+  elif p.charge > 0 and state.owner == i:
    next_action = "shoot"
    phase = 0.45*clampf(p.charge/0.58,0,1)
   elif p.get("fake",0.0) > 0:
    next_action = "shoot"
    phase = 0.42*sin((1.0-clampf(p.fake/0.38,0,1))*PI)
   elif p.get("swipe",0.0) > 0:
+   var swipe_total = maxf(float(p.get("swipe_total", p.swipe)), 0.01)
    if p.get("swipe_shove", false):
     next_action = "shove"
-    phase = 1.0 - clampf(p.swipe / 0.45, 0.0, 1.0)
+    phase = 1.0 - clampf(p.swipe / swipe_total, 0.0, 1.0)
     actor.body.rotation.x = sin(phase * PI) * 0.32
    else:
     next_action = "steal"
-    phase = 1.0 - clampf(p.swipe / 0.45, 0.0, 1.0)
+    phase = 1.0 - clampf(p.swipe / swipe_total, 0.0, 1.0)
   elif p.get("elbow",0.0) > 0:
    next_action = "elbow"
    phase = 1.0 - clampf(p.elbow / 0.50, 0.0, 1.0)
@@ -1061,7 +1103,7 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
     reach_blend = clampf((dunk_p - 0.85) / 0.07, 0.0, 1.0)
    elif p.get("rim_hang", 0.0) > 0.0:
     reach_blend = 1.0
-   var is_one_handed = (dunk_style == "spin_360" and dunk_p < 0.94)
+   var is_one_handed = dunk_style in ["spin_360", "tomahawk", "windmill", "leaner", "reverse"] and dunk_p < 0.94
    actor.body.reach_rim(reach_blend, is_one_handed)
    if reach_blend > 0.0:
     var hoop_pos = state.flight.end if not state.flight.is_empty() else state.hoop_for(i / 2)
@@ -1205,8 +1247,22 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   elif dunk_style == "between_legs" and dunk_p > 0.15 and dunk_p < 0.72:
    var dip = sin(clampf((dunk_p - 0.15) / 0.57, 0.0, 1.0) * PI)
    ball_on_hands = hands_mid + fwd_dir * 0.08 - up_dir * (dip * 0.04)
-  elif dunk_style == "spin_360":
+  elif dunk_style == "spin_360" or dunk_style == "tomahawk":
    ball_on_hands = hand_r.origin + fwd_dir * 0.08 + up_dir * 0.05
+  elif dunk_style == "behind_head":
+   var cock = sin(clampf((dunk_p - 0.15) / 0.6, 0.0, 1.0) * PI) if dunk_p > 0.15 and dunk_p < 0.78 else 0.0
+   ball_on_hands = hands_mid - fwd_dir * (0.22 * cock) + up_dir * (0.28 * cock)
+  elif dunk_style == "windmill":
+   var sweep = dunk_p * TAU
+   ball_on_hands = hands_mid + up_dir * (0.15 + sin(sweep) * 0.12) + fwd_dir * (cos(sweep) * 0.08)
+  elif dunk_style == "cradle":
+   ball_on_hands = hand_r.origin + up_dir * 0.16 - fwd_dir * 0.06
+  elif dunk_style == "reverse":
+   var scoop = sin(clampf(dunk_p / 0.75, 0.0, 1.0) * PI)
+   ball_on_hands = hands_mid + fwd_dir * 0.16 - up_dir * (0.2 * scoop)
+  elif dunk_style == "switch":
+   var hand_off = hand_l.origin if dunk_p < 0.45 else hand_r.origin
+   ball_on_hands = hand_off + fwd_dir * 0.08 + up_dir * 0.04
   var b_idx = 0 if state.flight.end.x < 640 else 1
   var rim_target = court_point(state.flight.end, 3.05 - rim_dips[b_idx])
   if dunk_p < 0.88:

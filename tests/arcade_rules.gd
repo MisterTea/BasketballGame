@@ -84,6 +84,10 @@ func _initialize() -> void:
  s.players[2].pos = s.flight_position()
  s.defend(2,false)
  check(s.flight.blocked and s.stats[2].blocks == 1 and s.score == [0,0],"ascending contact is a legal block")
+ check(s.banner != "REJECTED!","an early swat is not called rejected before the rim")
+ while s.flight.get("kind", "") == "shot":
+  s.tick_flight(1.0/30.0)
+ check(s.banner == "REJECTED!","the rejection is called when the ball reaches the rim")
  s = fresh()
  shot(s,0,false)
  s.players[2].pos = s.flight_position()
@@ -186,6 +190,12 @@ func _initialize() -> void:
  call[0].shoot = false
  s.tick(1.0/60.0,call)
  check(s.owner == 0 and s.flight.is_empty() and s.stats[0].attempts == 0 and s.players[0].fake > 0 and not s.players[0].dribble_locked,"a short Shoot tap head-fakes and keeps the ball")
+ var planted = s.players[0].pos
+ call[0].move = Vector2.RIGHT
+ for _step in range(6):
+  s.tick(1.0/60.0, call)
+ check(s.players[0].fake > 0.0 and s.players[0].vel == Vector2.ZERO and s.players[0].pos.distance_to(planted) < 1.0, "a head fake plants the shooter in place")
+ call[0].move = Vector2.ZERO
  check(s.player_streak[0] == 2,"the head fake does not change heat")
  s.clock = 3.5
  s.players[0].fake = 0.0
@@ -300,6 +310,9 @@ func _initialize() -> void:
  s.players[0].charge = 0.58
  s.players[0].vel = (late_hoop-s.players[0].pos).normalized()*200
  s.shoot_ball(0,true)
+ # An alley dunk sets the shot meter and then launches. A denial must clear it,
+ # or the meter holds the dunker in the air after the play.
+ s.players[0].charge = 0.58
  s.flight.time = s.flight.duration*0.92
  s.ball = s.flight_position()
  s.players[2].pos = s.ball
@@ -316,7 +329,7 @@ func _initialize() -> void:
    break
  check(rejected,"late dunk contact is a legal rejection rather than jump-shot goaltending")
  if rejected:
-  check(s.players[0].jump == 0.0 and s.players[0].vel == Vector2.ZERO and s.players[0].get("rim_hang", 0.0) == 0.0,"a blocked dunker drops out of the dunk")
+  check(s.players[0].jump == 0.0 and s.players[0].charge == 0.0 and s.players[0].vel == Vector2.ZERO and s.players[0].get("rim_hang", 0.0) == 0.0,"a blocked dunker drops out of the dunk")
  s = fresh()
  var mid_hoop = s.hoop_for(0)
  s.players[0].pos = mid_hoop + Vector2(-220, 0)
@@ -364,5 +377,84 @@ func _initialize() -> void:
  s.players[0].shot_finish = "jumper"
  s.tick(0.05, hold)
  check(s.flight.is_empty() and s.owner == 0 and s.players[0].charge == 0.0, "after the baskets flip, the other side of midcourt cannot shoot")
+ s = fresh()
+ var glass_hoop = s.hoop_for(0)
+ s.owner = 0
+ s.players[0].pos = glass_hoop + Vector2(48, 0)
+ s.players[1].pos = glass_hoop + Vector2(-400, 180)
+ s.players[2].pos = glass_hoop + Vector2(-420, -180)
+ s.players[3].pos = glass_hoop + Vector2(-280, 220)
+ s.ball = s.players[0].pos
+ s.players[0].charge = 0.58
+ s.shoot_ball(0, false)
+ s.flight.made = true
+ var glass_plane = s.glass_plane_x(glass_hoop)
+ while not s.flight.is_empty() and s.flight.get("kind", "") == "shot" and s.flight.time < s.flight.duration:
+  s.tick_flight(1.0 / 60.0)
+ check(s.flight.get("glass_back", false) and not s.flight.get("made", false) and s.score == [0, 0], "a shot from behind the glass bounces off the backboard")
+ var away_from_court = 1.0 if glass_hoop.x > 640.0 else -1.0
+ check((s.flight.end.x - glass_plane) * away_from_court > 5.0, "the bounce sends the ball back behind the glass")
+ s = fresh()
+ var swat_hoop = s.hoop_for(0)
+ s.owner = 0
+ s.players[0].pos = swat_hoop + Vector2(-280, 0)
+ s.players[1].pos = swat_hoop + Vector2(-500, 200)
+ s.players[3].pos = swat_hoop + Vector2(-500, -200)
+ s.ball = s.players[0].pos
+ s.players[0].charge = 0.58
+ s.shoot_ball(0, false)
+ s.flight.duration = 8.0
+ s.flight.time = 0.2
+ s.ball = s.flight_position()
+ s.players[2].pos = s.ball + Vector2(0, 75)
+ s.players[2].cooldown = 0.0
+ s.defend(2, false)
+ check(not s.flight.get("blocked", false), "a jump block just outside arm's reach does not swat on the button frame")
+ var reached = false
+ for _step in range(40):
+  s.tick(1.0 / 60.0, {0: neutral(), 1: neutral(), 2: neutral(), 3: neutral()})
+  if s.flight.get("blocked", false) or s.stats[2].goaltends > 0:
+   reached = true
+   break
+ check(reached, "the block jump slides toward the ball and can meet it")
+ check(is_equal_approx(s.shot_flight_ticks(80.0 * 640.0 / 950.0, false, false, false), 52.0), "a short shot stays airborne for 52 cabinet ticks")
+ check(is_equal_approx(s.shot_flight_ticks(80.0 * 640.0 / 950.0, true, false, false), 37.0), "a flat arc floors at 37 cabinet ticks")
+ check(is_equal_approx(s.shot_flight_ticks(80.0 * 640.0 / 950.0, false, true, false), 67.0), "a hook adds 15 ticks after the 50-tick floor")
+ s = fresh()
+ var pace_hoop = s.hoop_for(0)
+ s.owner = 0
+ s.players[0].pos = pace_hoop + Vector2(-80, 0)
+ s.players[0].shot_finish = "layup"
+ s.ball = s.players[0].pos
+ s.shoot_ball(0, false)
+ var lay_ticks = s.flight.duration * MatchState.ARCADE_TSEC
+ var lay_ok = is_equal_approx(lay_ticks, 37.0) or is_equal_approx(lay_ticks, 52.0) or is_equal_approx(lay_ticks, 72.0)
+ check(s.flight.layup and lay_ok, "a layup uses the cabinet flight instead of the 35-tick flat shortcut")
+ s = fresh()
+ s.players[0].pos = Vector2(700, 465)
+ s.players[1].pos = Vector2(1100, 465)
+ s.ball = s.players[0].pos
+ s.pass_ball(0, false)
+ var pass_ticks = 400.0 * 640.0 / 950.0 * float(MatchState.SHORTPAS_T[7]) / 1024.0
+ var pass_expect = pass_ticks / MatchState.ARCADE_TSEC
+ check(is_equal_approx(s.flight.duration, pass_expect), "a chest pass lasts dist*shortpas/1024 ticks at the cabinet rate")
+ var pass_speed = 400.0 / s.flight.duration
+ check(absf(pass_speed - 762.9) < 1.0, "that pass covers 763 court pixels per second")
+ var slam = s.dunk_body_lift(1.0, 37.0)
+ check(is_equal_approx(slam + MatchState.DUNK_HAND_REACH, MatchState.RIM_HEIGHT), "a rim hang puts the hands on the rim")
+ var crest = 0.0
+ for step in range(21):
+  crest = maxf(crest, s.dunk_body_lift(step / 20.0, 74.0))
+ check(crest > slam + 1.0, "a long dunk arcs above the rim before the slam")
+ s = fresh()
+ var dunk_hoop = s.hoop_for(0)
+ s.owner = 0
+ s.players[0].pos = dunk_hoop + Vector2(-70, 0)
+ s.players[0].vel = Vector2(80, 0)
+ s.ball = s.players[0].pos
+ s.players[0].charge = 0.58
+ s.shoot_ball(0, false)
+ check(s.flight.dunk and MatchState.DUNK_TICKS.has(s.flight.dunk_style), "an under-hoop dunk picks a cabinet motion")
+ check(s.flight.duration * MatchState.ARCADE_TSEC < 50.0, "an under-hoop dunk reaches the rim in under 50 ticks")
  print("ARCADE RULE TESTS: ",checks," checks, ","PASS" if failures == 0 else "FAIL")
  quit(0 if failures == 0 else 1)
