@@ -228,6 +228,7 @@ func ring(parent: Node3D, radius: float, thickness: float, at: Vector3, mat: Mat
 func label_3d(parent: Node3D, text: String, at: Vector3, size_pixels: float = 0.008, color: Color = Color.WHITE, billboard: bool = true) -> Label3D:
  var label = Label3D.new()
  label.text = text
+ label.font = UiFont.get_font()
  label.font_size = 48
  label.pixel_size = size_pixels
  label.modulate = color

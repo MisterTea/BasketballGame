@@ -67,7 +67,7 @@ var side_action_elapsed = 0.0
 
 func _ready() -> void:
  configure_macos_window()
- font = ThemeDB.fallback_font
+ font = UiFont.get_font()
  load_profile()
  setup_input()
  net = JamNetwork.new()
