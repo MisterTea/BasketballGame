@@ -276,6 +276,7 @@ func label_at(text: String, x: float, y: float, size: int = 20, color: Color = I
  var label = Label.new()
  label.text = text
  label.position = Vector2(x,y)
+ label.add_theme_font_override("font", UiFont.get_font())
  label.add_theme_font_size_override("font_size",size)
  label.add_theme_color_override("font_color",color)
  if width > 0:
@@ -307,6 +308,7 @@ func button(text: String, x: float, y: float, w: float, callback: Callable, acce
  b.text = text
  b.position = Vector2(x,y)
  b.size = Vector2(w,h)
+ b.add_theme_font_override("font", UiFont.get_font())
  b.add_theme_font_size_override("font_size",17)
  b.add_theme_stylebox_override("normal",style(GOLD if accent else Color("15273d")))
  b.add_theme_stylebox_override("hover",style(Color("ffe0a0") if accent else Color("294969"),GOLD))
@@ -324,6 +326,7 @@ func edit(text: String, placeholder: String, x: float, y: float, w: float, chang
  field.size = Vector2(w,46)
  field.text = text
  field.placeholder_text = placeholder
+ field.add_theme_font_override("font", UiFont.get_font())
  field.add_theme_font_size_override("font_size",18)
  field.add_theme_stylebox_override("normal",style(Color("081321")))
  field.text_changed.connect(changed)
