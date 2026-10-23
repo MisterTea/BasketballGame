@@ -13,6 +13,9 @@ const BASE_CAM_Y = 10.6
 const BASE_CAM_Z = 18.6
 const BASE_LOOK_Y = 1.3
 const BASE_FOV = 23.5
+const SIDE_CAM_POSITION = Vector3(0.0, 1.15, 3.8)
+const SIDE_CAM_TARGET = Vector3(0.0, 1.15, 0.0)
+const SIDE_CAM_FOV = 40.0
 var world: Node3D
 var camera: Camera3D
 var athletes: Array = []
@@ -120,11 +123,11 @@ func update_camera(state: MatchState, ball: Vector2, delta: float, paused: bool)
   var lift = state.dunk_body_lift(p, dunk_ticks)
   target_lift = lift * 0.42
   target_look_lift = lift * 0.55
-  target_zoom = minf(6.0, lift * 0.85)
+  target_zoom = minf(18.0, lift * 2.55)
  elif _someone_hanging(state):
   target_lift = MatchState.DUNK_SLAM_LIFT * 0.42
   target_look_lift = MatchState.DUNK_SLAM_LIFT * 0.55
-  target_zoom = minf(6.0, MatchState.DUNK_SLAM_LIFT * 0.85)
+  target_zoom = minf(18.0, MatchState.DUNK_SLAM_LIFT * 2.55)
 
  var follow_speed = 10.0 if is_dunking else 5.0
  dunk_cam_lift = lerpf(dunk_cam_lift, target_lift, 1.0 - exp(-delta * follow_speed))
@@ -358,7 +361,7 @@ func build_court() -> void:
  center.height = 0.005
  center.radial_segments = 64
  mesh(world,center,court_point(Vector2(640,465),0.009),material(Color("24394a")))
- var mark = label_3d(world,"RIM\nRUMBLE",court_point(Vector2(640,465),0.023),0.012,Color("f0cf8d"),false)
+ var mark = label_3d(world,"CAPITAL\nPUNISHMENT\nBASKETBALL",court_point(Vector2(640,465),0.023),0.0065,Color("f0cf8d"),false)
  mark.rotation_degrees.x = -90
  mark.outline_size = 0
  for side in range(2):
@@ -373,7 +376,7 @@ func build_court() -> void:
   court_arc(three_point.hoop,three_point.radius,three_point.arc_start,three_point.arc_end,white)
   court_line([Vector2(three_point.baseline_x,three_point.top_y),Vector2(three_point.arc_join_x,three_point.top_y)],0.055,white)
   court_line([Vector2(three_point.baseline_x,three_point.bottom_y),Vector2(three_point.arc_join_x,three_point.bottom_y)],0.055,white)
- var sideline = label_3d(world,"R I M   R U M B L E   /   A R C A D E   B A S K E T B A L L",Vector3(0,0.02,8.0),0.008,Color("a6b3c5"),false)
+ var sideline = label_3d(world,"C A P I T A L   P U N I S H M E N T   B A S K E T B A L L",Vector3(0,0.02,8.0),0.008,Color("a6b3c5"),false)
  sideline.rotation_degrees.x = -90
  sideline.outline_size = 0
 
@@ -628,7 +631,8 @@ func build_stands() -> void:
   var x = -15.5+i*7.75
   var color = Color("fdad56") if i%2 == 0 else Color("70cdf1")
   box(world,Vector3(7.3,0.05,0.05),Vector3(x,0.93,-8.13),material(color,0.7,true))
-  label_3d(world,["RIM RUMBLE","NO FOULS. ALL FIRE.","2 ON 2","BOOMSHAKA!","RIM RUMBLE"][i],Vector3(x,0.49,-8.16),0.007,color,false)
+  var slogan = ["CAPITAL PUNISHMENT BASKETBALL","NO FOULS. ALL FIRE.","2 ON 2","BOOMSHAKA!","CAPITAL PUNISHMENT BASKETBALL"][i]
+  label_3d(world,slogan,Vector3(x,0.49,-8.16),0.0048 if slogan.length() > 20 else 0.007,color,false)
 
 # Generate an eight-person, four-frame cheering atlas, with transparent silhouettes.
 func image_circle(image: Image, center: Vector2i, radius: int, color: Color) -> void:
@@ -805,7 +809,7 @@ func build_athlete(index: int) -> Dictionary:
  shadow.position = Vector3(0,0.005,0)
  shadow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
  root.add_child(shadow)
- return {"root":root,"body":body,"head":body.head,"skeleton":body.skeleton,"arms":[body.attach(16),body.attach(17)],"legs":[body.attach(1),body.attach(2)],"jersey":body.jersey,"shorts":body.shorts,"marker":marker,"label":name_label,"control":control_label,"fire":fire,"mesh_parts":collect_mesh_parts(body),"aim_indicator":aim_root,"aim_ring":aim_ring,"aim_outer":aim_outer,"aim_pips":aim_pips,"aim_label":aim_label,"shadow":shadow,"shadow_mat":shadow_mat}
+ return {"root":root,"body":body,"head":body.head,"skeleton":body.skeleton,"arms":[body.attach(16),body.attach(17)],"legs":[body.attach(1),body.attach(2)],"jersey":body.jersey,"shorts":body.shorts,"marker":marker,"label":name_label,"control":control_label,"fire":fire,"mesh_parts":collect_mesh_parts(body),"aim_indicator":aim_root,"aim_ring":aim_ring,"aim_outer":aim_outer,"aim_pips":aim_pips,"aim_label":aim_label,"shadow":shadow,"shadow_mat":shadow_mat,"numbers":body.number_labels}
 
 func collect_mesh_parts(node: Node) -> Array:
  var parts: Array = []
@@ -888,7 +892,9 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
    var color = Teams.color_for(state.teams[i/2])
    athletes[i].jersey.albedo_color = color
    athletes[i].shorts.albedo_color = color.darkened(0.25)
-   athletes[i].label.text = Teams.DATA[state.teams[i/2]].players[i%2]
+   var roster_name: String = Teams.DATA[state.teams[i/2]].players[i%2]
+   athletes[i].label.text = roster_name
+   athletes[i].body.set_portrait_head(roster_name)
  for i in range(4):
   var p: Dictionary = state.players[i]
   var actor: Dictionary = athletes[i]
@@ -1140,6 +1146,7 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
   actor.marker.visible = controlled_slots.has(i)
   actor.control.text = ("P1" if i < 2 else "P2") if controlled_slots.has(i) else ""
   actor.control.position.y = 2.72+actor.body.position.y
+  actor.label.visible = true
   actor.label.position.y = 2.35+actor.body.position.y
   if p.receive_jump > 0 or (not state.flight.is_empty() and state.flight.get("finish","") == "alley_oop" and state.flight.shooter == i):
    actor.label.position.y = 3.1+actor.body.position.y
@@ -1415,6 +1422,67 @@ func present(state: MatchState, positions: Array, ball: Vector2, controlled_slot
    var base_pos = ball_trail_history[hist_idx] if hist_idx >= 0 else basketball.global_position
    ember.position = base_pos + Vector3(0, 0.10 + 0.08 * sin(time * 17.0 + i), 0)
    ember.scale = Vector3.ONE * (1.0 - float(i) / 10.0)
+
+# One athlete, fixed on the center mark, seen from the sideline. Run and shoot
+# clips already discard horizontal root motion, and the root node never moves.
+func present_side_view(entry: Dictionary, action: String, delta: float) -> void:
+ render_target_update_mode = SubViewport.UPDATE_ALWAYS
+ time += delta
+ for i in range(athletes.size()):
+  athletes[i].root.visible = i == 0
+ basketball.visible = false
+ if is_instance_valid(ball_shadow):
+  ball_shadow.visible = false
+ for ember in ball_fire:
+  ember.visible = false
+ for particle in ball_trail:
+  particle.visible = false
+ var shown: Dictionary = athletes[0]
+ var roster_name := str(entry.name)
+ var team_index := int(entry.team)
+ var color = Teams.color_for(team_index)
+ shown.jersey.albedo_color = color
+ shown.shorts.albedo_color = color.darkened(0.25)
+ shown.label.text = roster_name
+ shown.label.visible = false
+ for number in shown.numbers:
+  number.text = str(int(entry.slot) + 1)
+ shown.body.set_portrait_head(roster_name)
+ for part in shown.mesh_parts:
+  part.mesh.material_override = part.material
+ shown.marker.visible = false
+ shown.control.text = ""
+ shown.aim_indicator.visible = false
+ shown.aim_label.visible = false
+ for flame in shown.fire:
+  flame.visible = false
+ shown.root.position = Vector3.ZERO
+ shown.body.position = Vector3.ZERO
+ # Profile faces downcourt so the sideline camera sees a true side view.
+ shown.body.rotation = Vector3(0.0, PI * 0.5, 0.0)
+ shown.skeleton.clear_bones_global_pose_override()
+ var clip_action = action if action == "shoot" else "run"
+ shown.body.animate(clip_action, delta, -1.0, 1.0, false, "")
+ _plant_feet(shown)
+ var lift = shown.body.position.y
+ shown.label.position = Vector3(0.0, 2.35 + lift, 0.0)
+ shown.control.position = Vector3(0.0, 2.72 + lift, 0.0)
+ var spread = 1.0 + minf(lift * 0.38, 1.3)
+ shown.shadow.scale = Vector3(spread, 1.0, spread)
+ shown.shadow_mat.albedo_color.a = clampf(0.60 - lift * 0.11, 0.12, 0.60)
+ camera.fov = SIDE_CAM_FOV
+ camera.position = SIDE_CAM_POSITION
+ camera.look_at(SIDE_CAM_TARGET)
+
+func _plant_feet(actor: Dictionary) -> void:
+ var lowest_foot = 100.0
+ var skeleton: Skeleton3D = actor.skeleton
+ for bone in [7, 8, 10, 11]:
+  var foot_trans: Transform3D = skeleton.global_transform * skeleton.get_bone_global_pose(bone)
+  lowest_foot = minf(lowest_foot, foot_trans.origin.y)
+ var sneaker_bottom = lowest_foot - 0.045
+ if sneaker_bottom < 0.0:
+  actor.body.position.y += -sneaker_bottom
 
 func shot_meter_position(index: int) -> Vector2:
  var actor: Dictionary = athletes[index]

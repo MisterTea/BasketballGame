@@ -1,4 +1,4 @@
-# Rim Rumble Game Design Document Template
+# Capital Punishment Basketball Game Design Document Template
 
 > Working template for creative direction, production planning, and investment decisions
 
@@ -6,7 +6,7 @@ This document turns a game idea into a fundable production plan. It should make 
 
 | **Document field** |                 **Working value**                  |
 |:-------------------|:--------------------------------------------------:|
-| Project            |                     Rim Rumble                     |
+| Project            |          Capital Punishment Basketball           |
 | Genre              |                 Arcade basketball                  |
 | Document owner     |                   Name and role                    |
 | Version            |                        0.1                         |

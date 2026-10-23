@@ -12,6 +12,15 @@ tests/*.png.import
 __pycache__/
 *.pyc
 
+tools/henny_head/.venv/
+tools/henny_head/vendor/
+tools/henny_head/models/
+tools/henny_head/candidates/
+tools/henny_head/dataset/
+tools/henny_head/roster/
+
+.DS_Store
+
 base/
 nvram/
 snap/

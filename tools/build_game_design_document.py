@@ -10,7 +10,7 @@ from docx.shared import Inches, Pt, RGBColor
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "docs" / "Rim_Rumble_Game_Design_Document_Template.docx"
+OUTPUT = ROOT / "docs" / "Capital_Punishment_Basketball_Game_Design_Document_Template.docx"
 
 NAVY = "17365D"
 BLUE = "DCE6F1"
@@ -299,7 +299,7 @@ def build():
     # Cover
     doc.add_paragraph().paragraph_format.space_after = Pt(50)
     p = doc.add_paragraph(style="Title")
-    p.add_run("Rim Rumble Game Design Document Template")
+    p.add_run("Capital Punishment Basketball Game Design Document Template")
     remove_paragraph_borders(p)
     p = doc.add_paragraph(style="Subtitle")
     p.add_run("A working brief for creative direction production planning and investment decisions")
@@ -311,7 +311,7 @@ def build():
         doc,
         ["Document field", "Working value"],
         [
-            ["Project", "Rim Rumble"],
+            ["Project", "Capital Punishment Basketball"],
             ["Genre", "Arcade basketball"],
             ["Document owner", "Name and role"],
             ["Version", "0.1"],
@@ -1144,7 +1144,7 @@ def build():
     # Header and footer, after content so all sections inherit the same setup.
     for sec in doc.sections:
         hp = sec.header.paragraphs[0]
-        hp.text = "RIM RUMBLE  GAME DESIGN DOCUMENT"
+        hp.text = "CAPITAL PUNISHMENT BASKETBALL  GAME DESIGN DOCUMENT"
         hp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         hp.paragraph_format.space_after = Pt(0)
         if hp.runs:
@@ -1156,10 +1156,10 @@ def build():
     doc.sections[0].different_first_page_header_footer = True
 
     # Core properties.
-    doc.core_properties.title = "Rim Rumble Game Design Document Template"
+    doc.core_properties.title = "Capital Punishment Basketball Game Design Document Template"
     doc.core_properties.subject = "Game design production and investment planning template"
-    doc.core_properties.author = "Rim Rumble project team"
-    doc.core_properties.keywords = "game design document, GDD, production, budget, financing, Rim Rumble"
+    doc.core_properties.author = "Capital Punishment Basketball project team"
+    doc.core_properties.keywords = "game design document, GDD, production, budget, financing, Capital Punishment Basketball"
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     doc.save(OUTPUT)

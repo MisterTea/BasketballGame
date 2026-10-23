@@ -1,0 +1,18 @@
+{
+  "HENNY": "res://voices/announcer/names/henny.wav",
+  "GAUCI": "res://voices/announcer/names/gauci.wav",
+  "WANG": "res://voices/announcer/names/wang.wav",
+  "WATERS": "res://voices/announcer/names/waters.wav",
+  "GHOST": "res://voices/announcer/names/ghost.wav",
+  "STEEL": "res://voices/announcer/names/steel.wav",
+  "FLASH": "res://voices/announcer/names/flash.wav",
+  "VICE": "res://voices/announcer/names/vice.wav",
+  "STORM": "res://voices/announcer/names/storm.wav",
+  "VOLT": "res://voices/announcer/names/volt.wav",
+  "DIESEL": "res://voices/announcer/names/diesel.wav",
+  "TORQUE": "res://voices/announcer/names/torque.wav",
+  "FLARE": "res://voices/announcer/names/flare.wav",
+  "ORBIT": "res://voices/announcer/names/orbit.wav",
+  "LUCKY": "res://voices/announcer/names/lucky.wav",
+  "ANCHOR": "res://voices/announcer/names/anchor.wav"
+}

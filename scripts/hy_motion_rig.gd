@@ -10,6 +10,16 @@ var skeleton: Skeleton3D
 var rest: Array = []
 var attachments: Dictionary = {}
 var head: Node3D
+var procedural_head: Node3D
+var henny_head: Node3D
+var portrait_heads := {}
+var number_labels: Array = []
+const PORTRAIT_HEADS := {
+ "HENNY": "res://assets/henny_head.glb",
+ "GAUCI": "res://assets/gauci_head.glb",
+ "WANG": "res://assets/wang_head.glb",
+ "WATERS": "res://assets/waters_head.glb",
+}
 var jersey: StandardMaterial3D
 var shorts: StandardMaterial3D
 var action = ""
@@ -85,21 +95,25 @@ func initialize(arena: Node, index: int) -> void:
  head = Node3D.new()
  attach(15).add_child(head)
  head.position.y = 0.075
+ procedural_head = Node3D.new()
+ procedural_head.name = "ProceduralHead"
+ head.add_child(procedural_head)
  var skull = SphereMesh.new()
  skull.radius = 0.19
  skull.height = 0.42
  skull.radial_segments = 8
  skull.rings = 4
- arena.mesh(head,skull,Vector3.ZERO,skin,"LowPolyHead")
+ arena.mesh(procedural_head,skull,Vector3.ZERO,skin,"LowPolyHead")
  var hair = SphereMesh.new()
  hair.radius = 0.195
  hair.height = 0.23
  hair.radial_segments = 8
  hair.rings = 3
- arena.mesh(head,hair,Vector3(0,0.12,-0.015),arena.material(Color("24232a")))
- arena.box(head,Vector3(0.07,0.09,0.08),Vector3(0,-0.01,0.18),skin)
+ arena.mesh(procedural_head,hair,Vector3(0,0.12,-0.015),arena.material(Color("24232a")))
+ arena.box(procedural_head,Vector3(0.07,0.09,0.08),Vector3(0,-0.01,0.18),skin)
  for side in [-1,1]:
-  arena.box(head,Vector3(0.03,0.03,0.02),Vector3(side*0.075,0.04,0.177),arena.material(Color("181e29")))
+  arena.box(procedural_head,Vector3(0.03,0.03,0.02),Vector3(side*0.075,0.04,0.177),arena.material(Color("181e29")))
+ _load_portrait_heads()
  for wrist in [20,21]:
   var shape = SphereMesh.new()
   shape.radius = 0.085
@@ -117,8 +131,51 @@ func initialize(arena: Node, index: int) -> void:
   var number = arena.label_3d(attach(6),str(index%2+1),Vector3(0,0.04,side*0.175),0.0055,Color("fff2db"),false)
   number.rotation.y = PI if side == -1 else 0
   number.outline_size = 4
+  number_labels.append(number)
  # Apply a real generated pose immediately; never show the rest T-pose in play.
  sample("idle",0.0,1.0,false)
+
+func _load_portrait_heads() -> void:
+ for roster_name in PORTRAIT_HEADS:
+  var holder = Node3D.new()
+  holder.name = roster_name.left(1) + roster_name.substr(1).to_lower() + "Head"
+  holder.visible = false
+  head.add_child(holder)
+  portrait_heads[roster_name] = holder
+  var path: String = PORTRAIT_HEADS[roster_name]
+  if not ResourceLoader.exists(path):
+   continue
+  var packed = load(path)
+  if packed == null or not (packed is PackedScene):
+   continue
+  var instance = (packed as PackedScene).instantiate()
+  instance.name = holder.name + "Mesh"
+  holder.add_child(instance)
+  _enable_vertex_colors(instance)
+ henny_head = portrait_heads["HENNY"]
+
+func set_portrait_head(roster_name: String) -> void:
+ var show_portrait = false
+ for name in portrait_heads:
+  var holder: Node3D = portrait_heads[name]
+  var show = name == roster_name and holder.get_child_count() > 0
+  holder.visible = show
+  show_portrait = show_portrait or show
+ procedural_head.visible = not show_portrait
+
+func _enable_vertex_colors(node: Node) -> void:
+ if node is MeshInstance3D:
+  var mesh_instance := node as MeshInstance3D
+  if mesh_instance.mesh:
+   for surface in mesh_instance.mesh.get_surface_count():
+    var material = mesh_instance.get_active_material(surface)
+    material = material.duplicate() if material else StandardMaterial3D.new()
+    if material is StandardMaterial3D:
+     material.vertex_color_use_as_albedo = true
+     material.roughness = 0.62
+    mesh_instance.set_surface_override_material(surface, material)
+ for child in node.get_children():
+  _enable_vertex_colors(child)
 
 func attach(index: int) -> BoneAttachment3D:
  if attachments.has(index):
@@ -129,6 +186,16 @@ func attach(index: int) -> BoneAttachment3D:
  skeleton.add_child(attachment)
  attachments[index] = attachment
  return attachment
+
+func clip_length(clip_name: String) -> float:
+ if not library.has(clip_name):
+  return 1.0
+ var clip: Dictionary = library[clip_name]
+ var frames = maxi(int(clip.frames), 1)
+ var fps = maxf(float(clip.fps), 1.0)
+ if clip.loop:
+  return float(frames) / fps
+ return float(maxi(frames - 1, 1)) / fps
 
 func sample(clip_name: String, seconds: float, blend: float = 1.0, authoritative_jump: bool = false, filter_heading: bool = false) -> void:
  if not library.has(clip_name):

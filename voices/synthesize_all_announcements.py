@@ -16,6 +16,9 @@ CLONED_DATA_DIR = os.path.join(BASE_DIR, "cloned_announcer_voxcpm")
 REF_PATH = os.path.join(CLONED_DATA_DIR, "announcer_composite_ref.wav")
 
 ANNOUNCEMENTS = [
+    # Title sting, played when the main menu scene starts.
+    {"id": "capital_punishment_basketball", "banner": "CAPITAL PUNISHMENT BASKETBALL", "phrase": "Capital Punishment Basketball!"},
+
     # Tipoff & Start
     {"id": "tip_off", "banner": "TIP OFF!", "phrase": "Tip off!"},
     {"id": "center_court", "banner": "CENTER COURT — SHOOT TO JUMP", "phrase": "Center court! Shoot to jump!"},

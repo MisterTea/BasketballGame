@@ -5,11 +5,15 @@ set -eu
 project_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 godot=""
 quickplay=0
+sideview=0
 
 for arg in "$@"; do
     case "$arg" in
         --quickplay|--quick-play|-q|--qp|-QuickPlay|-quickplay)
             quickplay=1
+            ;;
+        --sideview|--side-view)
+            sideview=1
             ;;
         *)
             if [ -z "$godot" ] && [ -e "$arg" ]; then
@@ -40,7 +44,10 @@ fi
 echo "Building latest project code..."
 "$godot" --headless --editor --path "$project_dir" --quit
 
-if [ "$quickplay" -eq 1 ]; then
+if [ "$sideview" -eq 1 ]; then
+    echo "Starting Basketball Game side view..."
+    exec "$godot" --path "$project_dir" -- --sideview
+elif [ "$quickplay" -eq 1 ]; then
     echo "Starting Basketball Game in Quick Play..."
     exec "$godot" --path "$project_dir" -- --quickplay
 else

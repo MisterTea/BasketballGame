@@ -25,6 +25,9 @@ func run() -> void:
 	check(main.announcer_player != null, "Announcer AudioStreamPlayer exists on main scene")
 	check(main.announcer_voices is Dictionary, "announcer_voices dictionary is initialized")
 	check(main.announcer_voices.size() > 0, "announcer_voices loaded audio clips (count: %d)" % main.announcer_voices.size())
+	var title_call = main.get_announcer_stream("CAPITAL PUNISHMENT BASKETBALL")
+	check(title_call != null, "Title call resolves for CAPITAL PUNISHMENT BASKETBALL")
+	check(main.announcer_player.stream == title_call, "Main menu start plays Capital Punishment Basketball")
 
 	# Test 1: Exact matches
 	var exact_tests = [
@@ -41,7 +44,7 @@ func run() -> void:
 
 	# Test 2: Dynamic pattern matches
 	var dynamic_tests = [
-		"HE'S ON FIRE! HENNONHOEFER",
+		"HE'S ON FIRE! HENNY",
 		"HE'S HEATING UP! WANG",
 		"INFERNO WINS THE TIP!",
 		"AFTERSHOCK WINS THE TIP!",
@@ -118,6 +121,69 @@ func run() -> void:
 	# Test 11: Period transition has maximum priority 32
 	main.play_announcer("HALFTIME • SWITCH ENDS")
 	check(main.announcer_current_priority == 32, "Period transition sets maximum priority (32)")
+
+	# Test 12: Every roster name is its own announcer chunk (SPEECH.ASM name_speech)
+	var roster_names: Array = []
+	for team in Teams.DATA:
+		for pname in team.players:
+			roster_names.append(pname)
+			check(main.announcer_names.has(pname) and main.announcer_names[pname] is AudioStreamWAV, "Name clip loaded for %s" % pname)
+	check(roster_names.size() == 16, "Roster has 16 player names")
+
+	# Test 13: Scoring speech prepends the scorer's name chunk, then the phrase
+	main.announcer_player.stop()
+	main.announcer_busy_until = 0.0
+	main.announcer_current_priority = 0
+	main.announcer_last_name_player = -1
+	main.announcer_last_name_time = -10.0
+	main.game.announce("BOOMSHAKALAKA!", "dunk", 0)
+	var boom = main.get_announcer_stream("BOOMSHAKALAKA!") as AudioStreamWAV
+	var henny = main.announcer_names["HENNY"] as AudioStreamWAV
+	main.play_announcer(main.game.banner)
+	var named_boom = main.announcer_player.stream as AudioStreamWAV
+	check(named_boom != null and named_boom.data.slice(0, henny.data.size()) == henny.data, "Made basket starts with the scorer's name chunk")
+	check(named_boom.get_length() > boom.get_length() + 0.2, "Name chunk is prepended ahead of the scoring phrase")
+
+	# Test 14: call_player_name will not repeat the same player inside 2 seconds
+	main.announcer_player.stop()
+	main.announcer_busy_until = 0.0
+	main.announcer_current_priority = 0
+	main.game.announce("SLAM DUNK!", "dunk", 0)
+	var slam = main.get_announcer_stream("SLAM DUNK!") as AudioStreamWAV
+	main.play_announcer(main.game.banner)
+	var repeat_slam = main.announcer_player.stream as AudioStreamWAV
+	check(repeat_slam != null and absf(repeat_slam.get_length() - slam.get_length()) < 0.02, "Same player's name is not repeated within 2 seconds")
+
+	# Test 15: A different player is named on the next call
+	main.announcer_player.stop()
+	main.announcer_busy_until = 0.0
+	main.announcer_current_priority = 0
+	main.game.announce("FROM DOWNTOWN!", "score", 1)
+	var gauci = main.announcer_names["GAUCI"] as AudioStreamWAV
+	main.play_announcer(main.game.banner)
+	var named_three = main.announcer_player.stream as AudioStreamWAV
+	check(named_three != null and named_three.data.slice(0, gauci.data.size()) == gauci.data, "A different scorer's name leads the next call")
+
+	# Test 16: Rebounds use the name-then-phrase speech script
+	main.announcer_player.stop()
+	main.announcer_busy_until = 0.0
+	main.announcer_current_priority = 0
+	main.last_announcer_time = -10.0
+	main.game.announce("REBOUND!", "catch", 2)
+	var wang = main.announcer_names["WANG"] as AudioStreamWAV
+	main.play_announcer(main.game.banner)
+	var named_board = main.announcer_player.stream as AudioStreamWAV
+	check(named_board != null and named_board.data.slice(0, wang.data.size()) == wang.data, "Rebound call starts with the rebounder's name chunk")
+
+	# Test 17: Calls with no subject player stay phrase-only
+	main.announcer_player.stop()
+	main.announcer_busy_until = 0.0
+	main.announcer_current_priority = 0
+	main.game.announce("QUARTER 1", "whistle")
+	var quarter = main.get_announcer_stream("QUARTER 1") as AudioStreamWAV
+	main.play_announcer(main.game.banner)
+	var quarter_played = main.announcer_player.stream as AudioStreamWAV
+	check(quarter_played != null and absf(quarter_played.get_length() - quarter.get_length()) < 0.02, "Period call is not prefixed with a player name")
 
 	main.queue_free()
 	await process_frame

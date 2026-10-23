@@ -1,4 +1,4 @@
-# Rim Rumble
+# Capital Punishment Basketball
 
 An original Godot 4.5 arcade basketball game inspired by the pace and three-button controls of NBA Jam. The project contains all source, a true 3D arena with procedural meshes and textures, and synthesized sound; no asset downloads or addons are required.
 

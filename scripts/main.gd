@@ -4,6 +4,7 @@ const ArenaView = preload("res://scripts/arena_3d.gd")
 var arena: SubViewport
 
 const BASE_WINDOW_SIZE = Vector2i(1280, 800)
+const SIDE_VIEW_RUN_SECONDS = 6.0
 const BG = Color("091321")
 const INK = Color("e9f3ff")
 const MUTED = Color("8195ae")
@@ -46,16 +47,23 @@ var sound_player_idx: int = 0
 var sound_player: AudioStreamPlayer
 var announcer_player: AudioStreamPlayer
 var announcer_voices: Dictionary = {}
+var announcer_names: Dictionary = {}
 var announcer_current_priority: int = 0
 var announcer_busy_until: float = 0.0
 var last_announcer_time: float = -10.0
 var last_announcer_phrase: String = ""
+# call_player_name skips the same player for TSEC*2 (SPEECH.ASM:2455).
+var announcer_last_name_player: int = -1
+var announcer_last_name_time: float = -10.0
 var status_label: Label
 var is_bot: bool = false
 var record_duration: float = 0.0
 var record_elapsed: float = 0.0
 var last_athlete_vels: Array = [Vector2.ZERO, Vector2.ZERO, Vector2.ZERO, Vector2.ZERO]
 var squeak_cooldown: float = 0.0
+var side_roster_index = 0
+var side_action = "run"
+var side_action_elapsed = 0.0
 
 func _ready() -> void:
  configure_macos_window()
@@ -112,7 +120,10 @@ func _ready() -> void:
   if (all_args[i] == "--record-duration" or all_args[i] == "--duration") and i + 1 < all_args.size():
    record_duration = all_args[i + 1].to_float()
  var is_quickplay = args.has("--quickplay") or args.has("--quick-play") or all_args.has("--quickplay") or all_args.has("--quick-play")
- if is_quickplay:
+ var is_side_view = has_side_view_flag(args) or has_side_view_flag(all_args)
+ if is_side_view:
+  begin_side_view()
+ elif is_quickplay:
   mode = "solo"
   local_two = false
   var match_teams = [picks[0], picks[1]]
@@ -151,6 +162,7 @@ func _ready() -> void:
   begin_match({"teams":[0,1], "seconds":15.0, "level":1})
  else:
   show_menu()
+  play_announcer("CAPITAL PUNISHMENT BASKETBALL", true)
 
 func configure_macos_window() -> void:
  if OS.get_name() != "macOS" or DisplayServer.get_name() == "headless":
@@ -330,10 +342,11 @@ func show_menu() -> void:
  paused = false
  clear_ui()
 
- label_at("2 ON 2  /  FULL COURT  /  NO FOULS",80,60,16,GOLD)
- label_at("RIM",76,98,100)
- label_at("RUMBLE",76,192,100,GOLD)
- label_at("BIG AIR. HOT HANDS. ZERO MERCY.",83,310,20,MUTED)
+ label_at("2 ON 2  /  FULL COURT  /  NO FOULS",80,46,16,GOLD)
+ label_at("CAPITAL",76,68,64)
+ label_at("PUNISHMENT",76,134,64,GOLD)
+ label_at("BASKETBALL",76,200,64)
+ label_at("BIG AIR. HOT HANDS. ZERO MERCY.",83,292,20,MUTED)
  var qp_btn = button("QUICK PLAY   →",82,376,440,func(): mode = "solo"; local_two = false; show_selection(),true,58)
  button("LOCAL VERSUS",82,448,212,func(): mode = "local"; local_two = true; show_selection())
  button("ARCADE LADDER",308,448,214,func(): mode = "ladder"; local_two = false; tournament_round = 0; tournament_wins = 0; show_selection())
@@ -577,7 +590,52 @@ func toggle_pause() -> void:
    button("END GAME",420,436,440,show_menu)
    resume_btn.grab_focus()
 
+func has_side_view_flag(args: PackedStringArray) -> bool:
+ return args.has("--sideview") or args.has("--side-view")
+
+func begin_side_view() -> void:
+ screen = "sideview"
+ paused = false
+ clear_ui()
+ side_roster_index = 0
+ side_action = "run"
+ side_action_elapsed = 0.0
+ arena.size = Vector2i(1280, 800)
+ update_side_view(0.0)
+
+func cycle_side_player(step: int) -> void:
+ var count = Teams.roster().size()
+ if count == 0:
+  return
+ side_roster_index = posmod(side_roster_index + step, count)
+ side_action = "run"
+ side_action_elapsed = 0.0
+
+func update_side_view(delta: float) -> void:
+ var roster = Teams.roster()
+ if roster.is_empty() or not is_instance_valid(arena) or arena.athletes.is_empty():
+  return
+ side_action_elapsed += delta
+ if side_action == "shoot":
+  if side_action_elapsed >= arena.athletes[0].body.clip_length("shoot"):
+   side_action = "run"
+   side_action_elapsed = 0.0
+ elif side_action_elapsed >= SIDE_VIEW_RUN_SECONDS:
+  side_action = "shoot"
+  side_action_elapsed = 0.0
+ var entry: Dictionary = roster[posmod(side_roster_index, roster.size())]
+ arena.present_side_view(entry, side_action, delta)
+
 func _unhandled_input(event: InputEvent) -> void:
+ if screen == "sideview" and event is InputEventKey and event.pressed and not event.echo:
+  if event.physical_keycode == KEY_D:
+   cycle_side_player(1)
+   get_viewport().set_input_as_handled()
+   return
+  if event.physical_keycode == KEY_A:
+   cycle_side_player(-1)
+   get_viewport().set_input_as_handled()
+   return
  if event is InputEventKey and event.pressed and not event.echo:
   if event.keycode == KEY_M:
    muted = not muted
@@ -860,12 +918,36 @@ func load_announcer_voices() -> void:
      if stream:
       announcer_voices[base_id] = stream
    file_name = dir.get_next()
+ load_player_name_voices()
+
+func load_player_name_voices() -> void:
+ announcer_names.clear()
+ var manifest_path = "res://voices/announcer/names/names_manifest.json"
+ if FileAccess.file_exists(manifest_path):
+  var f = FileAccess.open(manifest_path, FileAccess.READ)
+  if f:
+   var parsed = JSON.parse_string(f.get_as_text())
+   if parsed is Dictionary:
+    for key in parsed:
+     var stream = load_audio_clip(str(parsed[key]))
+     if stream:
+      announcer_names[str(key).to_upper()] = stream
+ var dir = DirAccess.open("res://voices/announcer/names")
+ if dir:
+  dir.list_dir_begin()
+  var file_name = dir.get_next()
+  while file_name != "":
+   if not dir.current_is_dir() and file_name.ends_with(".wav"):
+    var base_id = file_name.get_basename().to_upper()
+    if not announcer_names.has(base_id):
+     var stream = load_audio_clip("res://voices/announcer/names/" + file_name)
+     if stream:
+      announcer_names[base_id] = stream
+   file_name = dir.get_next()
 
 func load_audio_clip(path: String) -> AudioStream:
- if ResourceLoader.exists(path):
-  var res = load(path)
-  if res is AudioStream:
-   return res
+ # Read the source WAV. The imported stream is QOA, which cannot be joined
+ # to a name chunk the way SPEECH.ASM concatenates speech samples.
  if FileAccess.file_exists(path):
   var fa = FileAccess.open(path, FileAccess.READ)
   if fa:
@@ -873,6 +955,10 @@ func load_audio_clip(path: String) -> AudioStream:
    var stream = parse_wav(buffer)
    if stream:
     return stream
+ if ResourceLoader.exists(path):
+  var res = load(path)
+  if res is AudioStream:
+   return res
  return null
 
 func parse_wav(bytes: PackedByteArray) -> AudioStreamWAV:
@@ -969,6 +1055,55 @@ func get_announcer_priority(banner_text: String) -> int:
   return 7
  return 5
 
+# SPEECH.ASM rebound and team scripts build sound_ram as name chunk, then phrase.
+# Trimmed name clips have no tail, so a short gap stands in for that sample tail.
+const ANNOUNCER_NAME_GAP := 0.07
+
+func announcer_name_clip(player_index: int) -> AudioStreamWAV:
+ if game == null or player_index < 0 or player_index >= game.players.size():
+  return null
+ var team_idx = int(game.teams[player_index / 2])
+ var roster: Array = Teams.DATA[posmod(team_idx, Teams.DATA.size())].players
+ var clip = announcer_names.get(str(roster[player_index % 2]), null)
+ if clip is AudioStreamWAV:
+  return clip
+ return null
+
+func speech_script(name_clip: AudioStreamWAV, phrase: AudioStreamWAV) -> AudioStream:
+ if name_clip.mix_rate != phrase.mix_rate or name_clip.stereo != phrase.stereo or name_clip.format != phrase.format:
+  return phrase
+ if name_clip.data.is_empty() or phrase.data.is_empty():
+  return phrase
+ var bytes_per_frame = 2
+ if name_clip.format == AudioStreamWAV.FORMAT_8_BITS:
+  bytes_per_frame = 1
+ elif name_clip.format != AudioStreamWAV.FORMAT_16_BITS:
+  return phrase
+ if name_clip.stereo:
+  bytes_per_frame *= 2
+ var gap = PackedByteArray()
+ gap.resize(int(float(name_clip.mix_rate) * ANNOUNCER_NAME_GAP) * bytes_per_frame)
+ var script = AudioStreamWAV.new()
+ script.format = phrase.format
+ script.stereo = phrase.stereo
+ script.mix_rate = phrase.mix_rate
+ var joined = name_clip.data.duplicate()
+ joined.append_array(gap)
+ joined.append_array(phrase.data)
+ script.data = joined
+ return script
+
+func prepend_player_name(phrase: AudioStream, player_index: int) -> AudioStream:
+ var name_clip = announcer_name_clip(player_index)
+ if name_clip == null or not (phrase is AudioStreamWAV):
+  return phrase
+ var now = Time.get_ticks_msec() / 1000.0
+ if player_index == announcer_last_name_player and (now - announcer_last_name_time) < 2.0:
+  return phrase
+ announcer_last_name_player = player_index
+ announcer_last_name_time = now
+ return speech_script(name_clip, phrase)
+
 func play_announcer(banner_text: String, force: bool = false) -> void:
  if muted or announcer_player == null or banner_text.is_empty():
   return
@@ -1034,6 +1169,8 @@ func play_announcer(banner_text: String, force: bool = false) -> void:
     return
 
  var stream = get_announcer_stream(banner_text)
+ if stream != null and game != null and banner_text == game.banner and game.banner_player >= 0:
+  stream = prepend_player_name(stream, game.banner_player)
  if stream != null:
   announcer_player.stream = stream
   announcer_player.play()
@@ -1053,6 +1190,9 @@ func text_at(text: String, pos: Vector2, size: int = 20, color: Color = INK, cen
 
 func _draw() -> void:
  if font == null:
+  return
+ if screen == "sideview":
+  draw_side_view()
   return
  if screen == "game" or screen == "results":
   draw_arena()
@@ -1074,6 +1214,22 @@ func _draw() -> void:
    draw_arc(Vector2(1078,350),165,PI-0.93,PI+0.93,45,Color("6d3629"),5,true)
    text_at("EST. 2026",Vector2(936,161),16,MUTED,true)
    text_at("★  ARCADE BASKETBALL  ★",Vector2(936,548),16,GOLD,true)
+
+func draw_side_view() -> void:
+ if is_instance_valid(arena):
+  draw_texture_rect(arena.get_texture(), Rect2(0, 0, 1280, 800), false)
+ var roster = Teams.roster()
+ if roster.is_empty():
+  return
+ var entry: Dictionary = roster[posmod(side_roster_index, roster.size())]
+ var team: Dictionary = Teams.DATA[int(entry.team)]
+ var color = Teams.color_for(int(entry.team))
+ draw_rect(Rect2(0, 736, 1280, 64), Color(0.04, 0.07, 0.12, 0.88))
+ draw_rect(Rect2(0, 736, 1280, 3), color)
+ text_at(str(entry.name), Vector2(36, 778), 32, INK)
+ text_at("%s  %s" % [team.city, team.name], Vector2(280, 776), 20, color)
+ text_at("A  PREVIOUS", Vector2(900, 776), 18, MUTED)
+ text_at("D  NEXT", Vector2(1108, 776), 18, GOLD)
 
 func draw_arena() -> void:
  # A true 3D viewport is composited between the existing HUD and controls.
@@ -1294,6 +1450,10 @@ func set_initials(value: String) -> void:
 
 func _process(delta: float) -> void:
  if not is_instance_valid(arena):
+  return
+ if screen == "sideview":
+  update_side_view(delta)
+  queue_redraw()
   return
  if screen != "game" and screen != "results":
   arena.render_target_update_mode = SubViewport.UPDATE_DISABLED

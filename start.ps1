@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Rebuilds the Godot project and launches Rim Rumble.
+    Rebuilds the Godot project and launches Capital Punishment Basketball.
 
 .DESCRIPTION
     1. Locates Godot 4.5.1+ (from PATH or portable installation in Temp\jam-godot).
@@ -38,9 +38,9 @@ param(
 $ErrorActionPreference = "Stop"
 $projectRoot = $PSScriptRoot
 
-Write-Host "=========================================" -ForegroundColor Cyan
-Write-Host "    Rim Rumble - Build and Launch       " -ForegroundColor Cyan
-Write-Host "=========================================" -ForegroundColor Cyan
+Write-Host "=======================================================" -ForegroundColor Cyan
+Write-Host "   Capital Punishment Basketball - Build and Launch    " -ForegroundColor Cyan
+Write-Host "=======================================================" -ForegroundColor Cyan
 
 # Step 1: Locate Godot engine
 if (-not $Godot) {
@@ -116,7 +116,7 @@ if (-not $Console -and ($launchExe -match '_console\.exe$')) {
 }
 
 # Step 5: Launch the rebuilt game
-Write-Host "Launching Rim Rumble..." -ForegroundColor Cyan
+Write-Host "Launching Capital Punishment Basketball..." -ForegroundColor Cyan
 $gameArgs = @("--path", $projectRoot)
 if ($QuickPlay -or $HomeTeam -ge 0 -or $AwayTeam -ge 0 -or (-not [string]::IsNullOrWhiteSpace($Teams))) {
     $gameArgs += @("--", "--quickplay")

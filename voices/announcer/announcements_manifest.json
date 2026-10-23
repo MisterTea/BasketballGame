@@ -1,4 +1,6 @@
 {
+  "CAPITAL PUNISHMENT BASKETBALL": "res://voices/announcer/capital_punishment_basketball.wav",
+  "capital_punishment_basketball": "res://voices/announcer/capital_punishment_basketball.wav",
   "TIP OFF!": "res://voices/announcer/tip_off.wav",
   "tip_off": "res://voices/announcer/tip_off.wav",
   "CENTER COURT \u2014 SHOOT TO JUMP": "res://voices/announcer/center_court.wav",

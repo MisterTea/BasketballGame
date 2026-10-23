@@ -191,6 +191,9 @@ var phase = "playing"
 var freeze = 1.5
 var banner = "TIP OFF!"
 var banner_time = 2.0
+# Player the current banner is about, or -1. Presentation prepends that
+# player's name clip. SPEECH.ASM stores the name chunk ahead of the phrase.
+var banner_player: int = -1
 var event_id = 0
 var event_kind = "start"
 var elapsed = 0.0
@@ -326,9 +329,10 @@ func tick_tipoff(delta: float, commands: Dictionary) -> void:
  flight = {"kind":"pass","start":ball,"end":players[receiver].pos,"start_height":height,"time":0.0,"duration":0.35,"target":receiver,"alley":false,"tip":true}
  announce("%s WINS THE TIP!" % Teams.DATA[teams[winner]].name,"catch")
 
-func announce(message: String, kind: String = "action") -> void:
+func announce(message: String, kind: String = "action", player: int = -1) -> void:
  banner = message
  banner_time = 1.8
+ banner_player = player
  event_id += 1
  event_kind = kind
 
@@ -1233,7 +1237,7 @@ func tick(delta: float, commands: Dictionary) -> void:
      players[i].push_keep_ball = TE_PUSH_PROTECTION
      reset_shot_clock()
      stats[i].rebounds += 1
-     announce("REBOUND!", "catch")
+     announce("REBOUND!", "catch", i)
      break
 
 # plyr_d_seekcnt is #skt_t plus a quarter of that span, or 25 when the drone is 320 units from its hoop.
@@ -2840,7 +2844,7 @@ func tick_flight(delta: float) -> void:
     reset_shot_clock()
     if is_rebound:
      stats[winner].rebounds += 1
-     announce("REBOUND!", "catch")
+     announce("REBOUND!", "catch", winner)
     else:
      announce("LOOSE BALL!", "catch")
     return
@@ -2917,7 +2921,7 @@ func tick_flight(delta: float) -> void:
   if shattered:
    players[shooter].rim_hang = 0.0
    players[shooter].jump = 0.0
-   announce("BOOM! BACKBOARD SHATTERED!","shatter")
+   announce("BOOM! BACKBOARD SHATTERED!","shatter", shooter)
    flight = {}
    owner = -1
    ball = hoop_for(team)
@@ -2926,7 +2930,7 @@ func tick_flight(delta: float) -> void:
    shatter_shooter = shooter
    freeze = 1.65
   else:
-   announce(message,"fire" if ignited else ("dunk" if flight.dunk else "score"))
+   announce(message,"fire" if ignited else ("dunk" if flight.dunk else "score"), shooter)
    inbound(1-team, true, true)
  else:
   record_miss(shooter)
@@ -2992,7 +2996,7 @@ func next_period(from_transition: bool = false) -> void:
  inbound(gmqrtr & 1, false, false, true)
 
 func snapshot() -> Dictionary:
- return {"tipoff":tipoff.duplicate(true), "board_breaks":board_breaks.duplicate(), "pending_inbound":pending_inbound, "shatter_shooter":shatter_shooter, "players":players.duplicate(true), "teams":teams.duplicate(), "score":score.duplicate(), "streak":streak.duplicate(), "player_streak":player_streak.duplicate(), "fire_player":fire_player, "fire_points":fire_points, "fire_shots":fire_shots, "last_passer":last_passer, "assist_window":assist_window, "brick_count":brick_count.duplicate(), "inbounding_team":inbounding_team, "teammate_shot_order":teammate_shot_order, "stats":stats.duplicate(true), "ball":ball, "owner":owner, "flight":flight.duplicate(true), "clock":clock, "shot_clock":shot_clock, "quarter":quarter, "overtime":overtime, "phase":phase, "freeze":freeze, "banner":banner, "banner_time":banner_time, "event_id":event_id, "event_kind":event_kind, "elapsed":elapsed, "big_heads":big_heads, "infinite_turbo":infinite_turbo, "tournament_mode":tournament_mode, "no_pushing":no_pushing, "fast_passing":fast_passing, "maximum_power":maximum_power, "last_shot_feedback":last_shot_feedback.duplicate(true), "loose_ball_timer":loose_ball_timer, "ball_touch_lock":ball_touch_lock, "in_cylinder_timer":in_cylinder_timer, "must_rebound_timer":must_rebound_timer, "bullet_time_remaining":bullet_time_remaining, "inbound_transition":inbound_transition.duplicate(true), "quarter_transition":quarter_transition.duplicate(true), "quarter_scores":quarter_scores.duplicate(true), "clock_buzzer_sounded":clock_buzzer_sounded}
+ return {"tipoff":tipoff.duplicate(true), "board_breaks":board_breaks.duplicate(), "pending_inbound":pending_inbound, "shatter_shooter":shatter_shooter, "players":players.duplicate(true), "teams":teams.duplicate(), "score":score.duplicate(), "streak":streak.duplicate(), "player_streak":player_streak.duplicate(), "fire_player":fire_player, "fire_points":fire_points, "fire_shots":fire_shots, "last_passer":last_passer, "assist_window":assist_window, "brick_count":brick_count.duplicate(), "inbounding_team":inbounding_team, "teammate_shot_order":teammate_shot_order, "stats":stats.duplicate(true), "ball":ball, "owner":owner, "flight":flight.duplicate(true), "clock":clock, "shot_clock":shot_clock, "quarter":quarter, "overtime":overtime, "phase":phase, "freeze":freeze, "banner":banner, "banner_player":banner_player, "banner_time":banner_time, "event_id":event_id, "event_kind":event_kind, "elapsed":elapsed, "big_heads":big_heads, "infinite_turbo":infinite_turbo, "tournament_mode":tournament_mode, "no_pushing":no_pushing, "fast_passing":fast_passing, "maximum_power":maximum_power, "last_shot_feedback":last_shot_feedback.duplicate(true), "loose_ball_timer":loose_ball_timer, "ball_touch_lock":ball_touch_lock, "in_cylinder_timer":in_cylinder_timer, "must_rebound_timer":must_rebound_timer, "bullet_time_remaining":bullet_time_remaining, "inbound_transition":inbound_transition.duplicate(true), "quarter_transition":quarter_transition.duplicate(true), "quarter_scores":quarter_scores.duplicate(true), "clock_buzzer_sounded":clock_buzzer_sounded}
 
 func apply_snapshot(data: Dictionary) -> void:
  for key in data:
