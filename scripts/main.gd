@@ -952,8 +952,10 @@ func load_player_name_voices() -> void:
    file_name = dir.get_next()
 
 func load_audio_clip(path: String) -> AudioStream:
- # Read the source WAV. The imported stream is QOA, which cannot be joined
- # to a name chunk the way SPEECH.ASM concatenates speech samples.
+ # Name and phrase samples are concatenated as raw PCM, the way SPEECH.ASM
+ # joins speech chunks. Editor play can read the source WAV. Exported builds,
+ # including web, pack only the imported AudioStreamWAV, so those clips must
+ # stay uncompressed 16-bit PCM. QOA cannot be joined onto a name chunk.
  if FileAccess.file_exists(path):
   var fa = FileAccess.open(path, FileAccess.READ)
   if fa:

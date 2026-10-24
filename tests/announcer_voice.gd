@@ -175,7 +175,30 @@ func run() -> void:
 	var named_board = main.announcer_player.stream as AudioStreamWAV
 	check(named_board != null and named_board.data.slice(0, wang.data.size()) == wang.data, "Rebound call starts with the rebounder's name chunk")
 
-	# Test 17: Calls with no subject player stay phrase-only
+	# Test 17: Exported clips are uncompressed PCM, which is what web actually ships.
+	# Source WAVs are not packed, and QOA samples cannot be prepended.
+	var pcm_dirs = ["res://voices/announcer", "res://voices/announcer/names"]
+	var pcm_count = 0
+	for dir_path in pcm_dirs:
+		var dir = DirAccess.open(dir_path)
+		check(dir != null, "Announcer directory opens: %s" % dir_path)
+		if dir == null:
+			continue
+		dir.list_dir_begin()
+		var file_name = dir.get_next()
+		while file_name != "":
+			if not dir.current_is_dir() and file_name.ends_with(".wav"):
+				var imported = load(dir_path + "/" + file_name) as AudioStreamWAV
+				pcm_count += 1
+				check(imported != null and imported.format == AudioStreamWAV.FORMAT_16_BITS and not imported.data.is_empty() and not imported.stereo and imported.mix_rate == 48000, "Imported announcer clip is 16-bit PCM: %s" % file_name)
+			file_name = dir.get_next()
+	check(pcm_count == 92, "Every announcer clip is imported as PCM (count: %d)" % pcm_count)
+	var imported_name := load("res://voices/announcer/names/henny.wav") as AudioStreamWAV
+	var imported_phrase := load("res://voices/announcer/boomshakalaka.wav") as AudioStreamWAV
+	var imported_script := main.speech_script(imported_name, imported_phrase) as AudioStreamWAV
+	check(imported_script != null and imported_script.data.slice(0, imported_name.data.size()) == imported_name.data, "Web-shipped PCM name chunk can be prepended to the phrase")
+
+	# Test 18: Calls with no subject player stay phrase-only
 	main.announcer_player.stop()
 	main.announcer_busy_until = 0.0
 	main.announcer_current_priority = 0
